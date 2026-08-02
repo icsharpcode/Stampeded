@@ -12,7 +12,6 @@ public partial class WelcomeDocumentView : UserControl
 	{
 		InitializeComponent();
 		SearchPanel.Install(Editor);
-		HighlightingService.EnsureRegistered();
 		Editor.SyntaxHighlighting = HighlightingService.GetByExtension(".cs");
 	}
 

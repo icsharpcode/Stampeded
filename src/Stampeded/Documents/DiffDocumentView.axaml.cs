@@ -43,7 +43,6 @@ public partial class DiffDocumentView : UserControl
 	{
 		InitializeComponent();
 		SearchPanel.Install(Editor);
-		HighlightingService.EnsureRegistered();
 		Editor.TextArea.TextView.BackgroundRenderers.Add(new DiffLineBackgroundRenderer(() => model?.Tags));
 		markers = new TextMarkerService(Editor.TextArea.TextView);
 		Editor.TextArea.TextView.BackgroundRenderers.Add(markers);

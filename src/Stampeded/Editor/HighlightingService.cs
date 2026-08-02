@@ -16,78 +16,29 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
-using System;
-using System.IO;
-using System.Xml;
-
 using AvaloniaEdit.Highlighting;
-using AvaloniaEdit.Highlighting.Xshd;
 
 using Stampeded.Themes;
 
 namespace Stampeded.Editor
 {
 	/// <summary>
-	/// Loads our XSHD highlighting definitions (CSharp / IL / Asm / XML) from embedded resources
-	/// once and registers them with AvaloniaEdit's <see cref="HighlightingManager"/>. Lookup by
-	/// file extension (".cs" / ".il" / ".asm" / ".xml") matches what <see cref="Languages.Language.FileExtension"/>
-	/// returns.
+	/// Extension-based lookup over AvaloniaEdit's built-in highlighting definitions (full
+	/// C# keyword grammar, XML, ...), themed for dark mode on first use. ILSpy's trimmed
+	/// CSharp-Mode.xshd is deliberately NOT used here: it omits keywords because ILSpy's
+	/// decompiler colours them semantically, which a source viewer does not.
 	/// </summary>
 	static class HighlightingService
 	{
-		static bool registered;
-		static readonly object gate = new();
-
-		// Embedded resource names follow the csproj RootNamespace ("ICSharpCode.ILSpy"),
-		// not the file's C# namespace ("ILSpy").
-		const string ResourcePrefix = "Stampeded.Editor.";
-
-		public static void EnsureRegistered()
-		{
-			if (registered)
-				return;
-			lock (gate)
-			{
-				if (registered)
-					return;
-				Register("C#", new[] { ".cs" }, "CSharp-Mode.xshd");
-				Register("IL", new[] { ".il" }, "ILAsm-Mode.xshd");
-				Register("Asm", new[] { ".asm" }, "Asm-Mode.xshd");
-				Register("XML", new[] { ".xml", ".xaml" }, "XML-Mode.xshd");
-				registered = true;
-			}
-		}
-
 		public static IHighlightingDefinition? GetByExtension(string fileExtension)
 		{
-			EnsureRegistered();
 			var definition = HighlightingManager.Instance.GetDefinitionByExtension(fileExtension);
 			if (definition != null)
 			{
-				// The lookup can also resolve AvaloniaEdit's built-in definitions (JSON, Markdown,
-				// JavaScript, ...) that resource text rendering relies on; those never pass through
-				// Load(), so theme them here. Registering is idempotent.
+				// Applies the active theme's colours on first use and re-themes on every
+				// later switch. Registering is idempotent.
 				ThemeManager.Current.RegisterThemableDefinition(definition);
 			}
-			return definition;
-		}
-
-		static void Register(string name, string[] extensions, string resourceName)
-		{
-			HighlightingManager.Instance.RegisterHighlighting(name, extensions, () => Load(resourceName));
-		}
-
-		static IHighlightingDefinition Load(string resourceName)
-		{
-			using var stream = typeof(HighlightingService).Assembly
-				.GetManifestResourceStream(ResourcePrefix + resourceName)
-				?? throw new InvalidOperationException($"Highlighting resource not found: {resourceName}");
-			using var reader = XmlReader.Create(stream);
-			var definition = HighlightingLoader.Load(reader, HighlightingManager.Instance);
-			// Hand the freshly-loaded definition to the theme manager: it applies the active
-			// theme's colours now (so the first decompile is themed) and re-themes it on every
-			// later theme switch.
-			ThemeManager.Current.RegisterThemableDefinition(definition);
 			return definition;
 		}
 	}

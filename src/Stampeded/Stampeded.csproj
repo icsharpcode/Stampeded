@@ -16,6 +16,5 @@
     <ProjectReference Include="..\Stampeded.Core\Stampeded.Core.csproj" />
   </ItemGroup>
   <ItemGroup>
-    <EmbeddedResource Include="Editor\*.xshd" />
   </ItemGroup>
 </Project>
