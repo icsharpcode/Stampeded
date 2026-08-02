@@ -12,25 +12,40 @@ namespace Stampeded.Docking;
 /// Builds the default dock layout. Panes are wired directly here — this app has a small,
 /// closed set of panes and no plugin story, so no registry indirection.
 /// </summary>
-public class StampededDockFactory : Factory
+public class StampededDockFactory(ReviewWorkspace workspace) : Factory
 {
+	public DocumentDock? Documents { get; private set; }
+
 	public override IRootDock CreateLayout()
 	{
 		var welcome = new WelcomeDocumentViewModel { Id = "Welcome", Title = "Welcome" };
-		var documents = new DocumentDock {
+		Documents = new DocumentDock {
 			Id = "Documents",
 			IsCollapsable = false,
 			VisibleDockables = CreateList<IDockable>(welcome),
 			ActiveDockable = welcome,
 		};
 
-		var prList = new PrListPaneViewModel { Id = "PullRequests", Title = "Pull Requests" };
-		var leftDock = new ToolDock {
-			Id = "LeftPane",
-			Alignment = Alignment.Left,
-			Proportion = 0.2,
-			VisibleDockables = CreateList<IDockable>(prList),
-			ActiveDockable = prList,
+		var prList = new PrListPaneViewModel(workspace) { Id = "PullRequests", Title = "Pull Requests" };
+		var files = new PrFilesPaneViewModel(workspace) { Id = "Files", Title = "Files" };
+		var leftDock = new ProportionalDock {
+			Proportion = 0.22,
+			Orientation = Orientation.Vertical,
+			VisibleDockables = CreateList<IDockable>(
+				new ToolDock {
+					Id = "PrListDock",
+					Alignment = Alignment.Left,
+					Proportion = 0.45,
+					VisibleDockables = CreateList<IDockable>(prList),
+					ActiveDockable = prList,
+				},
+				new ProportionalDockSplitter(),
+				new ToolDock {
+					Id = "FilesDock",
+					Alignment = Alignment.Left,
+					VisibleDockables = CreateList<IDockable>(files),
+					ActiveDockable = files,
+				}),
 		};
 
 		var mainLayout = new ProportionalDock {
@@ -38,7 +53,7 @@ public class StampededDockFactory : Factory
 			VisibleDockables = CreateList<IDockable>(
 				leftDock,
 				new ProportionalDockSplitter(),
-				documents),
+				Documents),
 		};
 
 		var root = CreateRootDock();

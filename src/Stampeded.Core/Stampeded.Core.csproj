@@ -1,5 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <ItemGroup>
+    <PackageReference Include="CliWrap" />
     <PackageReference Include="DiffLib" />
   </ItemGroup>
 </Project>

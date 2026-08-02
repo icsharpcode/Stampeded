@@ -4,9 +4,15 @@ namespace Stampeded;
 
 internal static class Program
 {
+	/// <summary>The repository under review: first non-option argument, else the CWD.</summary>
+	public static string RepoPath { get; private set; } = Environment.CurrentDirectory;
+
 	[STAThread]
 	public static void Main(string[] args)
 	{
+		var repoArg = args.FirstOrDefault(a => !a.StartsWith('-'));
+		if (repoArg is not null)
+			RepoPath = Path.GetFullPath(repoArg);
 		BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
 	}
 

@@ -1,5 +1,25 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             x:Class="Stampeded.Panes.PrListPaneView">
-  <TextBlock Margin="8" Opacity="0.6" Text="No pull requests loaded yet." />
+             xmlns:gh="using:Stampeded.Core.GitHub"
+             xmlns:panes="using:Stampeded.Panes"
+             x:Class="Stampeded.Panes.PrListPaneView"
+             x:DataType="panes:PrListPaneViewModel">
+  <DockPanel>
+    <TextBlock DockPanel.Dock="Bottom" Margin="6,4" Opacity="0.7" TextWrapping="Wrap"
+               Text="{Binding State.Status}" />
+    <ListBox x:Name="List" ItemsSource="{Binding Items}" DoubleTapped="OnDoubleTapped">
+      <ListBox.ItemTemplate>
+        <DataTemplate x:DataType="gh:PrSummary">
+          <StackPanel Margin="2">
+            <TextBlock FontWeight="SemiBold" TextTrimming="CharacterEllipsis">
+              <Run Text="{Binding Number, StringFormat='#{0}'}" /> <Run Text="{Binding Title}" />
+            </TextBlock>
+            <TextBlock Opacity="0.6" FontSize="11">
+              <Run Text="{Binding Author.Login}" /> · <Run Text="{Binding HeadRefName}" />
+            </TextBlock>
+          </StackPanel>
+        </DataTemplate>
+      </ListBox.ItemTemplate>
+    </ListBox>
+  </DockPanel>
 </UserControl>

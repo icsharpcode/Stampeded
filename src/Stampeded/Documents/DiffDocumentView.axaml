@@ -1,0 +1,10 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:editor="using:Stampeded.Editor"
+             xmlns:diff="using:Stampeded.Diff"
+             x:Class="Stampeded.Documents.DiffDocumentView">
+  <Grid ColumnDefinitions="*,14">
+    <editor:ReviewTextEditor x:Name="Editor" IsReadOnly="True" />
+    <diff:OverviewBar x:Name="Overview" Grid.Column="1" />
+  </Grid>
+</UserControl>

@@ -1,5 +1,4 @@
 using Dock.Model.Controls;
-using Dock.Model.Core;
 
 using Stampeded.Docking;
 
@@ -11,8 +10,12 @@ public class MainViewModel
 
 	public MainViewModel()
 	{
-		var factory = new StampededDockFactory();
+		var workspace = new ReviewWorkspace(Program.RepoPath);
+		App.Workspace = workspace;
+		var factory = new StampededDockFactory(workspace);
 		Layout = factory.CreateLayout();
 		factory.InitLayout(Layout);
+		workspace.Factory = factory;
+		workspace.Documents = factory.Documents;
 	}
 }
