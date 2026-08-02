@@ -427,3 +427,11 @@ FodyWeavers.xsd
 *.msix
 *.msm
 *.msp
+
+# Project-specific
+bin/
+obj/
+*.user
+.vs/
+.idea/
+TestResults/

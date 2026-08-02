@@ -1,0 +1,11 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:editor="using:Stampeded.Editor"
+        x:Class="Stampeded.MainWindow"
+        Title="Stampeded"
+        Width="1200" Height="800">
+  <editor:ReviewTextEditor x:Name="Editor"
+                           FontFamily="monospace"
+                           IsReadOnly="True"
+                           ShowLineNumbers="True" />
+</Window>

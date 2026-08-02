@@ -1,0 +1,11 @@
+<Application xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:dockTheme="using:Dock.Avalonia.Themes.Simple"
+             x:Class="Stampeded.App"
+             RequestedThemeVariant="Default">
+  <Application.Styles>
+    <SimpleTheme />
+    <StyleInclude Source="avares://AvaloniaEdit/Themes/Simple/AvaloniaEdit.xaml" />
+    <dockTheme:DockSimpleTheme CacheDocumentTabContent="True" />
+  </Application.Styles>
+</Application>

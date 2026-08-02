@@ -1,6 +1,8 @@
 MIT License
 
-Copyright (c) 2026 ICSharpCode
+Copyright (c) 2026 Siegfried Pammer
+Portions copyright (c) AlphaSierraPapa for the SharpDevelop Team (code adapted from
+ILSpy, https://github.com/icsharpcode/ILSpy, MIT license; per-file headers retained)
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
