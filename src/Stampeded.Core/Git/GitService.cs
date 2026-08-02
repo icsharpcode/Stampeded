@@ -46,4 +46,7 @@ public sealed class GitService(string repoPath)
 
 	public Task<string> ShowFileAsync(string rev, string path, CancellationToken ct = default)
 		=> RunAsync(ct, "show", $"{rev}:{path}");
+
+	public async Task<IReadOnlyList<BlameLine>> BlameAsync(string rev, string path, CancellationToken ct = default)
+		=> GitBlameParser.Parse(await RunAsync(ct, "blame", "--porcelain", rev, "--", path));
 }

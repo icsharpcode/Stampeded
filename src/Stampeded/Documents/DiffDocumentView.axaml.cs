@@ -268,6 +268,10 @@ public partial class DiffDocumentView : UserControl
 				ShowReferencesAtCaret();
 				e.Handled = true;
 				break;
+			case (Key.B, KeyModifiers.None):
+				ToggleBlameAsync().HandleExceptions();
+				e.Handled = true;
+				break;
 			case (Key.Escape, KeyModifiers.None):
 				markers.RemoveAll(_ => true);
 				break;
@@ -357,6 +361,55 @@ public partial class DiffDocumentView : UserControl
 			return;
 		MoveCaretToLine(target.Value.FirstDocLine);
 	}
+
+	#region Blame
+
+	readonly BlameMargin blameMargin = new();
+	bool blameVisible;
+
+	async Task ToggleBlameAsync()
+	{
+		if (blameVisible)
+		{
+			Editor.TextArea.LeftMargins.Remove(blameMargin);
+			blameVisible = false;
+			return;
+		}
+		if (model is null || viewModel is null || App.Workspace is not { } ws || ws.HeadSha is null)
+			return;
+		var m = model;
+		var vm = viewModel;
+		IReadOnlyList<Core.Git.BlameLine> newBlame = [];
+		IReadOnlyList<Core.Git.BlameLine> oldBlame = [];
+		try
+		{
+			if (vm.File.Kind != FileChangeKind.Deleted)
+				newBlame = await ws.Git.BlameAsync(ws.HeadSha, vm.File.Path);
+			if (ws.BaseSha is not null && m.Tags.Any(t => t.Kind == DiffLineKind.Removed))
+				oldBlame = await ws.Git.BlameAsync(ws.BaseSha, vm.File.OldPath);
+		}
+		catch (Core.Infra.ToolFailedException)
+		{
+			return; // e.g. blaming a base-only view at head; blame is best-effort
+		}
+		if (model != m)
+			return;
+		var newByLine = newBlame.ToDictionary(b => b.FinalLine);
+		var oldByLine = oldBlame.ToDictionary(b => b.FinalLine);
+		var perDoc = new Core.Git.BlameLine?[m.Tags.Count];
+		for (int i = 0; i < m.Tags.Count; i++)
+		{
+			var tag = m.Tags[i];
+			perDoc[i] = tag.NewLine > 0
+				? newByLine.GetValueOrDefault(tag.NewLine)
+				: oldByLine.GetValueOrDefault(tag.OldLine);
+		}
+		blameMargin.SetLines(perDoc);
+		Editor.TextArea.LeftMargins.Insert(0, blameMargin);
+		blameVisible = true;
+	}
+
+	#endregion
 
 	#region Hover tooltip
 

@@ -156,6 +156,16 @@ public sealed class ReviewWorkspace(string repoPath)
 
 	public FileDiff? CurrentFile => (Documents?.ActiveDockable as DiffDocumentViewModel)?.File;
 
+	/// <summary>Opens (or activates) a plain text document tab (CI logs, reports, ...).</summary>
+	public void OpenTextDocument(string id, string title, string text)
+	{
+		ShowDocument(id, () => {
+			var vm = DiffDocumentViewModel.ForSource(title, text);
+			vm.Title = title;
+			return vm;
+		});
+	}
+
 	public async Task OpenAdjacentFileAsync(int delta)
 	{
 		if (Files.Count == 0)

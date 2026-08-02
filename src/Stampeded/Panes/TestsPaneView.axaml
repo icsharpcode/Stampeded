@@ -1,0 +1,24 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:panes="using:Stampeded.Panes"
+             x:Class="Stampeded.Panes.TestsPaneView"
+             x:DataType="panes:TestsPaneViewModel">
+  <Grid RowDefinitions="Auto,Auto,*,2*">
+    <DockPanel Grid.Row="0" Margin="4">
+      <Button DockPanel.Dock="Right" Margin="4,0,0,0" Click="OnRunClicked"
+              Content="{Binding State.Running, Converter={x:Static panes:TestsPaneView.RunButtonText}}" />
+      <TextBox Text="{Binding State.Args}" Watermark="dotnet arguments" FontFamily="monospace" />
+    </DockPanel>
+    <TextBlock Grid.Row="1" Margin="6,2" Opacity="0.7" TextWrapping="Wrap" Text="{Binding State.Status}" />
+    <ListBox Grid.Row="2" x:Name="List" ItemsSource="{Binding Failures}" DoubleTapped="OnDoubleTapped"
+             FontFamily="monospace" FontSize="12">
+      <ListBox.ItemTemplate>
+        <DataTemplate x:DataType="panes:TestRow">
+          <TextBlock Text="{Binding Display}" TextTrimming="CharacterEllipsis" />
+        </DataTemplate>
+      </ListBox.ItemTemplate>
+    </ListBox>
+    <TextBox Grid.Row="3" Text="{Binding State.Output}" IsReadOnly="True" AcceptsReturn="True"
+             FontFamily="monospace" FontSize="11" TextWrapping="NoWrap" />
+  </Grid>
+</UserControl>
