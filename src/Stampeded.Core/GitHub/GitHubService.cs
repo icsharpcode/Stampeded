@@ -14,7 +14,10 @@ public sealed record PrSummary(
 	string HeadRefName,
 	string BaseRefName,
 	bool IsDraft,
-	DateTimeOffset UpdatedAt);
+	DateTimeOffset UpdatedAt)
+{
+	public string NumberDisplay => $"#{Number}";
+}
 
 public sealed record PrDetail(
 	int Number,

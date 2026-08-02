@@ -12,7 +12,7 @@
         <DataTemplate x:DataType="gh:PrSummary">
           <StackPanel Margin="2">
             <TextBlock FontWeight="SemiBold" TextTrimming="CharacterEllipsis">
-              <Run Text="{Binding Number, StringFormat='#{0}'}" /> <Run Text="{Binding Title}" />
+              <Run Text="{Binding NumberDisplay}" /> <Run Text="{Binding Title}" />
             </TextBlock>
             <TextBlock Opacity="0.6" FontSize="11">
               <Run Text="{Binding Author.Login}" /> · <Run Text="{Binding HeadRefName}" />
