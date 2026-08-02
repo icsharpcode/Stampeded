@@ -2,5 +2,8 @@
   <ItemGroup>
     <PackageReference Include="CliWrap" />
     <PackageReference Include="DiffLib" />
+    <PackageReference Include="Microsoft.Build.Locator" />
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Workspaces" />
+    <PackageReference Include="Microsoft.CodeAnalysis.Workspaces.MSBuild" />
   </ItemGroup>
 </Project>

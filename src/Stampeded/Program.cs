@@ -10,6 +10,9 @@ internal static class Program
 	[STAThread]
 	public static void Main(string[] args)
 	{
+		// Must run before any Roslyn workspace assembly loads, so MSBuild resolves from
+		// the installed SDK.
+		Microsoft.Build.Locator.MSBuildLocator.RegisterDefaults();
 		var repoArg = args.FirstOrDefault(a => !a.StartsWith('-'));
 		if (repoArg is not null)
 			RepoPath = Path.GetFullPath(repoArg);

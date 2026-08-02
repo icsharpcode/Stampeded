@@ -48,12 +48,27 @@ public class StampededDockFactory(ReviewWorkspace workspace) : Factory
 				}),
 		};
 
+		var references = new ReferencesPaneViewModel(workspace) { Id = "References", Title = "References" };
+		var rightSide = new ProportionalDock {
+			Orientation = Orientation.Vertical,
+			VisibleDockables = CreateList<IDockable>(
+				Documents,
+				new ProportionalDockSplitter(),
+				new ToolDock {
+					Id = "ReferencesDock",
+					Alignment = Alignment.Bottom,
+					Proportion = 0.25,
+					VisibleDockables = CreateList<IDockable>(references),
+					ActiveDockable = references,
+				}),
+		};
+
 		var mainLayout = new ProportionalDock {
 			Orientation = Orientation.Horizontal,
 			VisibleDockables = CreateList<IDockable>(
 				leftDock,
 				new ProportionalDockSplitter(),
-				Documents),
+				rightSide),
 		};
 
 		var root = CreateRootDock();

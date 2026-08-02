@@ -18,6 +18,7 @@ public class ViewLocator : IDataTemplate
 		[typeof(DiffDocumentViewModel)] = () => new Documents.DiffDocumentView(),
 		[typeof(PrListPaneViewModel)] = () => new Panes.PrListPaneView(),
 		[typeof(PrFilesPaneViewModel)] = () => new Panes.PrFilesPaneView(),
+		[typeof(ReferencesPaneViewModel)] = () => new Panes.ReferencesPaneView(),
 	};
 
 	public Control Build(object? data)

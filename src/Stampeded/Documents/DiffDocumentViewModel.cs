@@ -8,4 +8,35 @@ public class DiffDocumentViewModel(FileDiff file, DiffDocumentModel model) : Doc
 {
 	public FileDiff File { get; } = file;
 	public DiffDocumentModel Model { get; } = model;
+
+	/// <summary>True for plain source views of unchanged files (identity diff model).</summary>
+	public bool IsSourceView { get; private init; }
+
+	int? pendingCaretLine;
+
+	public event Action<int>? CaretRequested;
+
+	public void RequestCaret(int docLine)
+	{
+		pendingCaretLine = docLine;
+		CaretRequested?.Invoke(docLine);
+	}
+
+	public int? TakePendingCaretLine()
+	{
+		int? line = pendingCaretLine;
+		pendingCaretLine = null;
+		return line;
+	}
+
+	/// <summary>A read-only source view over an unchanged worktree file, sharing the whole
+	/// diff-editor component with an identity line map and no hunks.</summary>
+	public static DiffDocumentViewModel ForSource(string relPath, string text)
+	{
+		var stub = new FileDiff(relPath, relPath, FileChangeKind.Modified, false, []);
+		return new DiffDocumentViewModel(stub, DiffDocumentBuilder.Build(text, text)) {
+			Title = Path.GetFileName(relPath),
+			IsSourceView = true,
+		};
+	}
 }

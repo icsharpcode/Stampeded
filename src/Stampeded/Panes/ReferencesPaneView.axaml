@@ -1,0 +1,18 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:panes="using:Stampeded.Panes"
+             x:Class="Stampeded.Panes.ReferencesPaneView"
+             x:DataType="panes:ReferencesPaneViewModel">
+  <DockPanel>
+    <TextBlock DockPanel.Dock="Top" Margin="6,4" Opacity="0.7" TextWrapping="Wrap"
+               Text="{Binding State.Status}" />
+    <ListBox x:Name="List" ItemsSource="{Binding Items}" DoubleTapped="OnDoubleTapped"
+             FontFamily="monospace" FontSize="12">
+      <ListBox.ItemTemplate>
+        <DataTemplate x:DataType="panes:ReferenceRow">
+          <TextBlock Text="{Binding Display}" TextTrimming="CharacterEllipsis" />
+        </DataTemplate>
+      </ListBox.ItemTemplate>
+    </ListBox>
+  </DockPanel>
+</UserControl>
