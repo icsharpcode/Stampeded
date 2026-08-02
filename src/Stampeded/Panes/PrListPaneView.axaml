@@ -5,11 +5,17 @@
              x:Class="Stampeded.Panes.PrListPaneView"
              x:DataType="panes:PrListPaneViewModel">
   <DockPanel>
-    <DockPanel DockPanel.Dock="Bottom" Margin="4">
-      <Button DockPanel.Dock="Right" Content="Refresh" Click="OnRefreshClicked" />
-      <TextBlock Margin="2,0,6,0" VerticalAlignment="Center" Opacity="0.7" TextWrapping="Wrap"
-                 Text="{Binding State.Status}" />
-    </DockPanel>
+    <StackPanel DockPanel.Dock="Bottom" Margin="4" Spacing="4">
+      <DockPanel>
+        <Button DockPanel.Dock="Right" Margin="4,0,0,0" Content="Open Range" Click="OnOpenRangeClicked" />
+        <TextBox x:Name="RangeBox" Watermark="base..head (local review)" FontFamily="monospace" />
+      </DockPanel>
+      <DockPanel>
+        <Button DockPanel.Dock="Right" Content="Refresh" Click="OnRefreshClicked" />
+        <TextBlock Margin="2,0,6,0" VerticalAlignment="Center" Opacity="0.7" TextWrapping="Wrap"
+                   Text="{Binding State.Status}" />
+      </DockPanel>
+    </StackPanel>
     <ListBox x:Name="List" ItemsSource="{Binding Items}" DoubleTapped="OnDoubleTapped">
       <ListBox.ContextMenu>
         <ContextMenu>

@@ -50,6 +50,37 @@ public sealed class ReviewWorkspace(string repoPath)
 	Dictionary<string, HashSet<int>> addedLinesByFile = [];
 	readonly NavigationHistory<NavEntry> history = new();
 
+	/// <summary>Opens a review of a local base..head range (no PR: checks, posted comments
+	/// and review submission stay empty/disabled; everything else works identically).</summary>
+	public async Task OpenLocalRangeAsync(string baseRef, string headRef)
+	{
+		sessionCts?.Cancel();
+		var cts = sessionCts = new CancellationTokenSource();
+		var ct = cts.Token;
+
+		string headSha = await ResolveAsync(headRef, ct);
+		string baseSha = await Git.GetMergeBaseAsync(await ResolveAsync(baseRef, ct), headSha, ct);
+		var files = await Git.DiffAsync(baseSha, headSha, ct);
+		ct.ThrowIfCancellationRequested();
+
+		CurrentPr = null;
+		BaseSha = baseSha;
+		HeadSha = headSha;
+		Files = files;
+		IndexAddedLines(files);
+		Store.OpenLocal(Path.GetFileName(RepoPath), $"{baseRef}..{headRef}", headSha);
+		history.Clear();
+		CloseOpenDiffs();
+		PostedComments = [];
+		ReviewChanged?.Invoke();
+		LoadSemanticsAsync(headSha, baseSha, ct).HandleExceptions();
+		ReattachDraftsAsync(ct).HandleExceptions();
+		CommentsChanged?.Invoke();
+	}
+
+	async Task<string> ResolveAsync(string reference, CancellationToken ct)
+		=> (await Git.RevParseAsync(reference, ct)).Trim();
+
 	public async Task OpenPrAsync(int number)
 	{
 		sessionCts?.Cancel();
@@ -158,6 +189,48 @@ public sealed class ReviewWorkspace(string repoPath)
 	}
 
 	public FileDiff? CurrentFile => (Documents?.ActiveDockable as DiffDocumentViewModel)?.File;
+
+	public event Action<string>? StatusMessage;
+
+	/// <summary>Opens the side-by-side view of the active file (or a given one).</summary>
+	public async Task OpenSideBySideAsync(FileDiff? file = null)
+	{
+		file ??= CurrentFile;
+		if (file is null || BaseSha is null || HeadSha is null || Documents is null || Factory is null)
+			return;
+		string id = "sbs:" + file.Path;
+		var existing = Documents.VisibleDockables?
+			.OfType<SideBySideDocumentViewModel>()
+			.FirstOrDefault(d => d.Id == id);
+		if (existing is null)
+		{
+			string oldText = file.Kind == FileChangeKind.Added || file.IsBinary
+				? ""
+				: await Git.ShowFileAsync(BaseSha, file.OldPath);
+			string newText = file.Kind == FileChangeKind.Deleted || file.IsBinary
+				? ""
+				: await Git.ShowFileAsync(HeadSha, file.NewPath);
+			existing = new SideBySideDocumentViewModel(file, DiffDocumentBuilder.BuildPair(oldText, newText)) {
+				Id = id,
+				Title = Path.GetFileName(file.Path) + " (side-by-side)",
+			};
+			Factory.AddDockable(Documents, existing);
+		}
+		Factory.SetActiveDockable(existing);
+		Factory.SetFocusedDockable(Documents, existing);
+	}
+
+	/// <summary>Removes cached worktrees except the current review's base and head.</summary>
+	public async Task PruneWorktreeCacheAsync()
+	{
+		var keep = new List<string>();
+		if (BaseSha is not null)
+			keep.Add(BaseSha);
+		if (HeadSha is not null)
+			keep.Add(HeadSha);
+		int removed = await Worktrees.PruneAsync(keep);
+		StatusMessage?.Invoke($"Pruned {removed} cached worktree(s).");
+	}
 
 	/// <summary>Opens (or activates) a plain text document tab (CI logs, reports, ...).</summary>
 	public void OpenTextDocument(string id, string title, string text)

@@ -24,6 +24,13 @@ public readonly record struct DiffLineTag(
 /// <summary>A maximal run of non-context document lines (1-based, inclusive).</summary>
 public readonly record struct HunkSpan(int FirstDocLine, int LastDocLine);
 
+/// <summary>The two aligned documents of a side-by-side diff (equal line counts).</summary>
+public sealed record SideBySideModel(
+	string LeftText,
+	string RightText,
+	IReadOnlyList<DiffLineTag> LeftTags,
+	IReadOnlyList<DiffLineTag> RightTags);
+
 /// <summary>
 /// The unified-diff document: the full NEW file text with REMOVED lines interleaved as
 /// verbatim old-blob lines. Every document line is a verbatim copy of a blob line, so
@@ -150,6 +157,71 @@ public static class DiffDocumentBuilder
 			Tags = tags,
 			Hunks = ComputeHunks(tags),
 		};
+	}
+
+	/// <summary>
+	/// Builds the two aligned documents of a side-by-side view from one alignment: equal
+	/// line counts, with empty Filler rows where the other side inserted or deleted.
+	/// </summary>
+	public static SideBySideModel BuildPair(string oldText, string newText)
+	{
+		var oldLines = SplitLines(oldText);
+		var newLines = SplitLines(newText);
+		var sections = DiffLib.Diff.CalculateSections(oldLines, newLines, EqualityComparer<string>.Default);
+		var aligned = DiffLib.Diff.AlignElements(
+			oldLines, newLines, sections, new DiffLib.Alignment.StringSimilarityDiffElementAligner());
+
+		var left = new List<string>();
+		var right = new List<string>();
+		var leftTags = new List<DiffLineTag>();
+		var rightTags = new List<DiffLineTag>();
+		int oldNo = 0, newNo = 0;
+		var filler = new DiffLineTag(DiffLineKind.Filler, 0, 0, null);
+
+		foreach (var element in aligned)
+		{
+			switch (element.Operation)
+			{
+				case DiffLib.DiffOperation.Match:
+					oldNo++;
+					newNo++;
+					left.Add(element.ElementFromCollection1.Value);
+					right.Add(element.ElementFromCollection2.Value);
+					leftTags.Add(new DiffLineTag(DiffLineKind.Context, oldNo, newNo, null));
+					rightTags.Add(new DiffLineTag(DiffLineKind.Context, oldNo, newNo, null));
+					break;
+				case DiffLib.DiffOperation.Delete:
+					oldNo++;
+					left.Add(element.ElementFromCollection1.Value);
+					right.Add("");
+					leftTags.Add(new DiffLineTag(DiffLineKind.Removed, oldNo, 0, null));
+					rightTags.Add(filler);
+					break;
+				case DiffLib.DiffOperation.Insert:
+					newNo++;
+					left.Add("");
+					right.Add(element.ElementFromCollection2.Value);
+					leftTags.Add(filler);
+					rightTags.Add(new DiffLineTag(DiffLineKind.Added, 0, newNo, null));
+					break;
+				case DiffLib.DiffOperation.Replace:
+				case DiffLib.DiffOperation.Modify:
+					oldNo++;
+					newNo++;
+					string oldLine = element.ElementFromCollection1.Value;
+					string newLine = element.ElementFromCollection2.Value;
+					var (oldSpans, newSpans) = ComputeWordDiffs(oldLine, newLine);
+					left.Add(oldLine);
+					right.Add(newLine);
+					leftTags.Add(new DiffLineTag(DiffLineKind.Removed, oldNo, 0, oldSpans));
+					rightTags.Add(new DiffLineTag(DiffLineKind.Added, 0, newNo, newSpans));
+					break;
+				default:
+					throw new InvalidOperationException($"Unexpected diff operation {element.Operation}");
+			}
+		}
+		return new SideBySideModel(
+			string.Join("\n", left), string.Join("\n", right), leftTags, rightTags);
 	}
 
 	// git's line model: "a\n" is ONE line, so exactly one trailing newline is stripped

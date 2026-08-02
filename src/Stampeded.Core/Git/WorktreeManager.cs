@@ -23,6 +23,27 @@ public sealed class WorktreeManager(string repoPath)
 		}
 	}
 
+	/// <summary>Deletes cached worktrees of this repo except those for the given SHAs,
+	/// then prunes git's registrations. Returns the number of directories removed.</summary>
+	public async Task<int> PruneAsync(IReadOnlyCollection<string> keepShas, CancellationToken ct = default)
+	{
+		string repoDir = Path.Combine(CacheRoot, Path.GetFileName(repoPath));
+		int removed = 0;
+		if (Directory.Exists(repoDir))
+		{
+			var keep = keepShas.Select(s => s[..9]).ToHashSet();
+			foreach (var dir in Directory.EnumerateDirectories(repoDir))
+			{
+				if (keep.Contains(Path.GetFileName(dir)))
+					continue;
+				Directory.Delete(dir, recursive: true);
+				removed++;
+			}
+		}
+		await ExternalTool.RunAsync("git", ["worktree", "prune"], repoPath, ct);
+		return removed;
+	}
+
 	public async Task<string> GetOrCreateAsync(string sha, CancellationToken ct = default)
 	{
 		string dir = Path.GetFullPath(Path.Combine(CacheRoot, Path.GetFileName(repoPath), sha[..9]));

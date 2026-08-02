@@ -28,7 +28,35 @@ public class PrListPaneViewModel : Tool
 	public PrListPaneViewModel(ReviewWorkspace workspace)
 	{
 		this.workspace = workspace;
+		workspace.StatusMessage += message => State.Status = message;
 		LoadAsync().HandleExceptions();
+	}
+
+	/// <summary>Opens a local base..head range review ("master..my-branch"; merge-base
+	/// semantics like the PR flow).</summary>
+	public void OpenRange(string rangeText)
+	{
+		var parts = rangeText.Split("..", StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+		if (parts.Length != 2)
+		{
+			State.Status = "Range must be <base>..<head>, e.g. origin/master..my-branch";
+			return;
+		}
+		State.Status = $"Opening {parts[0]}..{parts[1]}...";
+		OpenRangeCoreAsync(parts[0], parts[1]).HandleExceptions();
+
+		async Task OpenRangeCoreAsync(string baseRef, string headRef)
+		{
+			try
+			{
+				await workspace.OpenLocalRangeAsync(baseRef, headRef);
+				State.Status = $"Reviewing {baseRef}..{headRef}";
+			}
+			catch (ToolFailedException ex)
+			{
+				State.Status = ex.Message;
+			}
+		}
 	}
 
 	public async Task LoadAsync()

@@ -36,8 +36,15 @@ public sealed class ReviewStateStore
 	}
 
 	public void Open(string repoKey, int prNumber, string headSha)
+		=> OpenFile($"{Sanitize(repoKey)}_pr{prNumber}.json", headSha);
+
+	/// <summary>State for a local base..head review (no PR); keyed by the range text.</summary>
+	public void OpenLocal(string repoKey, string rangeKey, string headSha)
+		=> OpenFile($"{Sanitize(repoKey)}_local_{Sanitize(rangeKey)}.json", headSha);
+
+	void OpenFile(string fileName, string headSha)
 	{
-		currentPath = Path.Combine(directory, $"{Sanitize(repoKey)}_pr{prNumber}.json");
+		currentPath = Path.Combine(directory, fileName);
 		current = null;
 		if (File.Exists(currentPath))
 		{

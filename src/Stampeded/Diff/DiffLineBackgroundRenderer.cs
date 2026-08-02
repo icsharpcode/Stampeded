@@ -25,6 +25,7 @@ public sealed class DiffLineBackgroundRenderer(Func<IReadOnlyList<DiffLineTag>?>
 	static readonly IBrush AddedWordDark = new SolidColorBrush(Color.Parse("#2EA043"), 0.45);
 	static readonly IBrush RemovedDark = new SolidColorBrush(Color.Parse("#382226"));
 	static readonly IBrush RemovedWordDark = new SolidColorBrush(Color.Parse("#F85149"), 0.35);
+	static readonly IBrush FillerBrush = new SolidColorBrush(Colors.Gray, 0.12);
 
 	public KnownLayer Layer => KnownLayer.Background;
 
@@ -49,6 +50,7 @@ public sealed class DiffLineBackgroundRenderer(Func<IReadOnlyList<DiffLineTag>?>
 			var rowBrush = tag.Kind switch {
 				DiffLineKind.Added => added,
 				DiffLineKind.Removed => removed,
+				DiffLineKind.Filler => FillerBrush,
 				_ => null,
 			};
 			if (rowBrush is null)

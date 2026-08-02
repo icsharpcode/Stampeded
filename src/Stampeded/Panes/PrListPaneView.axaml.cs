@@ -34,4 +34,10 @@ public partial class PrListPaneView : UserControl
 		if (DataContext is PrListPaneViewModel vm)
 			vm.LoadAsync().HandleExceptions();
 	}
+
+	void OnOpenRangeClicked(object? sender, RoutedEventArgs e)
+	{
+		if (DataContext is PrListPaneViewModel vm)
+			vm.OpenRange(RangeBox.Text ?? "");
+	}
 }

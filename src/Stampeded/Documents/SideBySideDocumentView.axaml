@@ -1,0 +1,10 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:editor="using:Stampeded.Editor"
+             x:Class="Stampeded.Documents.SideBySideDocumentView">
+  <Grid ColumnDefinitions="*,4,*">
+    <editor:ReviewTextEditor x:Name="Left" IsReadOnly="True" />
+    <GridSplitter Grid.Column="1" />
+    <editor:ReviewTextEditor x:Name="Right" Grid.Column="2" IsReadOnly="True" />
+  </Grid>
+</UserControl>

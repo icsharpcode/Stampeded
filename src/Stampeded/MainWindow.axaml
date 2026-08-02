@@ -22,6 +22,12 @@
         <MenuItem Header="Toggle Blame Margin" InputGesture="B" Click="OnToggleBlame" />
         <MenuItem Header="Comment at Caret" InputGesture="C" Click="OnCommentAtCaret" />
       </MenuItem>
+      <MenuItem Header="_View">
+        <MenuItem Header="Side-by-Side of Current File" Click="OnSideBySide" />
+      </MenuItem>
+      <MenuItem Header="Re_pository">
+        <MenuItem Header="Prune Worktree Cache" Click="OnPruneWorktrees" />
+      </MenuItem>
       <MenuItem Header="_Navigate">
         <MenuItem Header="Go to Definition" InputGesture="F12" Click="OnGoToDefinition" />
         <MenuItem Header="Find References" InputGesture="Shift+F12" Click="OnFindReferences" />

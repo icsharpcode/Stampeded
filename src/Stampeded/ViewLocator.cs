@@ -16,6 +16,7 @@ public class ViewLocator : IDataTemplate
 	static readonly Dictionary<Type, Func<Control>> s_views = new() {
 		[typeof(WelcomeDocumentViewModel)] = () => new Documents.WelcomeDocumentView(),
 		[typeof(DiffDocumentViewModel)] = () => new Documents.DiffDocumentView(),
+		[typeof(SideBySideDocumentViewModel)] = () => new Documents.SideBySideDocumentView(),
 		[typeof(PrListPaneViewModel)] = () => new Panes.PrListPaneView(),
 		[typeof(PrFilesPaneViewModel)] = () => new Panes.PrFilesPaneView(),
 		[typeof(ReferencesPaneViewModel)] = () => new Panes.ReferencesPaneView(),

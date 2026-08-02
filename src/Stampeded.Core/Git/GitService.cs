@@ -31,6 +31,9 @@ public sealed class GitService(string repoPath)
 	public async Task<string> GetMergeBaseAsync(string a, string b, CancellationToken ct = default)
 		=> (await RunAsync(ct, "merge-base", a, b)).Trim();
 
+	public async Task<string> RevParseAsync(string reference, CancellationToken ct = default)
+		=> (await RunAsync(ct, "rev-parse", "--verify", reference)).Trim();
+
 	/// <summary>Fetches the PR head into refs/stampeded/pr/N and returns its SHA.</summary>
 	public async Task<string> FetchPrHeadAsync(int number, CancellationToken ct = default)
 	{

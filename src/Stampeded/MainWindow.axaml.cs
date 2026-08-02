@@ -25,6 +25,8 @@ public partial class MainWindow : Window
 	void OnGoToDefinition(object? s, RoutedEventArgs e) => View?.GoToDefinitionCommand();
 	void OnFindReferences(object? s, RoutedEventArgs e) => View?.FindReferencesCommand();
 	void OnHighlightOccurrences(object? s, RoutedEventArgs e) => View?.HighlightOccurrencesCommand();
+	void OnSideBySide(object? s, RoutedEventArgs e) => App.Workspace?.OpenSideBySideAsync().HandleExceptions();
+	void OnPruneWorktrees(object? s, RoutedEventArgs e) => App.Workspace?.PruneWorktreeCacheAsync().HandleExceptions();
 	void OnBack(object? s, RoutedEventArgs e) => App.Workspace?.GoBackAsync().HandleExceptions();
 	void OnForward(object? s, RoutedEventArgs e) => App.Workspace?.GoForwardAsync().HandleExceptions();
 }
