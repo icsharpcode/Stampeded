@@ -44,14 +44,22 @@ public class ReferencesPaneViewModel : Tool
 		if (sem is null)
 			return;
 		string detail = sem.StateDetail.Length > 0 ? $" ({sem.StateDetail})" : "";
-		State.Status = sem.State switch {
+		string head = sem.State switch {
 			SemanticState.Restoring => $"Restoring packages{detail}...",
 			SemanticState.Loading => $"Loading solution{detail}...",
 			SemanticState.Ready => $"Semantics ready{detail} - F12 / Shift+F12 / Ctrl+Click enabled.",
 			SemanticState.SyntaxOnly => $"Syntax-only semantics{detail} - navigation may be incomplete.",
 			SemanticState.Failed => $"Semantic load failed: {sem.StateDetail}",
-			_ => State.Status,
+			_ => "",
 		};
+		string baseState = workspace.BaseSemantics?.State switch {
+			SemanticState.Ready => " Base side ready (removed code is navigable).",
+			SemanticState.Restoring or SemanticState.Loading => " Loading base side...",
+			SemanticState.SyntaxOnly => " Base side syntax-only.",
+			_ => "",
+		};
+		if (head.Length > 0)
+			State.Status = head + baseState;
 	}
 
 	void OnReferences(string symbolName, IReadOnlyList<ReferenceItem> items)
@@ -64,6 +72,6 @@ public class ReferencesPaneViewModel : Tool
 
 	public void Open(ReferenceRow row)
 	{
-		workspace.NavigateToFileLineAsync(row.Item.RelPath, row.Item.Line, record: true).HandleExceptions();
+		workspace.NavigateToFileLineAsync(row.Item.RelPath, row.Item.Line, row.Item.OldSide, record: true).HandleExceptions();
 	}
 }

@@ -24,6 +24,8 @@ public sealed record SymbolLocation(string FilePath, TextSpan Span, int Line);
 
 public sealed record ReferenceHit(string FilePath, int Line, TextSpan Span, string LineText);
 
+public sealed record SemanticToken(int Line, int Column, int Length, string Classification);
+
 /// <summary>
 /// Source semantics over one checked-out worktree: an MSBuildWorkspace when the solution
 /// loads (NuGet restore is run first so the design-time build sees its references), an
@@ -186,6 +188,98 @@ public sealed class RoslynWorkspaceService : IDisposable
 			.Select(c => c.TextSpan)
 			.Distinct()
 			.OrderBy(s => s.Start)
+			.ToList();
+	}
+
+	/// <summary>
+	/// Identifier-like classified tokens as (1-based line, column, length, classification).
+	/// Feeds both semantic colouring and the clickable reference segments; identifiers never
+	/// span lines, so line/column addressing is exact and maps through the diff line map.
+	/// </summary>
+	public async Task<IReadOnlyList<SemanticToken>> GetSemanticTokensAsync(string repoRelativePath, CancellationToken ct)
+	{
+		var document = GetDocument(ToAbsolutePath(repoRelativePath));
+		if (document is null)
+			return [];
+		var text = await document.GetTextAsync(ct);
+		var classified = await Classifier.GetClassifiedSpansAsync(document, new TextSpan(0, text.Length), ct);
+		var tokens = new List<SemanticToken>();
+		foreach (var span in classified)
+		{
+			if (!IsIdentifierClassification(span.ClassificationType))
+				continue;
+			var lineSpan = text.Lines.GetLinePositionSpan(span.TextSpan);
+			if (lineSpan.Start.Line != lineSpan.End.Line)
+				continue;
+			tokens.Add(new SemanticToken(
+				lineSpan.Start.Line + 1,
+				lineSpan.Start.Character + 1,
+				span.TextSpan.Length,
+				span.ClassificationType));
+		}
+		return tokens
+			.DistinctBy(t => (t.Line, t.Column, t.Length))
+			.OrderBy(t => t.Line).ThenBy(t => t.Column)
+			.ToList();
+	}
+
+	/// <summary>IDE-style quick info (signature, docs, ...) as plain text sections.</summary>
+	public async Task<string?> GetQuickInfoAsync(string repoRelativePath, int position, CancellationToken ct)
+	{
+		var document = GetDocument(ToAbsolutePath(repoRelativePath));
+		if (document is null)
+			return null;
+		var service = Microsoft.CodeAnalysis.QuickInfo.QuickInfoService.GetService(document);
+		if (service is null)
+			return null;
+		var info = await service.GetQuickInfoAsync(document, position, ct);
+		if (info is null || info.Sections.IsEmpty)
+			return null;
+		var sections = info.Sections
+			.Select(s => s.Text)
+			.Where(t => !string.IsNullOrWhiteSpace(t));
+		string result = string.Join("\n\n", sections);
+		return result.Length > 0 ? result : null;
+	}
+
+	/// <summary>All reference and definition occurrences of a symbol within one file, for
+	/// in-document occurrence highlighting.</summary>
+	public async Task<IReadOnlyList<SemanticToken>> FindOccurrencesInFileAsync(
+		ISymbol symbol, string repoRelativePath, CancellationToken ct)
+	{
+		var document = GetDocument(ToAbsolutePath(repoRelativePath));
+		if (document is null || solution is null)
+			return [];
+		var text = await document.GetTextAsync(ct);
+		var occurrences = new List<SemanticToken>();
+
+		void Add(TextSpan span, string kind)
+		{
+			var lineSpan = text.Lines.GetLinePositionSpan(span);
+			if (lineSpan.Start.Line != lineSpan.End.Line)
+				return;
+			occurrences.Add(new SemanticToken(
+				lineSpan.Start.Line + 1, lineSpan.Start.Character + 1, span.Length, kind));
+		}
+
+		var references = await SymbolFinder.FindReferencesAsync(
+			symbol, solution, [document], ct);
+		foreach (var reference in references)
+		{
+			foreach (var location in reference.Locations)
+			{
+				if (location.Document.Id == document.Id)
+					Add(location.Location.SourceSpan, "reference");
+			}
+			foreach (var location in reference.Definition.Locations)
+			{
+				if (location.IsInSource && location.SourceTree == await document.GetSyntaxTreeAsync(ct))
+					Add(location.SourceSpan, "definition");
+			}
+		}
+		return occurrences
+			.DistinctBy(t => (t.Line, t.Column))
+			.OrderBy(t => t.Line).ThenBy(t => t.Column)
 			.ToList();
 	}
 

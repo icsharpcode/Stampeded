@@ -12,7 +12,7 @@ namespace Stampeded;
 
 sealed record NavEntry(string DockableId, int DocLine) : IEquatable<NavEntry?>;
 
-public sealed record ReferenceItem(string RelPath, int Line, string Preview, bool InChangedLine);
+public sealed record ReferenceItem(string RelPath, int Line, string Preview, bool InChangedLine, bool OldSide);
 
 /// <summary>
 /// The open review session: which PR, its base/head SHAs, its file diffs, the semantic
@@ -36,7 +36,9 @@ public sealed class ReviewWorkspace(string repoPath)
 	public string? HeadSha { get; private set; }
 	public IReadOnlyList<FileDiff> Files { get; private set; } = [];
 	public RoslynWorkspaceService? Semantics { get; private set; }
+	public RoslynWorkspaceService? BaseSemantics { get; private set; }
 	public string? WorktreePath { get; private set; }
+	public string? BaseWorktreePath { get; private set; }
 
 	public event Action? ReviewChanged;
 	public event Action<string, bool>? ViewedChanged;
@@ -69,17 +71,25 @@ public sealed class ReviewWorkspace(string repoPath)
 		history.Clear();
 		CloseOpenDiffs();
 		ReviewChanged?.Invoke();
-		LoadSemanticsAsync(headSha, ct).HandleExceptions();
+		LoadSemanticsAsync(headSha, baseSha, ct).HandleExceptions();
 	}
 
-	async Task LoadSemanticsAsync(string headSha, CancellationToken ct)
+	async Task LoadSemanticsAsync(string headSha, string baseSha, CancellationToken ct)
 	{
 		Semantics?.Dispose();
+		BaseSemantics?.Dispose();
+		BaseSemantics = null;
 		var semantics = Semantics = new RoslynWorkspaceService();
 		semantics.StateChanged += () => SemanticsChanged?.Invoke();
 		SemanticsChanged?.Invoke();
 		WorktreePath = await Worktrees.GetOrCreateAsync(headSha, ct);
 		await Task.Run(() => semantics.LoadAsync(WorktreePath, ct), ct);
+		// The base-side workspace powers navigation FROM removed lines; load it after the
+		// head side so the common case is interactive first.
+		var baseSemantics = BaseSemantics = new RoslynWorkspaceService();
+		baseSemantics.StateChanged += () => SemanticsChanged?.Invoke();
+		BaseWorktreePath = await Worktrees.GetOrCreateAsync(baseSha, ct);
+		await Task.Run(() => baseSemantics.LoadAsync(BaseWorktreePath, ct), ct);
 	}
 
 	void IndexAddedLines(IReadOnlyList<FileDiff> files)
@@ -184,72 +194,100 @@ public sealed class ReviewWorkspace(string repoPath)
 
 	#region Semantic navigation
 
-	bool SemanticsReady => Semantics is { State: SemanticState.Ready or SemanticState.SyntaxOnly };
+	/// <summary>The workspace serving one side of a diff: head for context/added lines,
+	/// base for removed lines.</summary>
+	public RoslynWorkspaceService? SemanticsFor(bool oldSide) => oldSide ? BaseSemantics : Semantics;
 
-	/// <summary>Go to definition of the symbol at (newLine, column) of a reviewed file.</summary>
-	public async Task NavigateToDefinitionAsync(string relPath, int newLine, int column, NavEntryOrigin origin)
+	static bool IsReady(RoslynWorkspaceService? sem)
+		=> sem is { State: SemanticState.Ready or SemanticState.SyntaxOnly };
+
+	async Task<Microsoft.CodeAnalysis.ISymbol?> SymbolAtAsync(bool oldSide, string relPath, int line, int column)
 	{
-		if (Semantics is not { } sem || !SemanticsReady)
-			return;
-		int? position = await sem.GetPositionAsync(relPath, newLine, column, CancellationToken.None);
+		var sem = SemanticsFor(oldSide);
+		if (!IsReady(sem))
+			return null;
+		int? position = await sem!.GetPositionAsync(relPath, line, column, CancellationToken.None);
 		if (position is null)
-			return;
-		var symbol = await sem.GetSymbolAtAsync(relPath, position.Value, CancellationToken.None);
+			return null;
+		return await sem.GetSymbolAtAsync(relPath, position.Value, CancellationToken.None);
+	}
+
+	/// <summary>Go to definition of the symbol at a blob (line, column). For removed lines
+	/// this resolves in the BASE workspace and navigation lands in base-side views.</summary>
+	public async Task NavigateToDefinitionAsync(string relPath, int line, int column, bool oldSide, NavEntryOrigin origin)
+	{
+		var sem = SemanticsFor(oldSide);
+		var symbol = await SymbolAtAsync(oldSide, relPath, line, column);
 		if (symbol is null)
 			return;
-		var location = sem.GetDefinitionLocation(symbol);
+		var location = sem!.GetDefinitionLocation(symbol);
 		if (location is null)
 			return;
 		string? targetRel = sem.ToRelativePath(location.FilePath);
 		if (targetRel is null)
 			return;
 		RecordOrigin(origin);
-		await NavigateToFileLineAsync(targetRel, location.Line, record: true);
+		await NavigateToFileLineAsync(targetRel, location.Line, oldSide, record: true);
 	}
 
-	public async Task ShowReferencesAtAsync(string relPath, int newLine, int column)
+	public async Task ShowReferencesAtAsync(string relPath, int line, int column, bool oldSide)
 	{
-		if (Semantics is not { } sem || !SemanticsReady)
-			return;
-		int? position = await sem.GetPositionAsync(relPath, newLine, column, CancellationToken.None);
-		if (position is null)
-			return;
-		var symbol = await sem.GetSymbolAtAsync(relPath, position.Value, CancellationToken.None);
+		var sem = SemanticsFor(oldSide);
+		var symbol = await SymbolAtAsync(oldSide, relPath, line, column);
 		if (symbol is null)
 			return;
-		var hits = await sem.FindReferencesAsync(symbol, CancellationToken.None);
+		var hits = await sem!.FindReferencesAsync(symbol, CancellationToken.None);
 		var items = hits
 			.Select(h => (Rel: sem.ToRelativePath(h.FilePath), Hit: h))
 			.Where(x => x.Rel is not null)
 			.Select(x => new ReferenceItem(
 				x.Rel!, x.Hit.Line, x.Hit.LineText,
-				addedLinesByFile.TryGetValue(x.Rel!, out var lines) && lines.Contains(x.Hit.Line)))
+				!oldSide && addedLinesByFile.TryGetValue(x.Rel!, out var lines) && lines.Contains(x.Hit.Line),
+				oldSide))
 			.ToList();
-		ReferencesAvailable?.Invoke(symbol.Name, items);
+		ReferencesAvailable?.Invoke(symbol.Name + (oldSide ? " (base)" : ""), items);
 	}
 
-	/// <summary>Opens (or activates) a file at a NEW-file line: as its review diff when the
-	/// file is part of the PR, else as a read-only source view of the head worktree.</summary>
-	public async Task NavigateToFileLineAsync(string relPath, int fileLine, bool record)
+	/// <summary>Occurrences of the symbol at the given blob position within its own file.</summary>
+	public async Task<IReadOnlyList<SemanticToken>> FindOccurrencesAsync(string relPath, int line, int column, bool oldSide)
+	{
+		var sem = SemanticsFor(oldSide);
+		var symbol = await SymbolAtAsync(oldSide, relPath, line, column);
+		if (symbol is null)
+			return [];
+		return await sem!.FindOccurrencesInFileAsync(symbol, relPath, CancellationToken.None);
+	}
+
+	/// <summary>Opens (or activates) a file at a blob line. Head side: the review diff when
+	/// the file is in the PR, else a head source view. Base side: the review diff mapped via
+	/// the old line, else a base source view.</summary>
+	public async Task NavigateToFileLineAsync(string relPath, int fileLine, bool oldSide, bool record)
 	{
 		DiffDocumentViewModel? vm;
 		int docLine;
-		var fileDiff = Files.FirstOrDefault(f => f.Path == relPath);
+		var fileDiff = oldSide
+			? Files.FirstOrDefault(f => f.OldPath == relPath)
+			: Files.FirstOrDefault(f => f.Path == relPath);
 		if (fileDiff is not null)
 		{
 			vm = await OpenFileAsync(fileDiff);
-			docLine = vm?.Model.DocLineFromNewLine(fileLine) ?? fileLine;
+			docLine = (oldSide ? vm?.Model.DocLineFromOldLine(fileLine) : vm?.Model.DocLineFromNewLine(fileLine)) ?? fileLine;
 		}
 		else
 		{
-			if (WorktreePath is null)
+			string? root = oldSide ? BaseWorktreePath : WorktreePath;
+			if (root is null)
 				return;
-			string absolute = Path.Combine(WorktreePath, relPath);
+			string absolute = Path.Combine(root, relPath);
 			if (!File.Exists(absolute))
 				return;
-			vm = ShowDocument("src:" + relPath, () => {
+			string prefix = oldSide ? "srcbase:" : "src:";
+			vm = ShowDocument(prefix + relPath, () => {
 				string text = File.ReadAllText(absolute);
-				return DiffDocumentViewModel.ForSource(relPath, text);
+				var source = DiffDocumentViewModel.ForSource(relPath, text);
+				if (oldSide)
+					source.Title = source.Title + " @ base";
+				return source;
 			});
 			docLine = fileLine;
 		}
@@ -282,15 +320,20 @@ public sealed class ReviewWorkspace(string repoPath)
 				return;
 			}
 		}
-		if (WorktreePath is not null)
-		{
-			string absolute = Path.Combine(WorktreePath, relPath);
-			if (File.Exists(absolute))
-			{
-				var vm = ShowDocument("src:" + relPath, () => DiffDocumentViewModel.ForSource(relPath, File.ReadAllText(absolute)));
-				vm?.RequestCaret(entry.DocLine);
-			}
-		}
+		bool oldSide = entry.DockableId.StartsWith("srcbase:", StringComparison.Ordinal);
+		string? root = oldSide ? BaseWorktreePath : WorktreePath;
+		if (root is null)
+			return;
+		string absolute = Path.Combine(root, relPath);
+		if (!File.Exists(absolute))
+			return;
+		var source = ShowDocument(entry.DockableId, () => {
+			var vm = DiffDocumentViewModel.ForSource(relPath, File.ReadAllText(absolute));
+			if (oldSide)
+				vm.Title += " @ base";
+			return vm;
+		});
+		source?.RequestCaret(entry.DocLine);
 	}
 
 	#endregion

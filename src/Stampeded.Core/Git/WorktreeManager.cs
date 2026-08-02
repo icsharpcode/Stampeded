@@ -8,9 +8,20 @@ namespace Stampeded.Core.Git;
 /// </summary>
 public sealed class WorktreeManager(string repoPath)
 {
-	// SpecialFolder.InternetCache maps to XDG_CACHE_HOME (~/.cache) on Unix.
-	static string CacheRoot => Path.Combine(
-		Environment.GetFolderPath(Environment.SpecialFolder.InternetCache), "stampeded", "worktrees");
+	// XDG_CACHE_HOME with the standard fallbacks; SpecialFolder has no reliable cache
+	// mapping across environments (it can resolve to an empty string, which would turn
+	// the cache path relative).
+	static string CacheRoot {
+		get {
+			string? xdg = Environment.GetEnvironmentVariable("XDG_CACHE_HOME");
+			string root = !string.IsNullOrEmpty(xdg)
+				? xdg
+				: OperatingSystem.IsWindows()
+					? Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData)
+					: Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".cache");
+			return Path.Combine(root, "stampeded", "worktrees");
+		}
+	}
 
 	public async Task<string> GetOrCreateAsync(string sha, CancellationToken ct = default)
 	{

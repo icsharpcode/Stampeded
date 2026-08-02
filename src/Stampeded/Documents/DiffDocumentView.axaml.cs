@@ -1,28 +1,43 @@
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
+using Avalonia.Media;
 using Avalonia.Threading;
 
+using AvaloniaEdit.Document;
 using AvaloniaEdit.Folding;
+using AvaloniaEdit.Highlighting;
+using AvaloniaEdit.Rendering;
 using AvaloniaEdit.Search;
 
 using Stampeded.Core.Diff;
+using Stampeded.Core.Roslyn;
 using Stampeded.Diff;
 using Stampeded.Editor;
 
 namespace Stampeded.Documents;
+
+/// <summary>Payload of a clickable reference span: which side and blob position it names.</summary>
+sealed record TokenRef(bool OldSide, int Line, int Column);
 
 public partial class DiffDocumentView : UserControl
 {
 	// Unchanged context kept visible around each hunk when folding the rest.
 	const int FoldContext = 3;
 
+	static readonly Color OccurrenceColor = Color.Parse("#5A86C691");
+	static readonly Color DefinitionOccurrenceColor = Color.Parse("#7A86C691");
+
 	readonly DiffLineNumberMargin margin = new();
 	readonly DispatcherTimer hoverTimer = new() { Interval = TimeSpan.FromMilliseconds(400) };
+	readonly ReferenceElementGenerator referenceGenerator = new(_ => true);
+	readonly TextMarkerService markers;
 	Avalonia.Point lastPointerPosition;
 	FoldingManager? foldingManager;
 	DiffDocumentModel? model;
 	DiffDocumentViewModel? viewModel;
+	RichTextColorizer? semanticColorizer;
+	bool semanticsRefreshQueued;
 
 	public DiffDocumentView()
 	{
@@ -30,6 +45,9 @@ public partial class DiffDocumentView : UserControl
 		SearchPanel.Install(Editor);
 		HighlightingService.EnsureRegistered();
 		Editor.TextArea.TextView.BackgroundRenderers.Add(new DiffLineBackgroundRenderer(() => model?.Tags));
+		markers = new TextMarkerService(Editor.TextArea.TextView);
+		Editor.TextArea.TextView.BackgroundRenderers.Add(markers);
+		Editor.TextArea.TextView.ElementGenerators.Add(referenceGenerator);
 		Editor.TextArea.LeftMargins.Insert(0, margin);
 		Editor.TextArea.AddHandler(KeyDownEvent, OnEditorKeyDown, RoutingStrategies.Tunnel);
 		Editor.TextArea.TextView.AddHandler(PointerReleasedEvent, OnTextViewPointerReleased, RoutingStrategies.Bubble, handledEventsToo: true);
@@ -37,6 +55,27 @@ public partial class DiffDocumentView : UserControl
 		Editor.TextArea.TextView.PointerExited += (_, _) => CancelHover();
 		hoverTimer.Tick += OnHoverTimerTick;
 	}
+
+	protected override void OnAttachedToVisualTree(Avalonia.VisualTreeAttachmentEventArgs e)
+	{
+		base.OnAttachedToVisualTree(e);
+		if (App.Workspace is { } ws)
+			ws.SemanticsChanged += OnSemanticsChanged;
+		Themes.ThemeManager.Current.ThemeChanged += OnThemeChangedForSemantics;
+		QueueSemanticsRefresh();
+	}
+
+	protected override void OnDetachedFromVisualTree(Avalonia.VisualTreeAttachmentEventArgs e)
+	{
+		if (App.Workspace is { } ws)
+			ws.SemanticsChanged -= OnSemanticsChanged;
+		Themes.ThemeManager.Current.ThemeChanged -= OnThemeChangedForSemantics;
+		base.OnDetachedFromVisualTree(e);
+	}
+
+	void OnSemanticsChanged() => Dispatcher.UIThread.Post(QueueSemanticsRefresh);
+
+	void OnThemeChangedForSemantics(object? sender, EventArgs e) => QueueSemanticsRefresh();
 
 	protected override void OnDataContextChanged(EventArgs e)
 	{
@@ -54,9 +93,88 @@ public partial class DiffDocumentView : UserControl
 		margin.InvalidateMeasure();
 		Overview.Attach(Editor, vm.Model.Tags);
 		InstallFoldings(vm.Model);
+		referenceGenerator.References = null;
+		markers.RemoveAll(_ => true);
+		QueueSemanticsRefresh();
 		if (vm.TakePendingCaretLine() is int line)
 			Dispatcher.UIThread.Post(() => MoveCaretToLine(line));
 	}
+
+	#region Semantic layer (colors + clickable spans)
+
+	void QueueSemanticsRefresh()
+	{
+		if (semanticsRefreshQueued)
+			return;
+		semanticsRefreshQueued = true;
+		Dispatcher.UIThread.Post(() => {
+			semanticsRefreshQueued = false;
+			RefreshSemanticsAsync().HandleExceptions();
+		}, DispatcherPriority.Background);
+	}
+
+	async Task RefreshSemanticsAsync()
+	{
+		if (model is null || viewModel is null || App.Workspace is not { } ws)
+			return;
+		var m = model;
+		var vm = viewModel;
+
+		var headSem = ws.SemanticsFor(oldSide: false);
+		var baseSem = ws.SemanticsFor(oldSide: true);
+		var headTokens = headSem is { State: SemanticState.Ready or SemanticState.SyntaxOnly }
+			? await headSem.GetSemanticTokensAsync(vm.File.Path, CancellationToken.None)
+			: [];
+		bool hasRemoved = m.Tags.Any(t => t.Kind == DiffLineKind.Removed);
+		var baseTokens = hasRemoved && baseSem is { State: SemanticState.Ready or SemanticState.SyntaxOnly }
+			? await baseSem.GetSemanticTokensAsync(vm.File.OldPath, CancellationToken.None)
+			: [];
+		if (model != m || viewModel != vm)
+			return; // document changed while we were computing
+
+		var rich = new RichTextModel();
+		var segments = new TextSegmentCollection<ReferenceSegment>();
+		AddTokens(rich, segments, headTokens, oldSide: false);
+		AddTokens(rich, segments, baseTokens, oldSide: true);
+
+		if (semanticColorizer is not null)
+			Editor.TextArea.TextView.LineTransformers.Remove(semanticColorizer);
+		semanticColorizer = new RichTextColorizer(rich);
+		Editor.TextArea.TextView.LineTransformers.Add(semanticColorizer);
+		referenceGenerator.References = segments;
+		Editor.TextArea.TextView.Redraw();
+	}
+
+	void AddTokens(RichTextModel rich, TextSegmentCollection<ReferenceSegment> segments,
+		IReadOnlyList<SemanticToken> tokens, bool oldSide)
+	{
+		if (model is null)
+			return;
+		foreach (var token in tokens)
+		{
+			int? docLine = oldSide ? model.DocLineFromOldLine(token.Line) : model.DocLineFromNewLine(token.Line);
+			if (docLine is null || docLine > Editor.Document.LineCount)
+				continue;
+			var tag = model.Tags[docLine.Value - 1];
+			// Context lines exist on both sides; color them once, from the head tokens.
+			if (oldSide && tag.Kind != DiffLineKind.Removed)
+				continue;
+			var line = Editor.Document.GetLineByNumber(docLine.Value);
+			int offset = line.Offset + token.Column - 1;
+			if (token.Column - 1 + token.Length > line.Length)
+				continue;
+			if (ClassificationColors.Get(token.Classification) is { } color)
+				rich.SetHighlighting(offset, token.Length, color);
+			segments.Add(new ReferenceSegment {
+				StartOffset = offset,
+				Length = token.Length,
+				Kind = ReferenceMode.Link,
+				Reference = new TokenRef(oldSide, token.Line, token.Column),
+			});
+		}
+	}
+
+	#endregion
 
 	void OnCaretRequested(int docLine)
 	{
@@ -151,6 +269,9 @@ public partial class DiffDocumentView : UserControl
 				ShowReferencesAtCaret();
 				e.Handled = true;
 				break;
+			case (Key.Escape, KeyModifiers.None):
+				markers.RemoveAll(_ => true);
+				break;
 			case (Key.Left, KeyModifiers.Alt):
 				App.Workspace?.GoBackAsync().HandleExceptions();
 				e.Handled = true;
@@ -164,13 +285,19 @@ public partial class DiffDocumentView : UserControl
 
 	void OnTextViewPointerReleased(object? sender, PointerReleasedEventArgs e)
 	{
-		// The click has already placed the caret; Ctrl+Click navigates from it.
-		if (e.KeyModifiers == KeyModifiers.Control && e.InitialPressMouseButton == MouseButton.Left)
+		if (e.InitialPressMouseButton != MouseButton.Left)
+			return;
+		// The click has already placed the caret. Ctrl+Click navigates; a plain click on
+		// a symbol highlights its occurrences in this document.
+		if (e.KeyModifiers == KeyModifiers.Control)
 			NavigateToDefinitionAtCaret();
+		else if (e.KeyModifiers == KeyModifiers.None && Editor.TextArea.Selection.IsEmpty)
+			HighlightOccurrencesAtCaretAsync().HandleExceptions();
 	}
 
-	/// <summary>Maps the caret to a (relPath, newLine, column), null on removed/absent lines.</summary>
-	(string RelPath, int NewLine, int Column)? CaretNewFilePosition()
+	/// <summary>Caret as a blob position: head side on context/added lines, base side on
+	/// removed lines (whose code only exists at the merge base).</summary>
+	(string RelPath, int Line, int Column, bool OldSide)? CaretBlobPosition()
 	{
 		if (model is null || viewModel is null)
 			return null;
@@ -178,24 +305,45 @@ public partial class DiffDocumentView : UserControl
 		if (docLine < 1 || docLine > model.Tags.Count)
 			return null;
 		var tag = model.Tags[docLine - 1];
-		if (tag.NewLine == 0)
-			return null; // removed line: that code no longer exists at head
-		return (viewModel.File.Path, tag.NewLine, Editor.TextArea.Caret.Column);
+		if (tag.NewLine > 0)
+			return (viewModel.File.Path, tag.NewLine, Editor.TextArea.Caret.Column, false);
+		if (tag.OldLine > 0)
+			return (viewModel.File.OldPath, tag.OldLine, Editor.TextArea.Caret.Column, true);
+		return null;
 	}
 
 	void NavigateToDefinitionAtCaret()
 	{
-		if (CaretNewFilePosition() is not { } pos || viewModel is null)
+		if (CaretBlobPosition() is not { } pos || viewModel is null)
 			return;
 		var origin = new ReviewWorkspace.NavEntryOrigin(viewModel.Id, Editor.TextArea.Caret.Line);
-		App.Workspace?.NavigateToDefinitionAsync(pos.RelPath, pos.NewLine, pos.Column, origin).HandleExceptions();
+		App.Workspace?.NavigateToDefinitionAsync(pos.RelPath, pos.Line, pos.Column, pos.OldSide, origin).HandleExceptions();
 	}
 
 	void ShowReferencesAtCaret()
 	{
-		if (CaretNewFilePosition() is not { } pos)
+		if (CaretBlobPosition() is not { } pos)
 			return;
-		App.Workspace?.ShowReferencesAtAsync(pos.RelPath, pos.NewLine, pos.Column).HandleExceptions();
+		App.Workspace?.ShowReferencesAtAsync(pos.RelPath, pos.Line, pos.Column, pos.OldSide).HandleExceptions();
+	}
+
+	async Task HighlightOccurrencesAtCaretAsync()
+	{
+		markers.RemoveAll(_ => true);
+		if (CaretBlobPosition() is not { } pos || model is null || App.Workspace is not { } ws)
+			return;
+		var occurrences = await ws.FindOccurrencesAsync(pos.RelPath, pos.Line, pos.Column, pos.OldSide);
+		foreach (var occ in occurrences)
+		{
+			int? docLine = pos.OldSide ? model.DocLineFromOldLine(occ.Line) : model.DocLineFromNewLine(occ.Line);
+			if (docLine is null || docLine > Editor.Document.LineCount)
+				continue;
+			var line = Editor.Document.GetLineByNumber(docLine.Value);
+			if (occ.Column - 1 + occ.Length > line.Length)
+				continue;
+			var marker = markers.Create(line.Offset + occ.Column - 1, occ.Length);
+			marker.BackgroundColor = occ.Classification == "definition" ? DefinitionOccurrenceColor : OccurrenceColor;
+		}
 	}
 
 	void JumpToHunk(int direction)
@@ -235,7 +383,7 @@ public partial class DiffDocumentView : UserControl
 
 	async Task ShowHoverAsync()
 	{
-		if (model is null || viewModel is null || App.Workspace?.Semantics is not { } sem)
+		if (model is null || viewModel is null || App.Workspace is not { } ws)
 			return;
 		var position = Editor.GetPositionFromPoint(lastPointerPosition);
 		if (position is null)
@@ -244,12 +392,18 @@ public partial class DiffDocumentView : UserControl
 		if (docLine < 1 || docLine > model.Tags.Count)
 			return;
 		var tag = model.Tags[docLine - 1];
-		if (tag.NewLine == 0)
+		bool oldSide = tag.NewLine == 0;
+		if (oldSide && tag.OldLine == 0)
 			return;
-		int? pos = await sem.GetPositionAsync(viewModel.File.Path, tag.NewLine, position.Value.Column, CancellationToken.None);
+		string relPath = oldSide ? viewModel.File.OldPath : viewModel.File.Path;
+		int blobLine = oldSide ? tag.OldLine : tag.NewLine;
+		var sem = ws.SemanticsFor(oldSide);
+		if (sem is not { State: SemanticState.Ready or SemanticState.SyntaxOnly })
+			return;
+		int? pos = await sem.GetPositionAsync(relPath, blobLine, position.Value.Column, CancellationToken.None);
 		if (pos is null)
 			return;
-		string? text = await sem.GetHoverTextAsync(viewModel.File.Path, pos.Value, CancellationToken.None);
+		string? text = await sem.GetQuickInfoAsync(relPath, pos.Value, CancellationToken.None);
 		if (string.IsNullOrEmpty(text))
 			return;
 		ToolTip.SetTip(Editor, text);
