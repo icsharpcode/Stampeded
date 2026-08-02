@@ -9,5 +9,27 @@
   <Window.DataTemplates>
     <local:ViewLocator />
   </Window.DataTemplates>
-  <dock:DockControl Layout="{Binding Layout}" />
+  <DockPanel>
+    <Menu DockPanel.Dock="Top">
+      <MenuItem Header="_Review">
+        <MenuItem Header="Next Hunk" InputGesture="N" Click="OnNextHunk" />
+        <MenuItem Header="Previous Hunk" InputGesture="P" Click="OnPrevHunk" />
+        <Separator />
+        <MenuItem Header="Next File  ( ] )" Click="OnNextFile" />
+        <MenuItem Header="Previous File  ( [ )" Click="OnPrevFile" />
+        <Separator />
+        <MenuItem Header="Toggle Viewed + Advance" InputGesture="V" Click="OnToggleViewed" />
+        <MenuItem Header="Toggle Blame Margin" InputGesture="B" Click="OnToggleBlame" />
+      </MenuItem>
+      <MenuItem Header="_Navigate">
+        <MenuItem Header="Go to Definition" InputGesture="F12" Click="OnGoToDefinition" />
+        <MenuItem Header="Find References" InputGesture="Shift+F12" Click="OnFindReferences" />
+        <MenuItem Header="Highlight Occurrences (click; Esc clears)" Click="OnHighlightOccurrences" />
+        <Separator />
+        <MenuItem Header="Back" InputGesture="Alt+Left" Click="OnBack" />
+        <MenuItem Header="Forward" InputGesture="Alt+Right" Click="OnForward" />
+      </MenuItem>
+    </Menu>
+    <dock:DockControl Layout="{Binding Layout}" />
+  </DockPanel>
 </Window>

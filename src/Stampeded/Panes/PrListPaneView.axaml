@@ -5,9 +5,17 @@
              x:Class="Stampeded.Panes.PrListPaneView"
              x:DataType="panes:PrListPaneViewModel">
   <DockPanel>
-    <TextBlock DockPanel.Dock="Bottom" Margin="6,4" Opacity="0.7" TextWrapping="Wrap"
-               Text="{Binding State.Status}" />
+    <DockPanel DockPanel.Dock="Bottom" Margin="4">
+      <Button DockPanel.Dock="Right" Content="Refresh" Click="OnRefreshClicked" />
+      <TextBlock Margin="2,0,6,0" VerticalAlignment="Center" Opacity="0.7" TextWrapping="Wrap"
+                 Text="{Binding State.Status}" />
+    </DockPanel>
     <ListBox x:Name="List" ItemsSource="{Binding Items}" DoubleTapped="OnDoubleTapped">
+      <ListBox.ContextMenu>
+        <ContextMenu>
+          <MenuItem Header="Open Review (double-click)" Click="OnOpenClicked" />
+        </ContextMenu>
+      </ListBox.ContextMenu>
       <ListBox.ItemTemplate>
         <DataTemplate x:DataType="gh:PrSummary">
           <StackPanel Margin="2">

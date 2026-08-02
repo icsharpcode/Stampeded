@@ -50,14 +50,20 @@ public partial class DiffDocumentView : UserControl
 		Editor.TextArea.LeftMargins.Insert(0, margin);
 		Editor.TextArea.AddHandler(KeyDownEvent, OnEditorKeyDown, RoutingStrategies.Tunnel);
 		Editor.TextArea.TextView.AddHandler(PointerReleasedEvent, OnTextViewPointerReleased, RoutingStrategies.Bubble, handledEventsToo: true);
+		Editor.TextArea.AddHandler(PointerPressedEvent, OnPointerPressedForContextMenu, RoutingStrategies.Tunnel);
+		AddHandler(GotFocusEvent, (_, _) => ActiveView = this, RoutingStrategies.Bubble, handledEventsToo: true);
 		Editor.TextArea.TextView.PointerMoved += OnPointerMovedForHover;
 		Editor.TextArea.TextView.PointerExited += (_, _) => CancelHover();
 		hoverTimer.Tick += OnHoverTimerTick;
 	}
 
+	/// <summary>The most recently attached/focused diff view; menu commands route here.</summary>
+	public static DiffDocumentView? ActiveView { get; private set; }
+
 	protected override void OnAttachedToVisualTree(Avalonia.VisualTreeAttachmentEventArgs e)
 	{
 		base.OnAttachedToVisualTree(e);
+		ActiveView = this;
 		if (App.Workspace is { } ws)
 			ws.SemanticsChanged += OnSemanticsChanged;
 		Themes.ThemeManager.Current.ThemeChanged += OnThemeChangedForSemantics;
@@ -66,11 +72,45 @@ public partial class DiffDocumentView : UserControl
 
 	protected override void OnDetachedFromVisualTree(Avalonia.VisualTreeAttachmentEventArgs e)
 	{
+		if (ActiveView == this)
+			ActiveView = null;
 		if (App.Workspace is { } ws)
 			ws.SemanticsChanged -= OnSemanticsChanged;
 		Themes.ThemeManager.Current.ThemeChanged -= OnThemeChangedForSemantics;
 		base.OnDetachedFromVisualTree(e);
 	}
+
+
+	#region Menu / context-menu commands
+
+	public void JumpToHunkCommand(int direction) => JumpToHunk(direction);
+	public void ToggleBlameCommand() => ToggleBlameAsync().HandleExceptions();
+	public void GoToDefinitionCommand() => NavigateToDefinitionAtCaret();
+	public void FindReferencesCommand() => ShowReferencesAtCaret();
+	public void HighlightOccurrencesCommand() => HighlightOccurrencesAtCaretAsync().HandleExceptions();
+
+	void OnCtxGoToDefinition(object? s, RoutedEventArgs e) => GoToDefinitionCommand();
+	void OnCtxFindReferences(object? s, RoutedEventArgs e) => FindReferencesCommand();
+	void OnCtxHighlightOccurrences(object? s, RoutedEventArgs e) => HighlightOccurrencesCommand();
+	void OnCtxNextHunk(object? s, RoutedEventArgs e) => JumpToHunk(1);
+	void OnCtxPrevHunk(object? s, RoutedEventArgs e) => JumpToHunk(-1);
+	void OnCtxToggleBlame(object? s, RoutedEventArgs e) => ToggleBlameCommand();
+	void OnCtxCopy(object? s, RoutedEventArgs e) => Editor.Copy();
+
+	void OnPointerPressedForContextMenu(object? sender, PointerPressedEventArgs e)
+	{
+		// Right-click moves the caret to the click point first, so the context-menu
+		// commands act on the symbol that was clicked, matching IDE behavior.
+		if (!e.GetCurrentPoint(Editor).Properties.IsRightButtonPressed)
+			return;
+		var position = Editor.GetPositionFromPoint(e.GetPosition(Editor));
+		if (position is null)
+			return;
+		Editor.TextArea.Caret.Line = position.Value.Line;
+		Editor.TextArea.Caret.Column = position.Value.Column;
+	}
+
+	#endregion
 
 	void OnSemanticsChanged() => Dispatcher.UIThread.Post(QueueSemanticsRefresh);
 

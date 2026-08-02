@@ -4,7 +4,21 @@
              xmlns:diff="using:Stampeded.Diff"
              x:Class="Stampeded.Documents.DiffDocumentView">
   <Grid ColumnDefinitions="*,14">
-    <editor:ReviewTextEditor x:Name="Editor" IsReadOnly="True" />
+    <editor:ReviewTextEditor x:Name="Editor" IsReadOnly="True">
+      <editor:ReviewTextEditor.ContextMenu>
+        <ContextMenu>
+          <MenuItem Header="Go to Definition" InputGesture="F12" Click="OnCtxGoToDefinition" />
+          <MenuItem Header="Find References" InputGesture="Shift+F12" Click="OnCtxFindReferences" />
+          <MenuItem Header="Highlight Occurrences" Click="OnCtxHighlightOccurrences" />
+          <Separator />
+          <MenuItem Header="Next Hunk" InputGesture="N" Click="OnCtxNextHunk" />
+          <MenuItem Header="Previous Hunk" InputGesture="P" Click="OnCtxPrevHunk" />
+          <MenuItem Header="Toggle Blame Margin" InputGesture="B" Click="OnCtxToggleBlame" />
+          <Separator />
+          <MenuItem Header="Copy" InputGesture="Ctrl+C" Click="OnCtxCopy" />
+        </ContextMenu>
+      </editor:ReviewTextEditor.ContextMenu>
+    </editor:ReviewTextEditor>
     <diff:OverviewBar x:Name="Overview" Grid.Column="1" />
   </Grid>
 </UserControl>

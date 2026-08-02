@@ -4,10 +4,17 @@
              x:Class="Stampeded.Panes.PrFilesPaneView"
              x:DataType="panes:PrFilesPaneViewModel">
   <ListBox x:Name="List" ItemsSource="{Binding Files}" DoubleTapped="OnDoubleTapped">
+    <ListBox.ContextMenu>
+      <ContextMenu>
+        <MenuItem Header="Open Diff (double-click)" Click="OnOpenClicked" />
+        <MenuItem Header="Toggle Viewed" Click="OnToggleViewedClicked" />
+      </ContextMenu>
+    </ListBox.ContextMenu>
     <ListBox.ItemTemplate>
       <DataTemplate x:DataType="panes:FileEntry">
         <DockPanel Margin="2,0">
-          <CheckBox DockPanel.Dock="Right" IsChecked="{Binding IsViewed}" Padding="0" />
+          <CheckBox DockPanel.Dock="Right" IsChecked="{Binding IsViewed}" Padding="0"
+                    ToolTip.Tip="Viewed (v toggles and advances)" />
           <TextBlock DockPanel.Dock="Left" Width="14" FontWeight="Bold" Text="{Binding Marker}" />
           <TextBlock Text="{Binding Display}" TextTrimming="CharacterEllipsis" />
         </DockPanel>
