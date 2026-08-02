@@ -1,0 +1,5 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="Stampeded.Panes.PrListPaneView">
+  <TextBlock Margin="8" Opacity="0.6" Text="No pull requests loaded yet." />
+</UserControl>

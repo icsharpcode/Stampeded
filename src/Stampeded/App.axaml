@@ -3,6 +3,20 @@
              xmlns:dockTheme="using:Dock.Avalonia.Themes.Simple"
              x:Class="Stampeded.App"
              RequestedThemeVariant="Default">
+  <Application.Resources>
+    <ResourceDictionary>
+      <ResourceDictionary.ThemeDictionaries>
+        <ResourceDictionary x:Key="Light">
+          <SolidColorBrush x:Key="Stampeded.EditorBackground" Color="#FFFFFF" />
+          <SolidColorBrush x:Key="Stampeded.EditorSelectionBrush" Color="#007ACC" Opacity="0.3" />
+        </ResourceDictionary>
+        <ResourceDictionary x:Key="Dark">
+          <SolidColorBrush x:Key="Stampeded.EditorBackground" Color="#1E1E1E" />
+          <SolidColorBrush x:Key="Stampeded.EditorSelectionBrush" Color="#3794FF" Opacity="0.35" />
+        </ResourceDictionary>
+      </ResourceDictionary.ThemeDictionaries>
+    </ResourceDictionary>
+  </Application.Resources>
   <Application.Styles>
     <SimpleTheme />
     <StyleInclude Source="avares://AvaloniaEdit/Themes/Simple/AvaloniaEdit.xaml" />

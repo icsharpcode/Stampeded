@@ -1,11 +1,13 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        xmlns:editor="using:Stampeded.Editor"
+        xmlns:dock="using:Dock.Avalonia.Controls"
+        xmlns:local="using:Stampeded"
         x:Class="Stampeded.MainWindow"
+        x:DataType="local:MainViewModel"
         Title="Stampeded"
         Width="1200" Height="800">
-  <editor:ReviewTextEditor x:Name="Editor"
-                           FontFamily="monospace"
-                           IsReadOnly="True"
-                           ShowLineNumbers="True" />
+  <Window.DataTemplates>
+    <local:ViewLocator />
+  </Window.DataTemplates>
+  <dock:DockControl Layout="{Binding Layout}" />
 </Window>
