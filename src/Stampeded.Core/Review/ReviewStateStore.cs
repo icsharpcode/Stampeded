@@ -3,7 +3,9 @@ using System.Text.Json.Serialization;
 
 namespace Stampeded.Core.Review;
 
-sealed record ReviewStateFile(string HeadSha, Dictionary<string, bool> Viewed);
+public sealed record StoredComment(Guid Id, CommentAnchor Anchor, string Body, DateTimeOffset CreatedAt);
+
+sealed record ReviewStateFile(string HeadSha, Dictionary<string, bool> Viewed, List<StoredComment>? Drafts);
 
 [JsonSourceGenerationOptions(WriteIndented = true)]
 [JsonSerializable(typeof(ReviewStateFile))]
@@ -12,7 +14,9 @@ partial class ReviewStateJsonContext : JsonSerializerContext
 }
 
 /// <summary>
-/// Persists per-PR review progress (viewed files) as JSON under the user data directory.
+/// Persists per-PR review progress (viewed files, draft comments) as JSON under the user
+/// data directory. Viewed flags reset on a new head SHA; drafts are kept — their content
+/// anchors re-attach across force-pushes.
 /// </summary>
 public sealed class ReviewStateStore
 {
@@ -31,11 +35,6 @@ public sealed class ReviewStateStore
 			Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "stampeded", "reviews");
 	}
 
-	/// <summary>
-	/// Loads viewed-state for a review. State from an older head SHA is discarded wholesale.
-	/// ponytail: per-file invalidation by diff-content hash would preserve more across
-	/// force-pushes; add when whole-PR reset proves annoying.
-	/// </summary>
 	public void Open(string repoKey, int prNumber, string headSha)
 	{
 		currentPath = Path.Combine(directory, $"{Sanitize(repoKey)}_pr{prNumber}.json");
@@ -51,8 +50,14 @@ public sealed class ReviewStateStore
 				// Corrupt state file: start fresh rather than failing the review.
 			}
 		}
-		if (current is null || current.HeadSha != headSha)
-			current = new ReviewStateFile(headSha, new Dictionary<string, bool>());
+		if (current is null)
+			current = new ReviewStateFile(headSha, [], []);
+		else if (current.HeadSha != headSha)
+		{
+			// ponytail: viewed resets wholesale on force-push; per-file diff-hash
+			// invalidation would preserve more if this proves annoying.
+			current = current with { HeadSha = headSha, Viewed = [] };
+		}
 	}
 
 	public bool IsViewed(string path)
@@ -60,9 +65,36 @@ public sealed class ReviewStateStore
 
 	public void SetViewed(string path, bool viewed)
 	{
-		if (current is null || currentPath is null)
+		if (current is null)
 			return;
 		current.Viewed[path] = viewed;
+		Save();
+	}
+
+	public IReadOnlyList<StoredComment> Drafts => current?.Drafts ?? [];
+
+	public void AddDraft(StoredComment draft)
+	{
+		if (current is null)
+			return;
+		if (current.Drafts is null)
+			current = current with { Drafts = [] };
+		current.Drafts!.Add(draft);
+		Save();
+	}
+
+	public void RemoveDraft(Guid id)
+	{
+		if (current?.Drafts is null)
+			return;
+		current.Drafts.RemoveAll(d => d.Id == id);
+		Save();
+	}
+
+	void Save()
+	{
+		if (current is null || currentPath is null)
+			return;
 		Directory.CreateDirectory(Path.GetDirectoryName(currentPath)!);
 		File.WriteAllText(currentPath, JsonSerializer.Serialize(current, JsonOptions));
 	}

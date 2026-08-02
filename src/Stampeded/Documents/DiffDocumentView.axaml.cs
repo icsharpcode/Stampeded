@@ -84,6 +84,16 @@ public partial class DiffDocumentView : UserControl
 	#region Menu / context-menu commands
 
 	public void JumpToHunkCommand(int direction) => JumpToHunk(direction);
+
+	public void CommentAtCaretCommand()
+	{
+		if (CaretBlobPosition() is not { } pos)
+			return;
+		var docLine = Editor.Document.GetLineByNumber(Editor.TextArea.Caret.Line);
+		string text = Editor.Document.GetText(docLine.Offset, docLine.Length);
+		App.Workspace?.BeginComment(new ReviewWorkspace.CommentTarget(pos.RelPath, pos.OldSide, pos.Line, text));
+	}
+
 	public void ToggleBlameCommand() => ToggleBlameAsync().HandleExceptions();
 	public void GoToDefinitionCommand() => NavigateToDefinitionAtCaret();
 	public void FindReferencesCommand() => ShowReferencesAtCaret();
@@ -95,6 +105,7 @@ public partial class DiffDocumentView : UserControl
 	void OnCtxNextHunk(object? s, RoutedEventArgs e) => JumpToHunk(1);
 	void OnCtxPrevHunk(object? s, RoutedEventArgs e) => JumpToHunk(-1);
 	void OnCtxToggleBlame(object? s, RoutedEventArgs e) => ToggleBlameCommand();
+	void OnCtxComment(object? s, RoutedEventArgs e) => CommentAtCaretCommand();
 	void OnCtxCopy(object? s, RoutedEventArgs e) => Editor.Copy();
 
 	void OnPointerPressedForContextMenu(object? sender, PointerPressedEventArgs e)
@@ -310,6 +321,10 @@ public partial class DiffDocumentView : UserControl
 				break;
 			case (Key.B, KeyModifiers.None):
 				ToggleBlameAsync().HandleExceptions();
+				e.Handled = true;
+				break;
+			case (Key.C, KeyModifiers.None):
+				CommentAtCaretCommand();
 				e.Handled = true;
 				break;
 			case (Key.Escape, KeyModifiers.None):

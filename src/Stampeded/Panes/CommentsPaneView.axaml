@@ -1,0 +1,41 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:panes="using:Stampeded.Panes"
+             x:Class="Stampeded.Panes.CommentsPaneView"
+             x:DataType="panes:CommentsPaneViewModel">
+  <Grid RowDefinitions="Auto,Auto,*,Auto">
+    <TextBlock Grid.Row="0" Margin="6,4" Opacity="0.7" TextWrapping="Wrap" Text="{Binding State.Status}" />
+    <StackPanel Grid.Row="1" Margin="4" Spacing="4"
+                IsVisible="{Binding State.Target, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+      <TextBlock FontSize="11" Opacity="0.8" TextWrapping="Wrap" Text="{Binding State.Target}" />
+      <DockPanel>
+        <Button DockPanel.Dock="Right" Margin="4,0,0,0" Content="Add Draft" Click="OnAddDraft" />
+        <TextBox Text="{Binding State.DraftBody}" AcceptsReturn="True" MaxHeight="80"
+                 Watermark="Draft comment text..." />
+      </DockPanel>
+    </StackPanel>
+    <ListBox Grid.Row="2" x:Name="List" ItemsSource="{Binding Items}" DoubleTapped="OnDoubleTapped"
+             FontFamily="monospace" FontSize="12">
+      <ListBox.ContextMenu>
+        <ContextMenu>
+          <MenuItem Header="Go to Line (double-click)" Click="OnGoTo" />
+          <MenuItem Header="Delete Draft" Click="OnDelete" />
+        </ContextMenu>
+      </ListBox.ContextMenu>
+      <ListBox.ItemTemplate>
+        <DataTemplate x:DataType="panes:CommentRow">
+          <TextBlock Text="{Binding Display}" TextTrimming="CharacterEllipsis" />
+        </DataTemplate>
+      </ListBox.ItemTemplate>
+    </ListBox>
+    <DockPanel Grid.Row="3" Margin="4">
+      <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="4" Margin="4,0,0,0">
+        <Button Content="Approve" Click="OnApprove" />
+        <Button Content="Request Changes" Click="OnRequestChanges" />
+        <Button Content="Comment" Click="OnComment" />
+      </StackPanel>
+      <TextBox Text="{Binding State.ReviewBody}" AcceptsReturn="True" MaxHeight="60"
+               Watermark="Review summary (optional)..." />
+    </DockPanel>
+  </Grid>
+</UserControl>

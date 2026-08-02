@@ -20,6 +20,7 @@
         <Separator />
         <MenuItem Header="Toggle Viewed + Advance" InputGesture="V" Click="OnToggleViewed" />
         <MenuItem Header="Toggle Blame Margin" InputGesture="B" Click="OnToggleBlame" />
+        <MenuItem Header="Comment at Caret" InputGesture="C" Click="OnCommentAtCaret" />
       </MenuItem>
       <MenuItem Header="_Navigate">
         <MenuItem Header="Go to Definition" InputGesture="F12" Click="OnGoToDefinition" />

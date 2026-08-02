@@ -31,10 +31,20 @@ public sealed record PrDetail(
 
 public sealed record CheckRun(string Name, string State, string Bucket, string? Link, string? Workflow);
 
+public sealed record PostedUser(string Login);
+
+public sealed record PostedComment(string Body, string Path, int? Line, string? Side, PostedUser? User);
+
+public sealed record ReviewCommentDto(string Path, int Line, string Side, string Body);
+
+public sealed record ReviewSubmission(string Body, string Event, IReadOnlyList<ReviewCommentDto> Comments);
+
 [JsonSourceGenerationOptions(PropertyNameCaseInsensitive = true)]
 [JsonSerializable(typeof(IReadOnlyList<PrSummary>))]
 [JsonSerializable(typeof(PrDetail))]
 [JsonSerializable(typeof(IReadOnlyList<CheckRun>))]
+[JsonSerializable(typeof(IReadOnlyList<PostedComment>))]
+[JsonSerializable(typeof(ReviewSubmission))]
 partial class GitHubJsonContext : JsonSerializerContext
 {
 }
@@ -88,4 +98,24 @@ public sealed class GitHubService(string repoPath)
 	/// <summary>Log lines of the failed steps of a workflow run.</summary>
 	public Task<string> GetFailedLogAsync(long runId, CancellationToken ct = default)
 		=> ExternalTool.RunAsync("gh", ["run", "view", runId.ToString(), "--log-failed"], repoPath, ct);
+
+	/// <summary>Existing line comments of the PR's reviews. The {owner}/{repo} placeholders
+	/// are resolved by gh from the repository's origin.</summary>
+	public Task<IReadOnlyList<PostedComment>> GetReviewCommentsAsync(int number, CancellationToken ct = default)
+		=> JsonAsync<IReadOnlyList<PostedComment>>(ct,
+			"api", $"repos/{{owner}}/{{repo}}/pulls/{number}/comments", "--paginate");
+
+	/// <summary>Submits a review (APPROVE / REQUEST_CHANGES / COMMENT) with line comments.</summary>
+	public async Task SubmitReviewAsync(int number, ReviewSubmission submission, CancellationToken ct = default)
+	{
+		string json = JsonSerializer.Serialize(submission, JsonOptions);
+		var result = await CliWrap.Cli.Wrap("gh")
+			.WithArguments(["api", "-X", "POST", $"repos/{{owner}}/{{repo}}/pulls/{number}/reviews", "--input", "-"])
+			.WithWorkingDirectory(repoPath)
+			.WithStandardInputPipe(CliWrap.PipeSource.FromString(json))
+			.WithValidation(CliWrap.CommandResultValidation.None)
+			.ExecuteBufferedAsync(ct);
+		if (result.ExitCode != 0)
+			throw new ToolFailedException("gh", result.ExitCode, result.StandardError + result.StandardOutput);
+	}
 }

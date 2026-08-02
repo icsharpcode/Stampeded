@@ -51,6 +51,8 @@ public class StampededDockFactory(ReviewWorkspace workspace) : Factory
 		var references = new ReferencesPaneViewModel(workspace) { Id = "References", Title = "References" };
 		var checks = new ChecksPaneViewModel(workspace) { Id = "Checks", Title = "Checks" };
 		var tests = new TestsPaneViewModel(workspace) { Id = "Tests", Title = "Tests" };
+		var comments = new CommentsPaneViewModel(workspace) { Id = "Comments", Title = "Comments" };
+		workspace.CommentsPane = comments;
 		var rightSide = new ProportionalDock {
 			Orientation = Orientation.Vertical,
 			VisibleDockables = CreateList<IDockable>(
@@ -60,7 +62,7 @@ public class StampededDockFactory(ReviewWorkspace workspace) : Factory
 					Id = "BottomDock",
 					Alignment = Alignment.Bottom,
 					Proportion = 0.28,
-					VisibleDockables = CreateList<IDockable>(references, checks, tests),
+					VisibleDockables = CreateList<IDockable>(references, comments, checks, tests),
 					ActiveDockable = references,
 				}),
 		};

@@ -3,6 +3,7 @@ using Dock.Model.Mvvm.Controls;
 using Stampeded.Core.Diff;
 using Stampeded.Core.Git;
 using Stampeded.Core.GitHub;
+using Stampeded.Core.Infra;
 using Stampeded.Core.Review;
 using Stampeded.Core.Roslyn;
 using Stampeded.Documents;
@@ -72,6 +73,8 @@ public sealed class ReviewWorkspace(string repoPath)
 		CloseOpenDiffs();
 		ReviewChanged?.Invoke();
 		LoadSemanticsAsync(headSha, baseSha, ct).HandleExceptions();
+		ReattachDraftsAsync(ct).HandleExceptions();
+		LoadPostedCommentsAsync(number, ct).HandleExceptions();
 	}
 
 	async Task LoadSemanticsAsync(string headSha, string baseSha, CancellationToken ct)
@@ -344,6 +347,166 @@ public sealed class ReviewWorkspace(string repoPath)
 			return vm;
 		});
 		source?.RequestCaret(entry.DocLine);
+	}
+
+	#endregion
+
+	#region Review comments
+
+	public sealed record DraftComment(StoredComment Stored, int? CurrentLine);
+
+	public sealed record CommentTarget(string RelPath, bool OldSide, int Line, string LineText);
+
+	public IReadOnlyList<DraftComment> Drafts { get; private set; } = [];
+	public IReadOnlyList<PostedComment> PostedComments { get; private set; } = [];
+	public CommentTarget? PendingCommentTarget { get; private set; }
+
+	public event Action? CommentsChanged;
+	public event Action? CommentTargetRequested;
+
+	/// <summary>Set by the dock factory so 'comment here' can surface the Comments pane.</summary>
+	public Dock.Model.Core.IDockable? CommentsPane { get; set; }
+
+	public void BeginComment(CommentTarget target)
+	{
+		PendingCommentTarget = target;
+		if (CommentsPane is not null && Factory is not null)
+			Factory.SetActiveDockable(CommentsPane);
+		CommentTargetRequested?.Invoke();
+	}
+
+	public async Task CommitDraftAsync(string body)
+	{
+		if (PendingCommentTarget is not { } target || body.Length == 0)
+			return;
+		string rev = target.OldSide ? BaseSha! : HeadSha!;
+		var lines = SplitBlobLines(await Git.ShowFileAsync(rev, target.RelPath));
+		if (target.Line < 1 || target.Line > lines.Length)
+			return;
+		var anchor = CommentAnchor.Create(target.RelPath, target.OldSide, target.Line, lines);
+		Store.AddDraft(new StoredComment(Guid.NewGuid(), anchor, body, DateTimeOffset.Now));
+		PendingCommentTarget = null;
+		RebuildDrafts();
+	}
+
+	public void RemoveDraft(Guid id)
+	{
+		Store.RemoveDraft(id);
+		RebuildDrafts();
+	}
+
+	void RebuildDrafts()
+	{
+		Drafts = Store.Drafts.Select(d => new DraftComment(d, d.Anchor.Line)).ToList();
+		CommentsChanged?.Invoke();
+	}
+
+	static string[] SplitBlobLines(string text)
+	{
+		if (text.Length == 0)
+			return [];
+		text = text.ReplaceLineEndings("\n");
+		if (text.EndsWith('\n'))
+			text = text[..^1];
+		return text.Split('\n');
+	}
+
+	/// <summary>Re-attaches stored drafts against the current base/head blobs (drafts kept
+	/// across force-pushes find their new lines by content; unresolvable ones show as
+	/// outdated with CurrentLine null).</summary>
+	async Task ReattachDraftsAsync(CancellationToken ct)
+	{
+		var reattached = new List<DraftComment>();
+		foreach (var stored in Store.Drafts)
+		{
+			int? line = null;
+			try
+			{
+				string rev = stored.Anchor.OldSide ? BaseSha! : HeadSha!;
+				var lines = SplitBlobLines(await Git.ShowFileAsync(rev, stored.Anchor.Path, ct));
+				line = stored.Anchor.Reattach(lines);
+			}
+			catch (ToolFailedException)
+			{
+				// File gone at that revision: outdated.
+			}
+			reattached.Add(new DraftComment(stored, line));
+		}
+		Drafts = reattached;
+		CommentsChanged?.Invoke();
+	}
+
+	async Task LoadPostedCommentsAsync(int number, CancellationToken ct)
+	{
+		try
+		{
+			PostedComments = await GitHub.GetReviewCommentsAsync(number, ct);
+		}
+		catch (ToolFailedException)
+		{
+			PostedComments = [];
+		}
+		CommentsChanged?.Invoke();
+	}
+
+	/// <summary>Lines each side of a file that GitHub accepts review comments on (lines
+	/// that appear in the diff hunks).</summary>
+	(HashSet<int> NewLines, HashSet<int> OldLines) CommentableLines(FileDiff file)
+	{
+		var newLines = new HashSet<int>();
+		var oldLines = new HashSet<int>();
+		foreach (var hunk in file.Hunks)
+		{
+			int newLine = hunk.NewStart, oldLine = hunk.OldStart;
+			foreach (var line in hunk.Lines)
+			{
+				if (line.Kind != PatchLineKind.Removed)
+					newLines.Add(newLine++);
+				if (line.Kind != PatchLineKind.Added)
+					oldLines.Add(oldLine++);
+			}
+		}
+		return (newLines, oldLines);
+	}
+
+	/// <summary>Submits drafts that sit on commentable diff lines as a review; drafts that
+	/// don't (outdated or outside the diff) stay local. Returns (submitted, skipped).</summary>
+	public async Task<(int Submitted, int Skipped)> SubmitReviewAsync(string eventType, string body)
+	{
+		if (CurrentPr is not { } pr)
+			return (0, 0);
+		var commentable = Files.ToDictionary(f => f, CommentableLines);
+		var payload = new List<ReviewCommentDto>();
+		var submitted = new List<Guid>();
+		int skipped = 0;
+		foreach (var draft in Drafts)
+		{
+			var anchor = draft.Stored.Anchor;
+			var file = anchor.OldSide
+				? Files.FirstOrDefault(f => f.OldPath == anchor.Path)
+				: Files.FirstOrDefault(f => f.Path == anchor.Path);
+			bool ok = draft.CurrentLine is { } line && file is not null
+				&& (anchor.OldSide
+					? commentable[file].OldLines.Contains(line)
+					: commentable[file].NewLines.Contains(line));
+			if (!ok)
+			{
+				skipped++;
+				continue;
+			}
+			payload.Add(new ReviewCommentDto(
+				anchor.OldSide ? file!.OldPath : file!.Path,
+				draft.CurrentLine!.Value,
+				anchor.OldSide ? "LEFT" : "RIGHT",
+				draft.Stored.Body));
+			submitted.Add(draft.Stored.Id);
+		}
+		await GitHub.SubmitReviewAsync(pr.Number, new ReviewSubmission(body, eventType, payload));
+		foreach (var id in submitted)
+			Store.RemoveDraft(id);
+		RebuildDrafts();
+		await LoadPostedCommentsAsync(pr.Number, CancellationToken.None);
+		return (submitted.Count, skipped);
 	}
 
 	#endregion
