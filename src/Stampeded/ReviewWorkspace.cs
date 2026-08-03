@@ -73,6 +73,7 @@ public sealed class ReviewWorkspace(string repoPath)
 		CloseOpenDiffs();
 		PostedComments = [];
 		ReviewChanged?.Invoke();
+		OpenUnviewedFilesAsync().HandleExceptions();
 		LoadSemanticsAsync(headSha, baseSha, ct).HandleExceptions();
 		ReattachDraftsAsync(ct).HandleExceptions();
 		CommentsChanged?.Invoke();
@@ -103,6 +104,7 @@ public sealed class ReviewWorkspace(string repoPath)
 		history.Clear();
 		CloseOpenDiffs();
 		ReviewChanged?.Invoke();
+		OpenUnviewedFilesAsync().HandleExceptions();
 		LoadSemanticsAsync(headSha, baseSha, ct).HandleExceptions();
 		ReattachDraftsAsync(ct).HandleExceptions();
 		LoadPostedCommentsAsync(number, ct).HandleExceptions();
@@ -153,6 +155,25 @@ public sealed class ReviewWorkspace(string repoPath)
 			return;
 		foreach (var diff in Documents.VisibleDockables.OfType<DiffDocumentViewModel>().ToList())
 			Factory.CloseDockable(diff);
+	}
+
+	/// <summary>Opens every not-yet-viewed file as a diff tab and focuses the first, so a
+	/// fresh review starts with the whole remaining work queue in front of the reviewer.</summary>
+	async Task OpenUnviewedFilesAsync()
+	{
+		DiffDocumentViewModel? first = null;
+		foreach (var file in Files)
+		{
+			if (Store.IsViewed(file.Path))
+				continue;
+			var vm = await OpenFileAsync(file);
+			first ??= vm;
+		}
+		if (first is not null && Factory is not null && Documents is not null)
+		{
+			Factory.SetActiveDockable(first);
+			Factory.SetFocusedDockable(Documents, first);
+		}
 	}
 
 	public async Task<DiffDocumentViewModel?> OpenFileAsync(FileDiff file)
