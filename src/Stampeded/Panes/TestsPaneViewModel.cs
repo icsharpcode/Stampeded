@@ -120,6 +120,16 @@ public class TestsPaneViewModel : Tool
 	{
 		try
 		{
+			// The semantic load runs dotnet restore and design-time builds in this same
+			// worktree; a concurrent test build trips over the half-written obj/ state
+			// and dies with an opaque "Build failed" (MTP hides MSBuild's errors).
+			while (workspace.Semantics is { State: Core.Roslyn.SemanticState.Restoring or Core.Roslyn.SemanticState.Loading }
+				|| workspace.BaseSemantics is { State: Core.Roslyn.SemanticState.Restoring or Core.Roslyn.SemanticState.Loading })
+			{
+				State.Status = "Waiting for the semantic workspace load to finish before building tests...";
+				await Task.Delay(1000, ct);
+			}
+			State.Status = $"Running: dotnet {State.Args}  (full log: {runLogFile})";
 			var service = new TestService(worktree);
 			var (exitCode, results) = await service.RunAsync(State.Args, AppendOutput, ct);
 			var failed = results.Where(r => r.Outcome == TestOutcome.Failed).ToList();
