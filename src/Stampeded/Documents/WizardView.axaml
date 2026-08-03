@@ -1,0 +1,171 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:docs="using:Stampeded.Documents"
+             xmlns:panes="using:Stampeded.Panes"
+             xmlns:gh="using:Stampeded.Core.GitHub"
+             xmlns:git="using:Stampeded.Core.Git"
+             x:Class="Stampeded.Documents.WizardView"
+             x:DataType="docs:WizardViewModel">
+  <UserControl.Styles>
+    <Style Selector="Button.step">
+      <Setter Property="FontSize" Value="12" />
+      <Setter Property="Padding" Value="9,4" />
+      <Setter Property="Margin" Value="1,0" />
+    </Style>
+    <Style Selector="Button.step.current">
+      <Setter Property="FontWeight" Value="Bold" />
+      <Setter Property="BorderBrush" Value="#3794FF" />
+      <Setter Property="BorderThickness" Value="0,0,0,2" />
+    </Style>
+    <Style Selector="TextBlock.colhead">
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="Margin" Value="0,0,0,4" />
+    </Style>
+  </UserControl.Styles>
+  <DockPanel Margin="8">
+    <ItemsControl DockPanel.Dock="Top" ItemsSource="{Binding Steps}" Margin="0,0,0,6">
+      <ItemsControl.ItemsPanel>
+        <ItemsPanelTemplate>
+          <WrapPanel Orientation="Horizontal" />
+        </ItemsPanelTemplate>
+      </ItemsControl.ItemsPanel>
+      <ItemsControl.ItemTemplate>
+        <DataTemplate x:DataType="docs:WizardStep">
+          <Button Classes="step" Classes.current="{Binding IsCurrent}" Click="OnStepClick">
+            <StackPanel Orientation="Horizontal" Spacing="4">
+              <TextBlock Text="{Binding Title}" />
+              <TextBlock Text="ok" FontSize="9" Opacity="0.7" VerticalAlignment="Center"
+                         IsVisible="{Binding IsSatisfied}" />
+            </StackPanel>
+          </Button>
+        </DataTemplate>
+      </ItemsControl.ItemTemplate>
+    </ItemsControl>
+
+    <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Spacing="8" Margin="0,8,0,0">
+      <Button Content="Back" Click="OnBack" />
+      <Button Content="Next" Click="OnNext" />
+      <Button Content="Bounce..." Click="OnBounce" IsVisible="{Binding TriageStep.IsCurrent}"
+              ToolTip.Tip="Draft a decline-with-reason review comment" />
+      <Button Content="Review record" Click="OnRecord" IsVisible="{Binding CloseStep.IsCurrent}"
+              ToolTip.Tip="Write the close-out artifact" />
+      <TextBlock FontWeight="SemiBold" VerticalAlignment="Center" Text="{Binding State.Progress}" />
+      <CheckBox IsChecked="{Binding State.OverrideGate}" FontSize="11"
+                Content="Allow approving anyway (override)" />
+    </StackPanel>
+
+    <DockPanel>
+      <!-- Uniform step header: guidance, computed facts, done-check. -->
+      <ItemsControl DockPanel.Dock="Top" ItemsSource="{Binding Steps}">
+        <ItemsControl.ItemTemplate>
+          <DataTemplate x:DataType="docs:WizardStep">
+            <Border Padding="8,6" Margin="0,0,0,6" CornerRadius="3" BorderThickness="1"
+                    BorderBrush="#40808080" IsVisible="{Binding IsCurrent}">
+              <StackPanel Spacing="4">
+                <DockPanel>
+                  <CheckBox DockPanel.Dock="Right" IsChecked="{Binding IsChecked}" Padding="4,0"
+                            IsVisible="{Binding RequiresCheck}" Content="phase done" FontSize="11" />
+                  <TextBlock FontWeight="SemiBold" FontSize="14" Text="{Binding Title}" />
+                </DockPanel>
+                <TextBlock FontSize="12" Opacity="0.75" TextWrapping="Wrap" Text="{Binding Guidance}" />
+                <TextBlock FontSize="12" FontStyle="Italic" Opacity="0.9" TextWrapping="Wrap"
+                           Text="{Binding Facts}"
+                           IsVisible="{Binding Facts, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+              </StackPanel>
+            </Border>
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+
+      <Panel>
+      <!-- Start page: repositories | pull requests | branches. -->
+      <Grid ColumnDefinitions="1*,4,2*,4,2*" IsVisible="{Binding SelectStep.IsCurrent}">
+        <DockPanel Grid.Column="0">
+          <TextBlock DockPanel.Dock="Top" Classes="colhead" Text="Repositories" />
+          <StackPanel DockPanel.Dock="Bottom" Spacing="4" Margin="0,4,0,0">
+            <Button Content="Open Repository..." HorizontalAlignment="Stretch" Click="OnOpenRepository" />
+            <Button Content="Open from URL..." HorizontalAlignment="Stretch" Click="OnOpenFromUrl" />
+          </StackPanel>
+          <ListBox x:Name="RecentList" ItemsSource="{Binding Recents}" DoubleTapped="OnRecentDoubleTapped"
+                   FontSize="12" />
+        </DockPanel>
+        <DockPanel Grid.Column="2" Margin="6,0,0,0">
+          <TextBlock DockPanel.Dock="Top" Classes="colhead" Text="Pull Requests" />
+          <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Spacing="6" Margin="0,4,0,0">
+            <Button Content="Open Guided" Click="OnPrOpenGuided" FontWeight="SemiBold" />
+            <Button Content="Open Plain" Click="OnPrOpenPlain" />
+            <Button Content="Refresh" Click="OnPrRefresh" />
+          </StackPanel>
+          <TextBlock DockPanel.Dock="Bottom" Opacity="0.7" FontSize="11" TextWrapping="Wrap"
+                     Margin="0,4,0,0" Text="{Binding PrList.State.Status}" />
+          <ListBox x:Name="PrListBox" ItemsSource="{Binding PrList.Items}" DoubleTapped="OnPrDoubleTapped">
+            <ListBox.ItemTemplate>
+              <DataTemplate x:DataType="gh:PrSummary">
+                <StackPanel Margin="2">
+                  <TextBlock FontWeight="SemiBold" TextTrimming="CharacterEllipsis">
+                    <Run Text="{Binding NumberDisplay}" /> <Run Text="{Binding Title}" />
+                  </TextBlock>
+                  <TextBlock Opacity="0.6" FontSize="11">
+                    <Run Text="{Binding Author.Login}" /> · <Run Text="{Binding HeadRefName}" />
+                  </TextBlock>
+                </StackPanel>
+              </DataTemplate>
+            </ListBox.ItemTemplate>
+          </ListBox>
+        </DockPanel>
+        <DockPanel Grid.Column="4" Margin="6,0,0,0">
+          <TextBlock DockPanel.Dock="Top" Classes="colhead" Text="Branches (vs default base)" />
+          <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Spacing="6" Margin="0,4,0,0">
+            <Button Content="Open Guided" Click="OnBranchOpenGuided" FontWeight="SemiBold" />
+            <Button Content="Open Plain" Click="OnBranchOpenPlain" />
+          </StackPanel>
+          <ListBox x:Name="BranchList" ItemsSource="{Binding Branches}" DoubleTapped="OnBranchDoubleTapped">
+            <ListBox.ItemTemplate>
+              <DataTemplate x:DataType="git:BranchInfo">
+                <StackPanel Margin="2">
+                  <TextBlock FontWeight="SemiBold" Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
+                  <TextBlock Opacity="0.6" FontSize="11" TextTrimming="CharacterEllipsis">
+                    <Run Text="{Binding Date}" /> · <Run Text="{Binding Subject}" />
+                  </TextBlock>
+                </StackPanel>
+              </DataTemplate>
+            </ListBox.ItemTemplate>
+          </ListBox>
+        </DockPanel>
+      </Grid>
+
+      <!-- Orient: description + commits inline. -->
+      <Grid RowDefinitions="2*,4,1*" IsVisible="{Binding OrientStep.IsCurrent}">
+        <Border Grid.Row="0" BorderThickness="1" BorderBrush="#40808080" CornerRadius="3" Padding="8">
+          <ScrollViewer>
+            <SelectableTextBlock TextWrapping="Wrap" FontSize="13" Text="{Binding State.Description}" />
+          </ScrollViewer>
+        </Border>
+        <panes:CommitsPaneView Grid.Row="2" DataContext="{Binding Commits}" />
+      </Grid>
+
+      <Panel IsVisible="{Binding SurveyStep.IsCurrent}">
+        <panes:ChangeMapPaneView DataContext="{Binding Map}" />
+      </Panel>
+
+      <Panel IsVisible="{Binding PlanStep.IsCurrent}">
+        <panes:PrFilesPaneView DataContext="{Binding FilesList}" />
+      </Panel>
+
+      <ListBox ItemsSource="{Binding SweepItems}" IsVisible="{Binding SweepStep.IsCurrent}"
+               x:Name="SweepList" DoubleTapped="OnSweepDoubleTapped" FontSize="12">
+        <ListBox.ItemTemplate>
+          <DataTemplate>
+            <TextBlock Text="{Binding Title}" TextWrapping="Wrap" />
+          </DataTemplate>
+        </ListBox.ItemTemplate>
+      </ListBox>
+
+      <!-- Traverse keeps the files list in view for viewed/depth state. -->
+      <Panel IsVisible="{Binding TraverseStep.IsCurrent}">
+        <panes:PrFilesPaneView DataContext="{Binding FilesList}" />
+      </Panel>
+      </Panel>
+    </DockPanel>
+  </DockPanel>
+</UserControl>

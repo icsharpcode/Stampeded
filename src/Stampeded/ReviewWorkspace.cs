@@ -95,7 +95,7 @@ public sealed class ReviewWorkspace(string repoPath)
 			foreach (var hit in hits)
 			{
 				string? rel = sem.ToRelativePath(hit.FilePath);
-				if (rel is null || !Panes.GuidePaneViewModel.IsTestPath(rel))
+				if (rel is null || !Core.Review.TestPaths.IsTestPath(rel))
 					continue;
 				classes.Add(Path.GetFileNameWithoutExtension(hit.FilePath));
 				if (classes.Count >= 8)
@@ -449,7 +449,7 @@ public sealed class ReviewWorkspace(string repoPath)
 			Files.Count,
 			Files.Select(f => f.Path.Split('/')[0]).Distinct().Count(),
 			added, removed,
-			Files.Count(f => Panes.GuidePaneViewModel.IsTestPath(f.Path)),
+			Files.Count(f => Core.Review.TestPaths.IsTestPath(f.Path)),
 			Files.Count(f => IsDependencyFile(f.Path)),
 			minutes,
 			Math.Max(1, (minutes + 74) / 75));
@@ -512,8 +512,8 @@ public sealed class ReviewWorkspace(string repoPath)
 		foreach (var file in Files.Where(f => IsDependencyFile(f.Path)))
 			items.Add(new SweepItem($"Dependency/manifest change: {file.Path}", file.Path, 1));
 
-		bool testsTouched = Files.Any(f => Panes.GuidePaneViewModel.IsTestPath(f.Path));
-		int nonTestMembers = ChangeMap.Count(e => !Panes.GuidePaneViewModel.IsTestPath(e.RelPath));
+		bool testsTouched = Files.Any(f => Core.Review.TestPaths.IsTestPath(f.Path));
+		int nonTestMembers = ChangeMap.Count(e => !Core.Review.TestPaths.IsTestPath(e.RelPath));
 		if (nonTestMembers > 0 && !testsTouched)
 			items.Add(new SweepItem($"{nonTestMembers} changed member(s) but NO test file touched", null, 0));
 
@@ -713,6 +713,10 @@ public sealed class ReviewWorkspace(string repoPath)
 	/// <summary>Opens a PR in the browser via gh.</summary>
 	public Task OpenOnGitHubAsync(int number)
 		=> ExternalTool.RunAsync("gh", ["pr", "view", number.ToString(), "--web"], RepoPath);
+
+	/// <summary>Opens (or refocuses) the review wizard document.</summary>
+	public void OpenWizard()
+		=> ShowDocument("wizard", () => new Documents.WizardViewModel(this));
 
 	/// <summary>Two arbitrary texts side by side (e.g. base-vs-head test run outputs).</summary>
 	public void OpenSideBySideText(string id, string title, string leftText, string rightText)

@@ -107,7 +107,7 @@ public class PrFilesPaneViewModel : Tool
 		Files.Clear();
 		var ordered = workspace.Files
 			.OrderBy(f => workspace.IsTouchedSinceLastPass(f.Path) ? 0 : 1)
-			.ThenBy(f => GuidePaneViewModel.IsTestPath(f.Path) == testsFirst ? 0 : 1)
+			.ThenBy(f => Core.Review.TestPaths.IsTestPath(f.Path) == testsFirst ? 0 : 1)
 			.ThenBy(f => DepthRank(workspace.GetDepth(f.Path)))
 			.ThenBy(f => f.Path, StringComparer.Ordinal);
 		foreach (var file in ordered)

@@ -23,9 +23,10 @@
         <MenuItem Header="Comment at Caret" InputGesture="C" Click="OnCommentAtCaret" />
       </MenuItem>
       <MenuItem Header="_View">
+        <MenuItem Header="Review Wizard" Click="OnOpenWizard" />
+        <Separator />
         <MenuItem Header="Side-by-Side of Current File" Click="OnSideBySide" />
         <Separator />
-        <MenuItem Header="Pull Requests Pane" Tag="PullRequests" Click="OnShowPane" />
         <MenuItem Header="Files Pane" Tag="Files" Click="OnShowPane" />
         <MenuItem Header="Change Map Pane" Tag="Map" Click="OnShowPane" />
         <MenuItem Header="File Browser Pane" Tag="Browser" Click="OnShowPane" />
@@ -33,7 +34,6 @@
         <MenuItem Header="Comments Pane" Tag="Comments" Click="OnShowPane" />
         <MenuItem Header="Checks Pane" Tag="Checks" Click="OnShowPane" />
         <MenuItem Header="Tests Pane" Tag="Tests" Click="OnShowPane" />
-        <MenuItem Header="Guide Pane" Tag="Guide" Click="OnShowPane" />
         <MenuItem Header="Commits Pane" Tag="Commits" Click="OnShowPane" />
         <MenuItem Header="History Pane" Tag="History" Click="OnShowPane" />
         <MenuItem Header="Run Pane" Tag="Run" Click="OnShowPane" />

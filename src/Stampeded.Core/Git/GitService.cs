@@ -87,4 +87,24 @@ public sealed class GitService(string repoPath)
 	public async Task<IReadOnlyList<(char Status, string Path)>> DiffNameStatusAsync(
 		string a, string b, CancellationToken ct = default)
 		=> GitLogParser.ParseNameStatus(await RunAsync(ct, "diff", "--name-status", "--find-renames", a, b));
+
+	/// <summary>Local branches, most recently committed first.</summary>
+	public async Task<IReadOnlyList<BranchInfo>> ListBranchesAsync(CancellationToken ct = default)
+		=> GitLogParser.ParseBranches(await RunAsync(ct,
+			"for-each-ref", "refs/heads", "--sort=-committerdate",
+			"--format=%(refname:short)%09%(committerdate:short)%09%(subject)"));
+
+	/// <summary>The review base for local branches: origin's default branch when known,
+	/// else origin/master.</summary>
+	public async Task<string> GetDefaultBaseAsync(CancellationToken ct = default)
+	{
+		try
+		{
+			return (await RunAsync(ct, "rev-parse", "--abbrev-ref", "origin/HEAD")).Trim();
+		}
+		catch (Infra.ToolFailedException)
+		{
+			return "origin/master";
+		}
+	}
 }

@@ -67,6 +67,8 @@ public partial class MainWindow : Window
 
 	void OnInterdiff(object? s, RoutedEventArgs e) => App.Workspace?.OpenInterdiffAsync().HandleExceptions();
 
+	void OnOpenWizard(object? s, RoutedEventArgs e) => App.Workspace?.OpenWizard();
+
 	void OnOpenOnGitHub(object? s, RoutedEventArgs e)
 	{
 		if (App.Workspace is { CurrentPr: { } pr } ws)

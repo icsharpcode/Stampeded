@@ -69,15 +69,7 @@ public class StampededDockFactory(ReviewWorkspace workspace) : Factory
 			VisibleDockables = CreateList<IDockable>(),
 		};
 
-		var prList = new PrListPaneViewModel(workspace) { Id = "PullRequests", Title = "Pull Requests" };
 		var files = new PrFilesPaneViewModel(workspace) { Id = "Files", Title = "Files" };
-		var prListDock = new ToolDock {
-			Id = "PrListDock",
-			Alignment = Alignment.Left,
-			Proportion = 0.45,
-			VisibleDockables = CreateList<IDockable>(prList),
-			ActiveDockable = prList,
-		};
 		var map = new ChangeMapPaneViewModel(workspace) { Id = "Map", Title = "Map" };
 		var browser = new FileBrowserPaneViewModel(workspace) { Id = "Browser", Title = "Browser" };
 		var filesDock = new ToolDock {
@@ -86,17 +78,13 @@ public class StampededDockFactory(ReviewWorkspace workspace) : Factory
 			VisibleDockables = CreateList<IDockable>(files, map, browser),
 			ActiveDockable = files,
 		};
-		panes[prList.Id] = (prList, prListDock);
 		panes[files.Id] = (files, filesDock);
 		panes[map.Id] = (map, filesDock);
 		panes[browser.Id] = (browser, filesDock);
 		var leftDock = new ProportionalDock {
-			Proportion = 0.22,
+			Proportion = 0.2,
 			Orientation = Orientation.Vertical,
-			VisibleDockables = CreateList<IDockable>(
-				prListDock,
-				new ProportionalDockSplitter(),
-				filesDock),
+			VisibleDockables = CreateList<IDockable>(filesDock),
 		};
 
 		var references = new ReferencesPaneViewModel(workspace) { Id = "References", Title = "References" };
@@ -106,18 +94,16 @@ public class StampededDockFactory(ReviewWorkspace workspace) : Factory
 		workspace.CommentsPane = comments;
 		var log = new LogPaneViewModel { Id = "Log", Title = "Log" };
 		var run = new RunPaneViewModel(workspace) { Id = "Run", Title = "Run" };
-		var guide = new GuidePaneViewModel(workspace) { Id = "Guide", Title = "Guide" };
-		guide.PaneRequested += ShowPane;
 		var commits = new CommitsPaneViewModel(workspace) { Id = "Commits", Title = "Commits" };
 		var history = new HistoryPaneViewModel(workspace) { Id = "History", Title = "History" };
 		var bottomDock = new ToolDock {
 			Id = "BottomDock",
 			Alignment = Alignment.Bottom,
 			Proportion = 0.28,
-			VisibleDockables = CreateList<IDockable>(guide, references, comments, commits, history, checks, tests, run, log),
-			ActiveDockable = guide,
+			VisibleDockables = CreateList<IDockable>(references, comments, commits, history, checks, tests, run, log),
+			ActiveDockable = references,
 		};
-		foreach (var pane in new Tool[] { guide, references, comments, commits, history, checks, tests, run, log })
+		foreach (var pane in new Tool[] { references, comments, commits, history, checks, tests, run, log })
 			panes[pane.Id!] = (pane, bottomDock);
 		var rightSide = new ProportionalDock {
 			Orientation = Orientation.Vertical,

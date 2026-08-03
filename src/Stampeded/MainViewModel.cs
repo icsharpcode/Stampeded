@@ -29,6 +29,7 @@ public partial class MainViewModel : ObservableObject
 		factory.InitLayout(Layout);
 		workspace.Factory = factory;
 		workspace.Documents = factory.Documents;
+		workspace.OpenWizard();
 		workspace.ReviewChanged += UpdateTitle;
 		UpdateTitle();
 		RecentRepos.Record(Program.RepoPath);
