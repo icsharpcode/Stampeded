@@ -92,6 +92,18 @@ public partial class WizardView : UserControl
 			await App.OpenFromUrlAsync(url);
 	}
 
+	void OnSurveyDoubleTapped(object? sender, TappedEventArgs e)
+	{
+		if (Vm is { } vm && SurveyImplList.SelectedItem is SurveyRow row)
+			vm.OpenSurveyRow(row);
+	}
+
+	void OnSurveyTestDoubleTapped(object? sender, TappedEventArgs e)
+	{
+		if (Vm is { } vm && SurveyTestList.SelectedItem is SurveyRow row)
+			vm.OpenSurveyRow(row);
+	}
+
 	void OnSweepDoubleTapped(object? sender, TappedEventArgs e)
 	{
 		if (Vm is { } vm && SweepList.SelectedItem is ReviewWorkspace.SweepItem item)

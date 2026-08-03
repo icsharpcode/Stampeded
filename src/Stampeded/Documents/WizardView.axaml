@@ -227,9 +227,28 @@
         </DockPanel>
       </Grid>
 
-      <Panel IsVisible="{Binding SurveyStep.IsCurrent}">
-        <panes:ChangeMapPaneView DataContext="{Binding Map}" />
-      </Panel>
+      <Grid RowDefinitions="Auto,*,8,Auto,*" IsVisible="{Binding SurveyStep.IsCurrent}">
+        <TextBlock Grid.Row="0" FontWeight="SemiBold" FontSize="12" Text="Implementation members (click to peek)" />
+        <ListBox Grid.Row="1" x:Name="SurveyImplList" ItemsSource="{Binding SurveyImpl}"
+                 DoubleTapped="OnSurveyDoubleTapped" FontSize="12">
+          <ListBox.ItemTemplate>
+            <DataTemplate x:DataType="docs:SurveyRow">
+              <TextBlock FontFamily="monospace" Foreground="{Binding Foreground}" Text="{Binding Text}"
+                         TextTrimming="CharacterEllipsis" />
+            </DataTemplate>
+          </ListBox.ItemTemplate>
+        </ListBox>
+        <TextBlock Grid.Row="3" FontWeight="SemiBold" FontSize="12" Text="Test members, grouped by type" />
+        <ListBox Grid.Row="4" x:Name="SurveyTestList" ItemsSource="{Binding SurveyTests}"
+                 DoubleTapped="OnSurveyTestDoubleTapped" FontSize="12">
+          <ListBox.ItemTemplate>
+            <DataTemplate x:DataType="docs:SurveyRow">
+              <TextBlock FontFamily="monospace" Foreground="{Binding Foreground}" Text="{Binding Text}"
+                         TextTrimming="CharacterEllipsis" />
+            </DataTemplate>
+          </ListBox.ItemTemplate>
+        </ListBox>
+      </Grid>
 
       <Panel IsVisible="{Binding PlanStep.IsCurrent}">
         <panes:PrFilesPaneView DataContext="{Binding FilesList}" />

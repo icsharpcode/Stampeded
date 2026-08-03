@@ -33,6 +33,15 @@ static class ScreenshotWatcher
 				// so interactive UI (e.g. the inline comment editor) can be verified.
 				if (lines.Contains("comment"))
 					Documents.DiffDocumentView.ActiveView?.CommentAtCaretCommand();
+				foreach (var step in lines.Where(l => l.StartsWith("step:", StringComparison.Ordinal)))
+				{
+					string id = step["step:".Length..].Trim();
+					var wizard = App.Workspace?.Documents?.VisibleDockables?
+						.OfType<Documents.WizardViewModel>().FirstOrDefault();
+					var wizardStep = wizard?.Steps.FirstOrDefault(s => s.Id == id);
+					if (wizard is not null && wizardStep is not null)
+						wizard.SelectStepCommand(wizardStep);
+				}
 				foreach (var command in lines.Where(l => l.StartsWith("goto:", StringComparison.Ordinal)))
 				{
 					var parts = command.Split(':', 3);

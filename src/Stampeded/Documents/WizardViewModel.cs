@@ -53,6 +53,10 @@ public sealed record FileCostRow(string Marker, string Added, string Removed, st
 
 public sealed record CommitLine(string ShortSha, string Added, string Removed, string Subject);
 
+/// <summary>One row of the survey: an individual implementation member, or a test type
+/// with its member changes aggregated.</summary>
+public sealed record SurveyRow(Avalonia.Media.IBrush Foreground, string Text, ReviewWorkspace.ChangeMapEntry? Entry);
+
 public sealed record BranchRow(BranchInfo Info, string PrTag)
 {
 	public bool HasPrTag => PrTag.Length > 0;
@@ -102,6 +106,8 @@ public class WizardViewModel : Document
 	public ObservableCollection<PrepareItem> PrepareItems { get; } = [];
 	public ObservableCollection<FileCostRow> FileCosts { get; } = [];
 	public ObservableCollection<CommitLine> CommitLines { get; } = [];
+	public ObservableCollection<SurveyRow> SurveyImpl { get; } = [];
+	public ObservableCollection<SurveyRow> SurveyTests { get; } = [];
 	public WizardState State { get; } = new();
 
 	// Start-page data.
@@ -110,8 +116,6 @@ public class WizardViewModel : Document
 	IReadOnlyList<BranchInfo> rawBranches = [];
 	public PrListPaneViewModel PrList { get; }
 
-	// Inline content of the phase steps.
-	public ChangeMapPaneViewModel Map { get; }
 	public PrFilesPaneViewModel FilesList { get; }
 
 	public WizardStep SelectStep { get; }
@@ -131,7 +135,6 @@ public class WizardViewModel : Document
 		this.workspace = workspace;
 		Title = "Review Wizard";
 		PrList = new PrListPaneViewModel(workspace);
-		Map = new ChangeMapPaneViewModel(workspace);
 		FilesList = new PrFilesPaneViewModel(workspace);
 
 		Steps.Add(SelectStep = new WizardStep("select", "Start",
@@ -189,7 +192,7 @@ public class WizardViewModel : Document
 		workspace.CommentsChanged += Recompute;
 		workspace.CoverageChanged += Recompute;
 		workspace.ChecksLoaded += Recompute;
-		workspace.ChangeMapChanged += Recompute;
+		workspace.ChangeMapChanged += () => { RebuildSurvey(); Recompute(); };
 		workspace.DepthChanged += Recompute;
 		workspace.ChurnChanged += () => Dispatcher.UIThread.Post(RebuildTriageRows);
 		workspace.ChurnChanged += () => Dispatcher.UIThread.Post(Recompute);
@@ -403,6 +406,50 @@ public class WizardViewModel : Document
 		Recompute();
 	}
 
+	static readonly Avalonia.Media.IBrush SurveyAdded = new Avalonia.Media.SolidColorBrush(Avalonia.Media.Color.Parse("#2EA043"));
+	static readonly Avalonia.Media.IBrush SurveyModified = new Avalonia.Media.SolidColorBrush(Avalonia.Media.Color.Parse("#3794FF"));
+	static readonly Avalonia.Media.IBrush SurveyRemoved = new Avalonia.Media.SolidColorBrush(Avalonia.Media.Color.Parse("#F85149"));
+
+	void RebuildSurvey()
+	{
+		SurveyImpl.Clear();
+		SurveyTests.Clear();
+		var map = workspace.ChangeMap;
+		foreach (var entry in map.Where(e => !Core.Review.TestPaths.IsTestPath(e.RelPath)).OrderBy(e => e.RelPath).ThenBy(e => e.Line))
+		{
+			var brush = entry.Kind switch {
+				"Added" => SurveyAdded,
+				"Removed" => SurveyRemoved,
+				_ => SurveyModified,
+			};
+			SurveyImpl.Add(new SurveyRow(brush, $"{entry.Kind[0]}  {entry.Display}", entry));
+		}
+		foreach (var group in map.Where(e => Core.Review.TestPaths.IsTestPath(e.RelPath))
+			.GroupBy(e => e.Display.Split('.')[0])
+			.OrderByDescending(g => g.Count()))
+		{
+			int added = group.Count(e => e.Kind == "Added");
+			int modified = group.Count(e => e.Kind == "Modified");
+			int removed = group.Count(e => e.Kind == "Removed");
+			var parts = new List<string>();
+			if (added > 0)
+				parts.Add($"{added} added");
+			if (modified > 0)
+				parts.Add($"{modified} modified");
+			if (removed > 0)
+				parts.Add($"{removed} removed");
+			SurveyTests.Add(new SurveyRow(Avalonia.Media.Brushes.Gray,
+				$"{group.Key}  -  {string.Join(", ", parts)} member(s)",
+				group.OrderBy(e => e.Line).First()));
+		}
+	}
+
+	public void OpenSurveyRow(SurveyRow row)
+	{
+		if (row.Entry is { } entry)
+			workspace.NavigateToFileLineAsync(entry.RelPath, entry.Line, entry.OldSide, record: true).HandleExceptions();
+	}
+
 	void RebuildTriageRows()
 	{
 		var totals = workspace.ComputeTriage();
@@ -513,9 +560,23 @@ public class WizardViewModel : Document
 						ci + " Per-file cost and churn below - hot files (high churn) deserve extra caution." + rereview;
 					break;
 				case "survey":
-					step.Facts = workspace.ChangeMap.Count > 0
-						? $"{workspace.ChangeMap.Count} changed member(s): green added, blue modified, red removed."
-						: "Map not ready yet (semantics still loading).";
+					if (workspace.ChangeMap.Count == 0)
+					{
+						step.Facts = workspace.ChangeMapComputed
+							? "No changed members (non-code changes only)."
+							: "Map not ready yet (semantics still loading).";
+					}
+					else
+					{
+						int implMembers = workspace.ChangeMap.Count(e => !Core.Review.TestPaths.IsTestPath(e.RelPath));
+						var gravity = workspace.ChangeMap
+							.Where(e => !Core.Review.TestPaths.IsTestPath(e.RelPath))
+							.GroupBy(e => e.RelPath)
+							.OrderByDescending(g => g.Count())
+							.FirstOrDefault();
+						step.Facts = $"{workspace.ChangeMap.Count} changed member(s): {implMembers} implementation, {workspace.ChangeMap.Count - implMembers} in tests." +
+							(gravity is null ? "" : $"\nCenter of gravity: {gravity.Key} ({gravity.Count()} member(s)). Full tree: Map pane.");
+					}
 					break;
 				case "plan":
 					int planned = workspace.Files.Count(f => workspace.GetDepth(f.Path) != "");
