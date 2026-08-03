@@ -2,7 +2,7 @@ namespace Stampeded.Core.Git;
 
 public sealed record CommitInfo(string Sha, string ShortSha, string Author, string Date, string Subject);
 
-public sealed record BranchInfo(string Name, string Date, string Subject);
+public sealed record BranchInfo(string Name, string Sha, string Date, string Subject);
 
 /// <summary>Parses `git log` output in the tool's tab-separated format, and
 /// `git diff --name-status` output.</summary>
@@ -23,7 +23,7 @@ public static class GitLogParser
 		return commits;
 	}
 
-	/// <summary>Parses `git for-each-ref` branch output (name, date, subject; tab-separated).</summary>
+	/// <summary>Parses `git for-each-ref` branch output (name, sha, date, subject; tab-separated).</summary>
 	public static IReadOnlyList<BranchInfo> ParseBranches(string output)
 	{
 		var branches = new List<BranchInfo>();
@@ -31,10 +31,10 @@ public static class GitLogParser
 		{
 			if (line.Length == 0)
 				continue;
-			var parts = line.Split('\t', 3);
-			if (parts.Length < 3)
+			var parts = line.Split('\t', 4);
+			if (parts.Length < 4)
 				continue;
-			branches.Add(new BranchInfo(parts[0], parts[1], parts[2]));
+			branches.Add(new BranchInfo(parts[0], parts[1], parts[2], parts[3]));
 		}
 		return branches;
 	}

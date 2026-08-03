@@ -92,7 +92,7 @@ public sealed class GitService(string repoPath)
 	public async Task<IReadOnlyList<BranchInfo>> ListBranchesAsync(CancellationToken ct = default)
 		=> GitLogParser.ParseBranches(await RunAsync(ct,
 			"for-each-ref", "refs/heads", "--sort=-committerdate",
-			"--format=%(refname:short)%09%(committerdate:short)%09%(subject)"));
+			"--format=%(refname:short)%09%(objectname)%09%(committerdate:short)%09%(subject)"));
 
 	/// <summary>The review base for local branches: origin's default branch when known,
 	/// else origin/master.</summary>

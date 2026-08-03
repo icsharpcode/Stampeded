@@ -51,10 +51,10 @@ public class GitBranchParserTests
 	[Test]
 	public void ParsesForEachRefBranchLines()
 	{
-		string output = "master\t2026-08-01\tFix things\nfeature/x\t2026-07-30\tSubject\twith tab\n\n";
+		string output = "master\tabc123\t2026-08-01\tFix things\nfeature/x\tdef456\t2026-07-30\tSubject\twith tab\n\n";
 		var branches = Stampeded.Core.Git.GitLogParser.ParseBranches(output);
 		Assert.That(branches, Has.Count.EqualTo(2));
-		Assert.That(branches[0], Is.EqualTo(new Stampeded.Core.Git.BranchInfo("master", "2026-08-01", "Fix things")));
+		Assert.That(branches[0], Is.EqualTo(new Stampeded.Core.Git.BranchInfo("master", "abc123", "2026-08-01", "Fix things")));
 		Assert.That(branches[1].Subject, Is.EqualTo("Subject\twith tab"));
 	}
 }

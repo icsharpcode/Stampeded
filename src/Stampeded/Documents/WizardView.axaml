@@ -191,11 +191,16 @@
           </StackPanel>
           <ListBox x:Name="BranchList" ItemsSource="{Binding Branches}" DoubleTapped="OnBranchDoubleTapped">
             <ListBox.ItemTemplate>
-              <DataTemplate x:DataType="git:BranchInfo">
+              <DataTemplate x:DataType="docs:BranchRow">
                 <StackPanel Margin="2">
-                  <TextBlock FontWeight="SemiBold" Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
+                  <DockPanel>
+                    <TextBlock DockPanel.Dock="Right" FontSize="10" Opacity="0.8" VerticalAlignment="Center"
+                               Foreground="#3794FF" Text="{Binding PrTag}" IsVisible="{Binding HasPrTag}"
+                               ToolTip.Tip="This branch has an open PR; '(differs)' means the local head is not what the PR shows" />
+                    <TextBlock FontWeight="SemiBold" Text="{Binding Info.Name}" TextTrimming="CharacterEllipsis" />
+                  </DockPanel>
                   <TextBlock Opacity="0.6" FontSize="11" TextTrimming="CharacterEllipsis">
-                    <Run Text="{Binding Date}" /> · <Run Text="{Binding Subject}" />
+                    <Run Text="{Binding Info.Date}" /> · <Run Text="{Binding Info.Subject}" />
                   </TextBlock>
                 </StackPanel>
               </DataTemplate>

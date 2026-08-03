@@ -56,8 +56,8 @@ public partial class WizardView : UserControl
 
 	void OpenSelectedBranch(bool guided)
 	{
-		if (Vm is { } vm && BranchList.SelectedItem is BranchInfo branch)
-			vm.OpenBranch(branch, guided);
+		if (Vm is { } vm && BranchList.SelectedItem is BranchRow row)
+			vm.OpenBranch(row.Info, guided);
 	}
 
 	void OnRecentDoubleTapped(object? sender, TappedEventArgs e)

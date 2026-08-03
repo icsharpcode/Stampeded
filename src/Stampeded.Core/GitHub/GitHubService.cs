@@ -17,7 +17,8 @@ public sealed record PrSummary(
 	string BaseRefName,
 	bool IsDraft,
 	DateTimeOffset UpdatedAt,
-	System.Text.Json.JsonElement? StatusCheckRollup = null)
+	System.Text.Json.JsonElement? StatusCheckRollup = null,
+	string? HeadRefOid = null)
 {
 	/// <summary>"fail" / "pending" / "green" / "none", folded from the check rollup
 	/// (check runs carry status+conclusion, legacy status contexts carry state).</summary>
@@ -111,7 +112,7 @@ public sealed class GitHubService(string repoPath)
 	public Task<IReadOnlyList<PrSummary>> ListOpenPrsAsync(CancellationToken ct = default)
 		=> JsonAsync<IReadOnlyList<PrSummary>>(ct,
 			"pr", "list",
-			"--json", "number,title,author,headRefName,baseRefName,isDraft,updatedAt,statusCheckRollup",
+			"--json", "number,title,author,headRefName,baseRefName,isDraft,updatedAt,statusCheckRollup,headRefOid",
 			"--limit", "50");
 
 	public Task<PrDetail> GetPrAsync(int number, CancellationToken ct = default)

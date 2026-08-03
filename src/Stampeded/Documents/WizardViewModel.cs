@@ -47,6 +47,13 @@ public sealed partial class PrepareItem(string label) : ObservableObject
 	bool done;
 }
 
+/// <summary>A local branch on the start page, annotated with its associated PR when one
+/// exists - including whether the local head differs from what the PR is showing.</summary>
+public sealed record BranchRow(BranchInfo Info, string PrTag)
+{
+	public bool HasPrTag => PrTag.Length > 0;
+}
+
 public sealed record TriageRowDisplay(string Marker, string Path, string AddedText, string RemovedText, string MinutesText, string Churn);
 
 public sealed partial class WizardState : ObservableObject
@@ -90,7 +97,8 @@ public class WizardViewModel : Document
 
 	// Start-page data.
 	public ObservableCollection<string> Recents { get; } = new(RecentRepos.Load());
-	public ObservableCollection<BranchInfo> Branches { get; } = [];
+	public ObservableCollection<BranchRow> Branches { get; } = [];
+	IReadOnlyList<BranchInfo> rawBranches = [];
 	public PrListPaneViewModel PrList { get; }
 
 	// Inline content of the phase steps.
@@ -180,8 +188,10 @@ public class WizardViewModel : Document
 		workspace.SemanticsChanged += () => Dispatcher.UIThread.Post(Recompute);
 		workspace.ApprovalGate = Gate;
 		sessionTimer.Tick += (_, _) => Recompute();
-		PrList.Items.CollectionChanged += (_, _) =>
+		PrList.Items.CollectionChanged += (_, _) => {
 			State.PrColumnHeader = $"Pull Requests ({PrList.Items.Count})";
+			AnnotateBranches();
+		};
 		SelectCurrent(SelectStep);
 		Recompute();
 		LoadStartPageAsync().HandleExceptions();
@@ -192,16 +202,41 @@ public class WizardViewModel : Document
 		try
 		{
 			defaultBase = await workspace.Git.GetDefaultBaseAsync();
-			var branches = await workspace.Git.ListBranchesAsync();
-			Branches.Clear();
-			foreach (var branch in branches)
-				Branches.Add(branch);
+			rawBranches = await workspace.Git.ListBranchesAsync();
+			AnnotateBranches();
 		}
 		catch (ToolFailedException)
 		{
 			// Not a repo or no origin; the start page simply shows no branches.
 		}
 		State.BranchColumnHeader = $"Branches ({Branches.Count})";
+	}
+
+	/// <summary>Rebuilds branch rows with their PR association. A branch whose PR exists
+	/// is opened via the PR normally; a "(differs)" tag warns that the local head is not
+	/// what the PR shows (local-only commits are only reviewable as a branch).</summary>
+	void AnnotateBranches()
+	{
+		var prsByBranch = PrList.Items
+			.GroupBy(p => p.HeadRefName, StringComparer.Ordinal)
+			.ToDictionary(g => g.Key, g => g.First(), StringComparer.Ordinal);
+		var rows = new List<BranchRow>();
+		foreach (var branch in rawBranches)
+		{
+			string tag = "";
+			if (prsByBranch.TryGetValue(branch.Name, out var pr))
+			{
+				bool differs = pr.HeadRefOid is { Length: > 0 } oid
+					&& !string.Equals(oid, branch.Sha, StringComparison.OrdinalIgnoreCase);
+				tag = differs ? $"PR #{pr.Number} (differs)" : $"PR #{pr.Number}";
+			}
+			rows.Add(new BranchRow(branch, tag));
+		}
+		Branches.Clear();
+		// PR-backed branches first (the ones most likely under review), recency preserved
+		// within each group.
+		foreach (var row in rows.OrderBy(r => r.HasPrTag ? 0 : 1))
+			Branches.Add(row);
 	}
 
 	void SelectCurrent(WizardStep step)
