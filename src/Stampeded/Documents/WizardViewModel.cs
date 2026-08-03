@@ -54,8 +54,6 @@ public sealed record BranchRow(BranchInfo Info, string PrTag)
 	public bool HasPrTag => PrTag.Length > 0;
 }
 
-public sealed record TriageRowDisplay(string Marker, string Path, string AddedText, string RemovedText, string MinutesText, string Churn);
-
 public sealed partial class WizardState : ObservableObject
 {
 	[ObservableProperty]
@@ -63,6 +61,9 @@ public sealed partial class WizardState : ObservableObject
 
 	[ObservableProperty]
 	string commitsSummary = "";
+
+	[ObservableProperty]
+	string filesSummary = "";
 
 	[ObservableProperty]
 	string branchColumnHeader = "Branches";
@@ -94,7 +95,6 @@ public class WizardViewModel : Document
 
 	public ObservableCollection<WizardStep> Steps { get; } = [];
 	public ObservableCollection<ReviewWorkspace.SweepItem> SweepItems { get; } = [];
-	public ObservableCollection<TriageRowDisplay> TriageRows { get; } = [];
 	public ObservableCollection<PrepareItem> PrepareItems { get; } = [];
 	public WizardState State { get; } = new();
 
@@ -366,9 +366,9 @@ public class WizardViewModel : Document
 
 	void RebuildTriageRows()
 	{
-		TriageRows.Clear();
 		var totals = workspace.ComputeTriage();
-		foreach (var row in totals.Rows)
+		var lines = new List<string>();
+		foreach (var row in totals.Rows.Take(20))
 		{
 			string marker = row.Category switch {
 				Core.Review.FileCategory.Test => "test",
@@ -377,10 +377,12 @@ public class WizardViewModel : Document
 				_ => "impl",
 			};
 			int churn = workspace.ChurnByFile?.GetValueOrDefault(row.Path) ?? 0;
-			TriageRows.Add(new TriageRowDisplay(
-				marker, row.Path, $"+{row.Added}", $"-{row.Removed}", $"~{row.Minutes} min",
-				churn > 0 ? $"{churn}x/yr" : ""));
+			string churnText = churn > 0 ? $"{churn}x/yr" : "";
+			lines.Add($"  {marker,-5} {$"+{row.Added}",6} {$"-{row.Removed}",6}  {$"~{row.Minutes} min",-8} {churnText,-7} {row.Path}");
 		}
+		if (totals.Rows.Count > 20)
+			lines.Add($"  ... and {totals.Rows.Count - 20} more file(s)");
+		State.FilesSummary = lines.Count == 0 ? "" : $"{totals.Rows.Count} file(s):\n" + string.Join("\n", lines);
 	}
 
 	void LoadChecks()

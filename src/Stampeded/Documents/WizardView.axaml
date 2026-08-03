@@ -103,43 +103,28 @@
                 ToolTip.Tip="Go to Triage without waiting; loading continues in the background" />
       </StackPanel>
 
-      <!-- Assess: intent (description, commits) beside cost (per-file estimate, churn). -->
-      <Grid ColumnDefinitions="3*,6,2*" IsVisible="{Binding TriageStep.IsCurrent}">
-        <DockPanel Grid.Column="0">
-          <Border DockPanel.Dock="Bottom" Margin="0,6,0,0" Padding="8,4" CornerRadius="3"
-                  BorderThickness="1" BorderBrush="#40808080"
-                  IsVisible="{Binding State.CommitsSummary, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
-            <SelectableTextBlock FontSize="11" FontFamily="monospace" Opacity="0.85"
-                                 TextWrapping="Wrap" Text="{Binding State.CommitsSummary}"
-                                 ToolTip.Tip="The Commits pane (bottom dock) has per-commit file diffs" />
-          </Border>
-          <Border BorderThickness="1" BorderBrush="#40808080" CornerRadius="3" Padding="8">
-            <ScrollViewer>
-              <SelectableTextBlock TextWrapping="Wrap" FontSize="13" Text="{Binding State.Description}" />
-            </ScrollViewer>
-          </Border>
-        </DockPanel>
-        <ListBox Grid.Column="2" ItemsSource="{Binding TriageRows}" FontSize="12">
-          <ListBox.ItemTemplate>
-            <DataTemplate x:DataType="docs:TriageRowDisplay">
-              <DockPanel Margin="2,0">
-                <TextBlock DockPanel.Dock="Left" Width="34" FontSize="10" Opacity="0.7" VerticalAlignment="Center"
-                           Text="{Binding Marker}" />
-                <TextBlock DockPanel.Dock="Right" Width="70" FontSize="11" Opacity="0.8" TextAlignment="Right"
-                           VerticalAlignment="Center" Text="{Binding Churn}"
-                           ToolTip.Tip="Commits touching this file in the last year (hot spot indicator)" />
-                <TextBlock DockPanel.Dock="Right" Width="66" FontSize="11" TextAlignment="Right"
-                           VerticalAlignment="Center" Text="{Binding MinutesText}" />
-                <TextBlock DockPanel.Dock="Right" Width="46" FontSize="11" TextAlignment="Right"
-                           VerticalAlignment="Center" Foreground="#F85149" Text="{Binding RemovedText}" />
-                <TextBlock DockPanel.Dock="Right" Width="52" FontSize="11" TextAlignment="Right"
-                           VerticalAlignment="Center" Foreground="#2EA043" Text="{Binding AddedText}" />
-                <TextBlock Text="{Binding Path}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
-              </DockPanel>
-            </DataTemplate>
-          </ListBox.ItemTemplate>
-        </ListBox>
-      </Grid>
+      <!-- Assess: intent (description), then commits and per-file cost as compact blocks. -->
+      <DockPanel IsVisible="{Binding TriageStep.IsCurrent}">
+        <Border DockPanel.Dock="Bottom" Margin="0,6,0,0" Padding="8,4" CornerRadius="3"
+                BorderThickness="1" BorderBrush="#40808080"
+                IsVisible="{Binding State.FilesSummary, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+          <SelectableTextBlock FontSize="11" FontFamily="monospace" Opacity="0.85"
+                               TextWrapping="Wrap" Text="{Binding State.FilesSummary}"
+                               ToolTip.Tip="Category, delta, weighted minutes, churn (commits/year) per file" />
+        </Border>
+        <Border DockPanel.Dock="Bottom" Margin="0,6,0,0" Padding="8,4" CornerRadius="3"
+                BorderThickness="1" BorderBrush="#40808080"
+                IsVisible="{Binding State.CommitsSummary, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+          <SelectableTextBlock FontSize="11" FontFamily="monospace" Opacity="0.85"
+                               TextWrapping="Wrap" Text="{Binding State.CommitsSummary}"
+                               ToolTip.Tip="The Commits pane (bottom dock) has per-commit file diffs" />
+        </Border>
+        <Border BorderThickness="1" BorderBrush="#40808080" CornerRadius="3" Padding="8">
+          <ScrollViewer>
+            <SelectableTextBlock TextWrapping="Wrap" FontSize="13" Text="{Binding State.Description}" />
+          </ScrollViewer>
+        </Border>
+      </DockPanel>
 
       <!-- Start page: repositories | pull requests | branches. -->
       <Grid ColumnDefinitions="1*,4,2*,4,2*" IsVisible="{Binding SelectStep.IsCurrent}">
