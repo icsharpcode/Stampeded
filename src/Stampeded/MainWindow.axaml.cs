@@ -69,6 +69,16 @@ public partial class MainWindow : Window
 
 	void OnOpenWizard(object? s, RoutedEventArgs e) => App.Workspace?.OpenWizard();
 
+	void OnStripNext(object? s, RoutedEventArgs e) => App.Workspace?.Wizard?.NextStep();
+
+	void OnStripSkip(object? s, RoutedEventArgs e) => App.Workspace?.Wizard?.SkipStep();
+
+	void OnStripStepClick(object? s, RoutedEventArgs e)
+	{
+		if (App.Workspace?.Wizard is { } wizard && (s as Button)?.DataContext is Documents.WizardStep step)
+			wizard.SelectStepCommand(step);
+	}
+
 	void OnOpenOnGitHub(object? s, RoutedEventArgs e)
 	{
 		if (App.Workspace is { CurrentPr: { } pr } ws)

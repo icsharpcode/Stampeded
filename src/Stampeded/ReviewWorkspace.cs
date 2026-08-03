@@ -721,9 +721,24 @@ public sealed class ReviewWorkspace(string repoPath)
 	public Task OpenOnGitHubAsync(int number)
 		=> ExternalTool.RunAsync("gh", ["pr", "view", number.ToString(), "--web"], RepoPath);
 
+	/// <summary>The wizard instance of this workspace; also drives the progress strip.</summary>
+	public Documents.WizardViewModel? Wizard { get; private set; }
+
 	/// <summary>Opens (or refocuses) the review wizard document.</summary>
 	public void OpenWizard()
-		=> ShowDocument("wizard", () => new Documents.WizardViewModel(this));
+		=> Wizard = ShowDocument("wizard", () => new Documents.WizardViewModel(this));
+
+	/// <summary>Brings the first open diff tab to the front (entering a working phase
+	/// hands the center back to the code).</summary>
+	public void ActivateFirstDiff()
+	{
+		if (Documents?.VisibleDockables?.OfType<DiffDocumentViewModel>().FirstOrDefault() is { } diff
+			&& Factory is not null)
+		{
+			Factory.SetActiveDockable(diff);
+			Factory.SetFocusedDockable(Documents, diff);
+		}
+	}
 
 	/// <summary>Two arbitrary texts side by side (e.g. base-vs-head test run outputs).</summary>
 	public void OpenSideBySideText(string id, string title, string leftText, string rightText)

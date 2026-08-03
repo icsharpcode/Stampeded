@@ -19,6 +19,9 @@ public partial class MainViewModel : ObservableObject
 	[ObservableProperty]
 	string windowTitle = "Stampeded!";
 
+	[ObservableProperty]
+	Documents.WizardViewModel? wizard;
+
 	public MainViewModel()
 	{
 		var workspace = new ReviewWorkspace(Program.RepoPath);
@@ -30,6 +33,7 @@ public partial class MainViewModel : ObservableObject
 		workspace.Factory = factory;
 		workspace.Documents = factory.Documents;
 		workspace.OpenWizard();
+		Wizard = workspace.Wizard;
 		workspace.ReviewChanged += UpdateTitle;
 		UpdateTitle();
 		RecentRepos.Record(Program.RepoPath);

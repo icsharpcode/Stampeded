@@ -71,6 +71,12 @@ public sealed partial class WizardState : ObservableObject
 	string commitsHeader = "";
 
 	[ObservableProperty]
+	string currentFact = "";
+
+	[ObservableProperty]
+	bool hasReview;
+
+	[ObservableProperty]
 	string filesHeader = "";
 
 	[ObservableProperty]
@@ -325,6 +331,12 @@ public class WizardViewModel : Document
 		}
 		if (step == SweepStep)
 			RunSweepAsync().HandleExceptions();
+		// Reading phases own the center; working phases hand it back to the code and
+		// live in the progress strip.
+		if (step == PlanStep || step == TraverseStep)
+			workspace.ActivateFirstDiff();
+		else if (step == SelectStep || step == TriageStep || step == SurveyStep || step == SweepStep || step == CloseStep)
+			workspace.OpenWizard();
 		Recompute();
 	}
 
@@ -619,6 +631,9 @@ public class WizardViewModel : Document
 		}
 		int gated = Steps.Count - 2;
 		State.Progress = $"{Steps.Count(s => s != SelectStep && s != PrepareStep && s.IsSatisfied)} of {gated} phases complete{(State.OverrideGate ? "  (gate overridden)" : "")}";
+		State.HasReview = workspace.HeadSha is not null;
+		string fact = Current.Facts.ReplaceLineEndings("\n").Split('\n')[0];
+		State.CurrentFact = fact.Length > 160 ? fact[..160] + "..." : fact;
 	}
 
 	(bool Ok, string Detail) Gate()
