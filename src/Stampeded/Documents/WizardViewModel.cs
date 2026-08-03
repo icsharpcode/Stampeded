@@ -94,8 +94,8 @@ public class WizardViewModel : Document
 
 	public WizardStep SelectStep { get; }
 	public WizardStep PrepareStep { get; }
+
 	public WizardStep TriageStep { get; }
-	public WizardStep OrientStep { get; }
 	public WizardStep SurveyStep { get; }
 	public WizardStep PlanStep { get; }
 	public WizardStep TraverseStep { get; }
@@ -129,19 +129,17 @@ public class WizardViewModel : Document
 		{
 			PrepareItems.Add(new PrepareItem(label));
 		}
-		Steps.Add(TriageStep = new WizardStep("triage", "1 Triage",
-			"Should you review this, now, at all? Read the cost estimate. Bouncing an unreviewable PR is a legitimate outcome - the button drafts the comment.", true));
-		Steps.Add(OrientStep = new WizardStep("orient", "2 Orient",
-			"Establish INTENT before reading any code: description and commits below. What is this supposed to do, by what approach? No diff yet.", true));
-		Steps.Add(SurveyStep = new WizardStep("survey", "3 Survey",
+		Steps.Add(TriageStep = new WizardStep("triage", "1 Assess",
+			"Intent and cost on one screen: what is this supposed to do (description, commits), and should you review it now, at all (weighted estimate, CI, hot spots)? Bouncing an unreviewable PR is a legitimate outcome - the button drafts the comment. No diff yet.", true));
+		Steps.Add(SurveyStep = new WizardStep("survey", "2 Survey",
 			"Scan the whole change at symbol level before reading any of it closely: where is the center of gravity? Two minutes, no depth. Click a member to peek.", true));
-		Steps.Add(PlanStep = new WizardStep("plan", "4 Plan",
+		Steps.Add(PlanStep = new WizardStep("plan", "3 Plan",
 			"Decide depth per file (right-click: deep / skim / trust). Stop pretending you will read every line evenly - allocate deliberately.", true));
-		Steps.Add(TraverseStep = new WizardStep("traverse", "5 Traverse",
+		Steps.Add(TraverseStep = new WizardStep("traverse", "4 Traverse",
 			"The deep read happens in the diff tabs: n/p hunks, v viewed, F12/Shift+F12 to verify claims instead of believing them. This page keeps the session honest.", false));
-		Steps.Add(SweepStep = new WizardStep("sweep", "6 Sweep",
+		Steps.Add(SweepStep = new WizardStep("sweep", "5 Sweep",
 			"The delocalized pass - different machinery than reading: surviving callers of removed code, dependency changes, changes without test changes. Computed below; double-click to jump.", true));
-		Steps.Add(CloseStep = new WizardStep("close", "7 Close",
+		Steps.Add(CloseStep = new WizardStep("close", "6 Close",
 			"Record what you concluded: reviewed at which depth, verified how, deliberately skipped what. Then submit or drop every draft (Comments pane).", true));
 
 		foreach (var step in Steps)
@@ -395,14 +393,12 @@ public class WizardViewModel : Document
 						: checks.Count(c => c.Bucket == "fail") is var failing && failing > 0
 							? $"CI: {failing} of {checks.Count} check(s) FAILING - is this ready for review?"
 							: $"CI: all {checks.Count} check(s) passing or skipped.";
-					step.Facts = total == 0 ? "Open a review first (Start step)." :
+					string title = workspace.CurrentPr is { } pr ? $"#{pr.Number} {pr.Title}\n" : "";
+					step.Facts = total == 0 ? "Open a review first (Start step)." : title +
 						$"Weighted estimate: ~{t.Minutes} min = {t.Sittings} sitting(s). " +
 						$"Implementation {t.ImplChanged} line(s) @5/min, tests {t.TestChanged} @15/min, " +
 						$"generated {t.GeneratedChanged} @50/min, {t.DependencyFiles} manifest file(s) flat.\n" +
 						ci + " Per-file cost and churn below - hot files (high churn) deserve extra caution." + rereview;
-					break;
-				case "orient":
-					step.Facts = workspace.CurrentPr is { } pr ? $"#{pr.Number} {pr.Title}" : "";
 					break;
 				case "survey":
 					step.Facts = workspace.ChangeMap.Count > 0
