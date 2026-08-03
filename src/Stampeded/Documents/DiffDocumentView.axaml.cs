@@ -143,9 +143,9 @@ public partial class DiffDocumentView : UserControl
 		CommentBox.Focus();
 	}
 
-	sealed record ThreadComment(bool IsDraft, string Author, string Body, Guid? DraftId);
+	sealed record ThreadComment(bool IsDraft, string Author, string Body, Guid? DraftId, string? ThreadId = null, bool Resolved = false);
 
-	sealed record ThreadData(bool OldSide, int BlobLine, List<ThreadComment> Comments, string? OutdatedQuote = null);
+	sealed record ThreadData(bool OldSide, int BlobLine, List<ThreadComment> Comments, string? OutdatedQuote = null, bool Approximate = false);
 
 	void OnCommentsChangedForThreads()
 	{
@@ -160,20 +160,25 @@ public partial class DiffDocumentView : UserControl
 		if (viewModel is null || viewModel.Historical || App.Workspace is not { } ws)
 			return;
 		var threads = new Dictionary<string, ThreadData>();
-		void Add(string path, bool oldSide, int? blobLine, bool isDraft, string author, string body, Guid? draftId)
+		void Add(string path, bool oldSide, int? blobLine, bool isDraft, string author, string body, Guid? draftId,
+			bool approximate = false, string? threadId = null, bool resolved = false)
 		{
 			string expected = oldSide ? viewModel!.File.OldPath : viewModel!.File.Path;
 			if (blobLine is not { } line || path != expected)
 				return;
 			string key = $"{(oldSide ? "o" : "n")}{line}";
 			if (!threads.TryGetValue(key, out var thread))
-				threads[key] = thread = new ThreadData(oldSide, line, []);
-			thread.Comments.Add(new ThreadComment(isDraft, author, body, draftId));
+				threads[key] = thread = new ThreadData(oldSide, line, [], Approximate: approximate);
+			else if (approximate && !thread.Approximate)
+				threads[key] = thread = thread with { Approximate = true, Comments = thread.Comments };
+			thread.Comments.Add(new ThreadComment(isDraft, author, body, draftId, threadId, resolved));
 		}
 		foreach (var posted in ws.PostedComments)
-			Add(posted.RelPath, posted.OldSide, posted.Line, false, posted.Author, posted.Body, null);
+			Add(posted.RelPath, posted.OldSide, posted.Line, false, posted.Author, posted.Body, null,
+				posted.IsApproximate, posted.ThreadId, posted.IsResolved);
 		foreach (var draft in ws.Drafts)
-			Add(draft.Stored.Anchor.Path, draft.Stored.Anchor.OldSide, draft.CurrentLine, true, "you (draft)", draft.Stored.Body, draft.Stored.Id);
+			Add(draft.Stored.Anchor.Path, draft.Stored.Anchor.OldSide, draft.CurrentLine, true, "you (draft)", draft.Stored.Body, draft.Stored.Id,
+				draft.IsApproximate);
 
 		// Comments whose location no longer exists are pinned at the top of the file,
 		// marked outdated and quoting the code they originally hung on.
@@ -235,17 +240,21 @@ public partial class DiffDocumentView : UserControl
 			return null;
 		bool dark = Themes.ThemeManager.Current.IsDarkTheme;
 		var panel = new Avalonia.Controls.StackPanel { Spacing = 4 };
-		if (thread.BlobLine == 0)
+		if (thread.BlobLine == 0 || thread.Approximate)
 		{
+			string banner = thread.BlobLine == 0
+				? "OUTDATED - the commented code is gone from this head"
+				: "OUTDATED - approximate location (the exact line is gone)";
 			panel.Children.Add(new Avalonia.Controls.TextBlock {
-				Text = "OUTDATED - the commented code is gone from this head" +
-					(thread.OutdatedQuote is { Length: > 0 } quote ? $"; was: {quote.Trim()}" : ""),
+				Text = banner + (thread.OutdatedQuote is { Length: > 0 } quote ? $"; was: {quote.Trim()}" : ""),
 				FontSize = 11,
 				FontStyle = Avalonia.Media.FontStyle.Italic,
 				Opacity = 0.75,
 				TextWrapping = Avalonia.Media.TextWrapping.Wrap,
 			});
 		}
+		bool resolvedThread = thread.Comments.Count > 0 && thread.Comments.All(c => c.DraftId is not null || c.Resolved)
+			&& thread.Comments.Any(c => c.Resolved);
 		foreach (var comment in thread.Comments)
 		{
 			var header = new Avalonia.Controls.DockPanel();
@@ -276,7 +285,11 @@ public partial class DiffDocumentView : UserControl
 				Margin = new Avalonia.Thickness(0, 0, 0, 4),
 			});
 		}
-		if (thread.BlobLine > 0)
+		var buttons = new Avalonia.Controls.StackPanel {
+			Orientation = Avalonia.Layout.Orientation.Horizontal,
+			Spacing = 6,
+		};
+		if (thread.BlobLine > 0 && !thread.Approximate)
 		{
 			var reply = new Avalonia.Controls.Button { Content = "Reply", FontSize = 10, Padding = new Avalonia.Thickness(6, 1) };
 			reply.Click += (_, _) => {
@@ -287,9 +300,31 @@ public partial class DiffDocumentView : UserControl
 					CommentAtCaretCommand();
 				}
 			};
-			panel.Children.Add(reply);
+			buttons.Children.Add(reply);
+		}
+		if (thread.Comments.FirstOrDefault(c => c.ThreadId is not null)?.ThreadId is { } gitThreadId)
+		{
+			var toggle = new Avalonia.Controls.Button {
+				Content = resolvedThread ? "Unresolve" : "Resolve",
+				FontSize = 10,
+				Padding = new Avalonia.Thickness(6, 1),
+			};
+			toggle.Click += (_, _) => App.Workspace?.SetThreadResolvedAsync(gitThreadId, !resolvedThread).HandleExceptions();
+			buttons.Children.Add(toggle);
+		}
+		if (buttons.Children.Count > 0)
+			panel.Children.Add(buttons);
+		if (resolvedThread)
+		{
+			panel.Children.Insert(0, new Avalonia.Controls.TextBlock {
+				Text = "Resolved",
+				FontSize = 10,
+				FontWeight = Avalonia.Media.FontWeight.SemiBold,
+				Foreground = new Avalonia.Media.SolidColorBrush(Avalonia.Media.Color.Parse("#2EA043")),
+			});
 		}
 		return new Avalonia.Controls.Border {
+			Opacity = resolvedThread ? 0.55 : 1.0,
 			Child = panel,
 			Background = new Avalonia.Media.SolidColorBrush(Avalonia.Media.Color.Parse(dark ? "#2B2417" : "#FFF8C5"), dark ? 0.9 : 0.9),
 			BorderBrush = new Avalonia.Media.SolidColorBrush(Avalonia.Media.Color.Parse("#D2992255")),

@@ -68,7 +68,10 @@ public class CommentsPaneViewModel : Tool
 				draft.Stored.Body, draft.Stored.Id, ""));
 		}
 		foreach (var posted in workspace.PostedComments)
-			Items.Add(new CommentRow(posted.RelPath, posted.Line, posted.OldSide, posted.Body, null, posted.Author));
+		{
+			string author = posted.IsResolved ? $"[resolved] {posted.Author}" : posted.Author;
+			Items.Add(new CommentRow(posted.RelPath, posted.Line, posted.OldSide, posted.Body, null, author));
+		}
 		int outdated = workspace.Drafts.Count(d => d.CurrentLine is null);
 		State.Status = $"{workspace.Drafts.Count} draft(s){(outdated > 0 ? $" ({outdated} outdated)" : "")}, {workspace.PostedComments.Count} posted.";
 	}
@@ -96,8 +99,10 @@ public class CommentsPaneViewModel : Tool
 
 	public void Open(CommentRow row)
 	{
-		if (row.Line is { } line)
-			workspace.NavigateToFileLineAsync(row.RelPath, line, row.OldSide, record: true).HandleExceptions();
+		// Line-less (outdated, unapproximable) comments still open their file: the
+		// thread box is pinned above its first line.
+		workspace.NavigateToFileLineAsync(row.RelPath, row.Line ?? 1, row.OldSide && row.Line is not null, record: true)
+			.HandleExceptions();
 	}
 
 	public void Submit(string eventType)

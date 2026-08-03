@@ -16,6 +16,41 @@ public sealed record CommentAnchor(
 	/// same location once their context is gone.</summary>
 	const int FuzzRange = 20;
 
+	/// <summary>Best-effort location when <see cref="Reattach"/> failed (the line itself
+	/// is gone): the position whose surviving non-blank context lines best surround it,
+	/// falling back to the original line number clamped into the file. Never null - the
+	/// caller decides whether an approximation is acceptable.</summary>
+	public int Approximate(IReadOnlyList<string> fileLines)
+	{
+		int bestScore = 0, bestLine = 1, bestDistance = int.MaxValue;
+		for (int ghost = 0; ghost <= fileLines.Count; ghost++)
+		{
+			int score = 0;
+			for (int k = 0; k < ContextBefore.Count; k++)
+			{
+				int want = ghost - ContextBefore.Count + k;
+				if (want >= 0 && want < fileLines.Count
+					&& !string.IsNullOrWhiteSpace(ContextBefore[k]) && fileLines[want] == ContextBefore[k])
+					score++;
+			}
+			for (int k = 0; k < ContextAfter.Count; k++)
+			{
+				int want = ghost + k;
+				if (want < fileLines.Count
+					&& !string.IsNullOrWhiteSpace(ContextAfter[k]) && fileLines[want] == ContextAfter[k])
+					score++;
+			}
+			int distance = Math.Abs(ghost + 1 - Line);
+			if (score > bestScore || (score == bestScore && score > 0 && distance < bestDistance))
+			{
+				bestScore = score;
+				bestLine = Math.Max(1, ghost);
+				bestDistance = distance;
+			}
+		}
+		return bestScore > 0 ? bestLine : Math.Clamp(Line, 1, Math.Max(1, fileLines.Count));
+	}
+
 	public static CommentAnchor Create(string path, bool oldSide, int line, IReadOnlyList<string> fileLines, int context = 2)
 	{
 		int index = line - 1;

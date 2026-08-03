@@ -100,3 +100,27 @@ public class CommentAnchorTests
 		Assert.That(anchor.Reattach(far), Is.Null);
 	}
 }
+
+public class CommentAnchorApproximationTests
+{
+	[Test]
+	public void ApproximatesFromSurvivingContextAfterTheLineIsGone()
+	{
+		string[] original = ["header", "alpha", "target line", "omega", "footer"];
+		var anchor = Stampeded.Core.Review.CommentAnchor.Create("f.cs", false, 3, original);
+		// The commented line vanished; its context moved down by two inserted lines.
+		string[] current = ["new1", "new2", "header", "alpha", "omega", "footer"];
+		Assert.That(anchor.Reattach(current), Is.Null, "precondition: exact reattach fails");
+		int approx = anchor.Approximate(current);
+		// Ghost position between alpha (line 4) and omega (line 5) -> attaches at line 4.
+		Assert.That(approx, Is.EqualTo(4));
+	}
+
+	[Test]
+	public void FallsBackToClampedOriginalLineWithoutContextMatches()
+	{
+		var anchor = new Stampeded.Core.Review.CommentAnchor("f.cs", false, 40, "gone",
+			["also gone"], ["gone too"]);
+		Assert.That(anchor.Approximate(["a", "b", "c"]), Is.EqualTo(3));
+	}
+}

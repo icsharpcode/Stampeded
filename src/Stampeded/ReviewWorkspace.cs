@@ -1054,11 +1054,12 @@ public sealed class ReviewWorkspace(string repoPath)
 
 	#region Review comments
 
-	public sealed record DraftComment(StoredComment Stored, int? CurrentLine);
+	public sealed record DraftComment(StoredComment Stored, int? CurrentLine, bool IsApproximate = false);
 
 	public sealed record CommentTarget(string RelPath, bool OldSide, int Line, string LineText);
 
-	public sealed record PostedCommentView(string RelPath, int? Line, bool OldSide, string Body, string Author);
+	public sealed record PostedCommentView(string RelPath, int? Line, bool OldSide, string Body, string Author,
+		bool IsApproximate = false, string? ThreadId = null, bool IsResolved = false);
 
 	public IReadOnlyList<DraftComment> Drafts { get; private set; } = [];
 	public IReadOnlyList<PostedCommentView> PostedComments { get; private set; } = [];
@@ -1127,17 +1128,23 @@ public sealed class ReviewWorkspace(string repoPath)
 		foreach (var stored in Store.Drafts)
 		{
 			int? line = null;
+			bool approximate = false;
 			try
 			{
 				string rev = stored.Anchor.OldSide ? BaseSha! : HeadSha!;
 				var lines = SplitBlobLines(await Git.ShowFileAsync(rev, stored.Anchor.Path, ct));
 				line = stored.Anchor.Reattach(lines);
+				if (line is null)
+				{
+					line = stored.Anchor.Approximate(lines);
+					approximate = true;
+				}
 			}
 			catch (ToolFailedException)
 			{
-				// File gone at that revision: outdated.
+				// File gone at that revision: outdated with no location at all.
 			}
-			reattached.Add(new DraftComment(stored, line));
+			reattached.Add(new DraftComment(stored, line, approximate));
 		}
 		Drafts = reattached;
 		CommentsChanged?.Invoke();
@@ -1149,13 +1156,34 @@ public sealed class ReviewWorkspace(string repoPath)
 		try
 		{
 			var raw = await GitHub.GetReviewCommentsAsync(number, ct);
+			Dictionary<long, (string ThreadId, bool Resolved)> resolutionByComment = [];
+			try
+			{
+				foreach (var thread in await GitHub.GetThreadResolutionsAsync(number, ct))
+				{
+					foreach (long id in thread.CommentIds)
+						resolutionByComment[id] = (thread.ThreadId, thread.IsResolved);
+				}
+			}
+			catch (ToolFailedException)
+			{
+				// Resolution state is an enrichment; comments still render without it.
+			}
 			var views = new List<PostedCommentView>();
 			foreach (var comment in raw)
 			{
 				bool oldSide = comment.Side == "LEFT";
+				bool approximate = false;
 				int? line = comment.Line ?? await ReanchorPostedAsync(comment, oldSide, ct);
+				if (line is null)
+				{
+					line = await ApproximatePostedAsync(comment, oldSide, ct);
+					approximate = line is not null;
+				}
+				var resolution = resolutionByComment.GetValueOrDefault(comment.Id);
 				views.Add(new PostedCommentView(
-					comment.Path, line, oldSide, comment.Body, comment.User?.Login ?? "?"));
+					comment.Path, line, oldSide, comment.Body, comment.User?.Login ?? "?",
+					approximate, resolution.ThreadId, resolution.Resolved));
 			}
 			PostedComments = views;
 		}
@@ -1201,6 +1229,57 @@ public sealed class ReviewWorkspace(string repoPath)
 		catch (ToolFailedException)
 		{
 			return null;
+		}
+	}
+
+	/// <summary>Approximate location for a posted comment whose exact spot is gone: the
+	/// synthetic hunk-tail anchor's context-based best match in the current blob.</summary>
+	async Task<int?> ApproximatePostedAsync(PostedComment comment, bool oldSide, CancellationToken ct)
+	{
+		if (comment.DiffHunk is null || comment.OriginalLine is null)
+			return null;
+		string? rev = oldSide ? BaseSha : HeadSha;
+		if (rev is null)
+			return null;
+		var sideLines = new List<string>();
+		foreach (var hunkLine in comment.DiffHunk.ReplaceLineEndings("\n").Split('\n'))
+		{
+			if (hunkLine.StartsWith("@@", StringComparison.Ordinal))
+				continue;
+			char marker = hunkLine.Length > 0 ? hunkLine[0] : ' ';
+			if (marker == ' ' || (oldSide ? marker == '-' : marker == '+'))
+				sideLines.Add(hunkLine.Length > 0 ? hunkLine[1..] : "");
+		}
+		if (sideLines.Count == 0)
+			return null;
+		var before = sideLines.Count > 1
+			? sideLines.GetRange(Math.Max(0, sideLines.Count - 3), Math.Min(2, sideLines.Count - 1))
+			: [];
+		var anchor = new CommentAnchor(comment.Path, oldSide, comment.OriginalLine.Value, sideLines[^1], before, []);
+		try
+		{
+			var blobLines = SplitBlobLines(await Git.ShowFileAsync(rev, comment.Path, ct));
+			return anchor.Approximate(blobLines);
+		}
+		catch (ToolFailedException)
+		{
+			return null;
+		}
+	}
+
+	/// <summary>Sets a review thread's resolution on GitHub, then refreshes the comments.</summary>
+	public async Task SetThreadResolvedAsync(string threadId, bool resolved)
+	{
+		if (CurrentPr is not { } pr)
+			return;
+		try
+		{
+			await GitHub.SetThreadResolvedAsync(threadId, resolved);
+			await LoadPostedCommentsAsync(pr.Number, CancellationToken.None);
+		}
+		catch (ToolFailedException ex)
+		{
+			StatusMessage?.Invoke($"Thread resolution failed: {ex.Message}");
 		}
 	}
 

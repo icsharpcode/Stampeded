@@ -34,6 +34,7 @@ public sealed record CheckRun(string Name, string State, string Bucket, string? 
 public sealed record PostedUser(string Login);
 
 public sealed record PostedComment(
+	long Id,
 	string Body,
 	string Path,
 	int? Line,
@@ -41,6 +42,9 @@ public sealed record PostedComment(
 	PostedUser? User,
 	[property: JsonPropertyName("original_line")] int? OriginalLine,
 	[property: JsonPropertyName("diff_hunk")] string? DiffHunk);
+
+/// <summary>Resolution state of one GitHub review thread and the REST ids of its comments.</summary>
+public sealed record ThreadResolution(string ThreadId, bool IsResolved, IReadOnlyList<long> CommentIds);
 
 public sealed record ReviewCommentDto(string Path, int Line, string Side, string Body);
 
@@ -112,6 +116,81 @@ public sealed class GitHubService(string repoPath)
 	public Task<IReadOnlyList<PostedComment>> GetReviewCommentsAsync(int number, CancellationToken ct = default)
 		=> JsonAsync<IReadOnlyList<PostedComment>>(ct,
 			"api", $"repos/{{owner}}/{{repo}}/pulls/{number}/comments", "--paginate");
+
+	/// <summary>Review-thread resolution states via GraphQL (REST does not expose them).</summary>
+	public async Task<IReadOnlyList<ThreadResolution>> GetThreadResolutionsAsync(int number, CancellationToken ct = default)
+	{
+		const string query = """
+			query($owner: String!, $repo: String!, $number: Int!) {
+			  repository(owner: $owner, name: $repo) {
+			    pullRequest(number: $number) {
+			      reviewThreads(first: 100) {
+			        nodes { id isResolved comments(first: 50) { nodes { databaseId } } }
+			      }
+			    }
+			  }
+			}
+			""";
+		var (owner, repo) = await GetOwnerRepoAsync(ct);
+		var result = await CliWrap.Cli.Wrap("gh")
+			.WithArguments(["api", "graphql",
+				"-f", $"query={query}", "-f", $"owner={owner}", "-f", $"repo={repo}", "-F", $"number={number}"])
+			.WithWorkingDirectory(repoPath)
+			.WithValidation(CliWrap.CommandResultValidation.None)
+			.ExecuteBufferedAsync(ct);
+		if (result.ExitCode != 0)
+			throw new ToolFailedException("gh", result.ExitCode, result.StandardError);
+		var resolutions = new List<ThreadResolution>();
+		using var doc = System.Text.Json.JsonDocument.Parse(result.StandardOutput);
+		var nodes = doc.RootElement
+			.GetProperty("data").GetProperty("repository").GetProperty("pullRequest")
+			.GetProperty("reviewThreads").GetProperty("nodes");
+		foreach (var node in nodes.EnumerateArray())
+		{
+			var ids = node.GetProperty("comments").GetProperty("nodes").EnumerateArray()
+				.Select(c => c.GetProperty("databaseId").GetInt64())
+				.ToList();
+			resolutions.Add(new ThreadResolution(
+				node.GetProperty("id").GetString() ?? "", node.GetProperty("isResolved").GetBoolean(), ids));
+		}
+		return resolutions;
+	}
+
+	/// <summary>Marks a review thread resolved or unresolved (GraphQL mutation).</summary>
+	public async Task SetThreadResolvedAsync(string threadId, bool resolved, CancellationToken ct = default)
+	{
+		string mutation = resolved
+			? "mutation($id: ID!) { resolveReviewThread(input: { threadId: $id }) { thread { id } } }"
+			: "mutation($id: ID!) { unresolveReviewThread(input: { threadId: $id }) { thread { id } } }";
+		var result = await CliWrap.Cli.Wrap("gh")
+			.WithArguments(["api", "graphql", "-f", $"query={mutation}", "-f", $"id={threadId}"])
+			.WithWorkingDirectory(repoPath)
+			.WithValidation(CliWrap.CommandResultValidation.None)
+			.ExecuteBufferedAsync(ct);
+		Infra.CliLog.Write("gh", $"{(resolved ? "resolve" : "unresolve")} thread -> exit {result.ExitCode}");
+		if (result.ExitCode != 0)
+			throw new ToolFailedException("gh", result.ExitCode, result.StandardError + result.StandardOutput);
+	}
+
+	(string Owner, string Repo)? ownerRepo;
+
+	async Task<(string Owner, string Repo)> GetOwnerRepoAsync(CancellationToken ct)
+	{
+		if (ownerRepo is { } cached)
+			return cached;
+		var result = await CliWrap.Cli.Wrap("gh")
+			.WithArguments(["repo", "view", "--json", "nameWithOwner", "--jq", ".nameWithOwner"])
+			.WithWorkingDirectory(repoPath)
+			.WithValidation(CliWrap.CommandResultValidation.None)
+			.ExecuteBufferedAsync(ct);
+		if (result.ExitCode != 0)
+			throw new ToolFailedException("gh", result.ExitCode, result.StandardError);
+		var parts = result.StandardOutput.Trim().Split('/');
+		if (parts.Length != 2)
+			throw new ToolFailedException("gh", 1, $"unexpected nameWithOwner: {result.StandardOutput}");
+		ownerRepo = (parts[0], parts[1]);
+		return ownerRepo.Value;
+	}
 
 	/// <summary>Rebases the PR branch onto its target via GitHub's update-branch API
 	/// (server-side; rewrites the PR branch, no local checkout involved).</summary>
