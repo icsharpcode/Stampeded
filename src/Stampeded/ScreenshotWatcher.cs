@@ -24,10 +24,15 @@ static class ScreenshotWatcher
 				return;
 			try
 			{
-				string target = File.ReadAllText(TriggerFile).Trim();
+				var lines = File.ReadAllLines(TriggerFile);
 				File.Delete(TriggerFile);
+				string target = lines.Length > 0 ? lines[0].Trim() : "";
 				if (target.Length == 0)
 					return;
+				// Optional extra lines are debug commands executed before the capture,
+				// so interactive UI (e.g. the inline comment editor) can be verified.
+				if (lines.Contains("comment"))
+					Documents.DiffDocumentView.ActiveView?.CommentAtCaretCommand();
 				var size = new Avalonia.PixelSize((int)window.Bounds.Width, (int)window.Bounds.Height);
 				using var bitmap = new RenderTargetBitmap(size, new Avalonia.Vector(96, 96));
 				bitmap.Render(window);

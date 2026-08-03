@@ -1074,10 +1074,10 @@ public sealed class ReviewWorkspace(string repoPath)
 	/// <summary>Set by the dock factory so 'comment here' can surface the Comments pane.</summary>
 	public Dock.Model.Core.IDockable? CommentsPane { get; set; }
 
-	public void BeginComment(CommentTarget target)
+	public void BeginComment(CommentTarget target, bool activatePane = true)
 	{
 		PendingCommentTarget = target;
-		if (CommentsPane is not null && Factory is not null)
+		if (activatePane && CommentsPane is not null && Factory is not null)
 			Factory.SetActiveDockable(CommentsPane);
 		CommentTargetRequested?.Invoke();
 	}

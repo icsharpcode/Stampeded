@@ -116,13 +116,63 @@ public partial class DiffDocumentView : UserControl
 
 	public void JumpToHunkCommand(int direction) => JumpToHunk(direction);
 
+	ReviewWorkspace.CommentTarget? inlineCommentTarget;
+
 	public void CommentAtCaretCommand()
 	{
 		if (viewModel is { Historical: true } || CaretBlobPosition() is not { } pos)
 			return;
 		var docLine = Editor.Document.GetLineByNumber(Editor.TextArea.Caret.Line);
 		string text = Editor.Document.GetText(docLine.Offset, docLine.Length);
-		App.Workspace?.BeginComment(new ReviewWorkspace.CommentTarget(pos.RelPath, pos.OldSide, pos.Line, text));
+		inlineCommentTarget = new ReviewWorkspace.CommentTarget(pos.RelPath, pos.OldSide, pos.Line, text);
+		CommentTargetText.Text = $"{pos.RelPath}:{pos.Line}{(pos.OldSide ? " (base)" : "")}  |  {text.Trim()}";
+		var view = Editor.TextArea.TextView;
+		var caretPosition = new AvaloniaEdit.TextViewPosition(Editor.TextArea.Caret.Line, 1);
+		var anchor = view.GetVisualPosition(caretPosition, VisualYPosition.LineBottom) - view.ScrollOffset;
+		double marginsWidth = Editor.TextArea.LeftMargins.OfType<Avalonia.Controls.Control>().Sum(m => m.Bounds.Width);
+		CommentPopup.HorizontalOffset = marginsWidth + 8;
+		CommentPopup.VerticalOffset = anchor.Y;
+		CommentPopup.IsOpen = true;
+		CommentBox.Focus();
+	}
+
+	void OnCommentBoxKeyDown(object? sender, KeyEventArgs e)
+	{
+		if (e.Key == Key.Enter && e.KeyModifiers.HasFlag(KeyModifiers.Control))
+		{
+			e.Handled = true;
+			OnCommentSave(sender, e);
+		}
+		else if (e.Key == Key.Escape)
+		{
+			e.Handled = true;
+			OnCommentCancel(sender, e);
+		}
+	}
+
+	void OnCommentSave(object? sender, RoutedEventArgs e) => SaveInlineCommentAsync().HandleExceptions();
+
+	async Task SaveInlineCommentAsync()
+	{
+		if (inlineCommentTarget is not { } target || App.Workspace is not { } ws)
+			return;
+		string body = CommentBox.Text?.Trim() ?? "";
+		if (body.Length == 0)
+			return;
+		ws.BeginComment(target, activatePane: false);
+		await ws.CommitDraftAsync(body);
+		CommentBox.Text = "";
+		CommentPopup.IsOpen = false;
+		inlineCommentTarget = null;
+		Editor.TextArea.Focus();
+	}
+
+	void OnCommentCancel(object? sender, RoutedEventArgs e)
+	{
+		CommentBox.Text = "";
+		CommentPopup.IsOpen = false;
+		inlineCommentTarget = null;
+		Editor.TextArea.Focus();
 	}
 
 	public void ToggleBlameCommand() => ToggleBlameAsync().HandleExceptions();
