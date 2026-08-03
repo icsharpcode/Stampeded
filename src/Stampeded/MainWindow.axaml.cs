@@ -36,6 +36,8 @@ public partial class MainWindow : Window
 
 	void OnRebasePr(object? s, RoutedEventArgs e) => App.Workspace?.RebaseCurrentPrOnTargetAsync().HandleExceptions();
 
+	void OnInterdiff(object? s, RoutedEventArgs e) => App.Workspace?.OpenInterdiffAsync().HandleExceptions();
+
 	void OnOpenOnGitHub(object? s, RoutedEventArgs e)
 	{
 		if (App.Workspace is { CurrentPr: { } pr } ws)

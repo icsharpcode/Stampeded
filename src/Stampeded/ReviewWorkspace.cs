@@ -171,6 +171,7 @@ public sealed class ReviewWorkspace(string repoPath)
 		Files = files;
 		IndexAddedLines(files);
 		Store.OpenLocal(Path.GetFileName(RepoPath), $"{baseRef}..{headRef}", headSha);
+		await ApplyReReviewCarryOverAsync(ct);
 		history.Clear();
 		CloseOpenDiffs();
 		PostedComments = [];
@@ -205,6 +206,7 @@ public sealed class ReviewWorkspace(string repoPath)
 		Files = files;
 		IndexAddedLines(files);
 		Store.Open(Path.GetFileName(RepoPath), number, headSha);
+		await ApplyReReviewCarryOverAsync(ct);
 		history.Clear();
 		CloseOpenDiffs();
 		ReviewChanged?.Invoke();
@@ -354,6 +356,70 @@ public sealed class ReviewWorkspace(string repoPath)
 	}
 
 	public event Action<string>? StatusMessage;
+
+	#region Re-review (head moved since the last pass)
+
+	/// <summary>Head of the previous pass, when this open superseded one; null on a first
+	/// pass or when the previous head's objects are gone.</summary>
+	public string? LastPassHead { get; private set; }
+
+	/// <summary>Files the interdiff (last pass head -> current head) touched.</summary>
+	public IReadOnlySet<string>? TouchedSinceLastPass { get; private set; }
+
+	public bool IsTouchedSinceLastPass(string path) => TouchedSinceLastPass?.Contains(path) ?? false;
+
+	/// <summary>Re-review is not a repeat: viewed flags carry over except for files the new
+	/// push touched, so the unviewed set - which drives which files open - becomes exactly
+	/// "invalidated plus never seen".</summary>
+	async Task ApplyReReviewCarryOverAsync(CancellationToken ct)
+	{
+		LastPassHead = null;
+		TouchedSinceLastPass = null;
+		if (Store.Superseded is not { } superseded || HeadSha is null)
+			return;
+		try
+		{
+			var changes = await Git.DiffNameStatusAsync(superseded.PreviousHead, HeadSha, ct);
+			var touched = changes.Select(c => c.Path).ToHashSet(StringComparer.Ordinal);
+			LastPassHead = superseded.PreviousHead;
+			TouchedSinceLastPass = touched;
+			var carried = ReReview.CarryOverViewed(superseded.PreviousViewed, touched);
+			foreach (var path in carried)
+				Store.SetViewed(path, true);
+			int invalidated = superseded.PreviousViewed.Count(kv => kv.Value) - carried.Count;
+			CliLog.Write("action", $"re-review: {superseded.PreviousHead[..9]} -> {HeadSha[..9]}, {touched.Count} touched, {carried.Count} carried, {invalidated} invalidated");
+			StatusMessage?.Invoke(
+				$"Re-review: head moved {superseded.PreviousHead[..9]} -> {HeadSha[..9]}. " +
+				$"{touched.Count} file(s) touched since your last pass; {carried.Count} viewed flag(s) carried over, {invalidated} invalidated.");
+		}
+		catch (ToolFailedException)
+		{
+			// The previous head's objects are no longer reachable (pruned after a
+			// force-push): fall back to a full re-pass rather than guessing.
+			StatusMessage?.Invoke("Re-review: previous head is gone from the object store; viewed flags were reset.");
+		}
+	}
+
+	/// <summary>The raw interdiff (last pass head -> current head) as a document.</summary>
+	public async Task OpenInterdiffAsync()
+	{
+		if (LastPassHead is null || HeadSha is null)
+		{
+			StatusMessage?.Invoke("No earlier pass recorded for this head - the interdiff needs a previous review at another head.");
+			return;
+		}
+		try
+		{
+			string patch = await ExternalTool.RunAsync("git", ["diff", LastPassHead, HeadSha], RepoPath);
+			OpenTextDocument($"interdiff:{LastPassHead[..9]}", $"interdiff {LastPassHead[..9]}..{HeadSha[..9]}", patch);
+		}
+		catch (ToolFailedException ex)
+		{
+			StatusMessage?.Invoke($"Interdiff failed: {ex.Message}");
+		}
+	}
+
+	#endregion
 
 	#region Review phases: triage / sweep / record
 

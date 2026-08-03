@@ -42,6 +42,7 @@
       <MenuItem Header="Re_pository">
         <MenuItem Header="Open PR on GitHub" Click="OnOpenOnGitHub" />
         <MenuItem Header="Rebase PR onto Target Branch" Click="OnRebasePr" />
+        <MenuItem Header="Show Interdiff Since Last Pass" Click="OnInterdiff" />
         <MenuItem Header="Show Semantic Load Log" Click="OnShowSemanticLog" />
         <MenuItem Header="Prune Worktree Cache" Click="OnPruneWorktrees" />
       </MenuItem>

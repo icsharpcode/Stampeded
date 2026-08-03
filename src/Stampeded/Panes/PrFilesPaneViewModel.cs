@@ -47,6 +47,9 @@ public sealed class FileEntry(FileDiff file, bool viewed) : ObservableObject
 		}
 	}
 
+	/// <summary>"new!" when the latest push touched this file after it was last reviewed.</summary>
+	public string SinceBadge { get; init; } = "";
+
 	public string DepthBadge => Depth switch {
 		"deep" => "deep",
 		"skim" => "skim",
@@ -103,12 +106,16 @@ public class PrFilesPaneViewModel : Tool
 	{
 		Files.Clear();
 		var ordered = workspace.Files
-			.OrderBy(f => GuidePaneViewModel.IsTestPath(f.Path) == testsFirst ? 0 : 1)
+			.OrderBy(f => workspace.IsTouchedSinceLastPass(f.Path) ? 0 : 1)
+			.ThenBy(f => GuidePaneViewModel.IsTestPath(f.Path) == testsFirst ? 0 : 1)
 			.ThenBy(f => DepthRank(workspace.GetDepth(f.Path)))
 			.ThenBy(f => f.Path, StringComparer.Ordinal);
 		foreach (var file in ordered)
 		{
-			var entry = new FileEntry(file, workspace.Store.IsViewed(file.Path)) { Depth = workspace.GetDepth(file.Path) };
+			var entry = new FileEntry(file, workspace.Store.IsViewed(file.Path)) {
+				Depth = workspace.GetDepth(file.Path),
+				SinceBadge = workspace.IsTouchedSinceLastPass(file.Path) ? "new!" : "",
+			};
 			entry.PropertyChanged += OnEntryChanged;
 			Files.Add(entry);
 		}

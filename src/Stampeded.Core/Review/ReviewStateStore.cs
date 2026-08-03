@@ -29,6 +29,11 @@ public sealed class ReviewStateStore
 	string? currentPath;
 	ReviewStateFile? current;
 
+	/// <summary>When opening found state for an OLDER head: that head and its viewed flags.
+	/// The caller can carry viewed over for files the new push did not touch (re-review:
+	/// invalidate only what changed, do not repeat the whole first pass).</summary>
+	public (string PreviousHead, Dictionary<string, bool> PreviousViewed)? Superseded { get; private set; }
+
 	public ReviewStateStore(string? directory = null)
 	{
 		this.directory = directory ?? Path.Combine(
@@ -57,13 +62,18 @@ public sealed class ReviewStateStore
 				// Corrupt state file: start fresh rather than failing the review.
 			}
 		}
+		Superseded = null;
 		if (current is null)
+		{
 			current = new ReviewStateFile(headSha, [], [], []);
+		}
 		else if (current.HeadSha != headSha)
 		{
-			// ponytail: viewed resets wholesale on force-push; per-file diff-hash
-			// invalidation would preserve more if this proves annoying.
+			Superseded = (current.HeadSha, new Dictionary<string, bool>(current.Viewed));
 			current = current with { HeadSha = headSha, Viewed = [] };
+			// Persist the head move now: reopening before the next SetViewed must not
+			// re-read the old head from disk and report a second supersede.
+			Save();
 		}
 	}
 

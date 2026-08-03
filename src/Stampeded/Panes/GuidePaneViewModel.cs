@@ -221,10 +221,13 @@ public class GuidePaneViewModel : Tool
 			{
 				case "triage":
 					var t = workspace.ComputeTriage();
+					string rereview = workspace.TouchedSinceLastPass is { } touched
+						? $"\nRE-REVIEW: only {workspace.Files.Count(f => workspace.IsTouchedSinceLastPass(f.Path))} of {total} file(s) changed since your last pass (marked 'new!'); earlier viewed flags carried over."
+						: "";
 					phase.Facts = total == 0 ? "" :
 						$"{t.FileCount} file(s) in {t.ProjectCount} project(s): +{t.Added} -{t.Removed}.\n" +
 						$"Estimated: ~{t.EstimatedMinutes} min = {t.EstimatedSittings} sitting(s) of focused review.\n" +
-						$"{t.TestFileCount} test file(s) touched; {t.DependencyFileCount} dependency/manifest file(s).";
+						$"{t.TestFileCount} test file(s) touched; {t.DependencyFileCount} dependency/manifest file(s)." + rereview;
 					break;
 				case "orient":
 					phase.Facts = workspace.CurrentPr is { } pr ? $"Reviewing #{pr.Number}: {pr.Title}" : "";

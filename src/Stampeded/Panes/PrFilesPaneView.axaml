@@ -28,6 +28,9 @@
           <TextBlock DockPanel.Dock="Right" Margin="4,0" FontSize="10" VerticalAlignment="Center"
                      Opacity="0.75" Text="{Binding DepthBadge}"
                      ToolTip.Tip="Planned review depth (right-click to set)" />
+          <TextBlock DockPanel.Dock="Right" Margin="4,0" FontSize="10" VerticalAlignment="Center"
+                     Foreground="#3794FF" Text="{Binding SinceBadge}"
+                     ToolTip.Tip="Touched since your last pass (viewed flag was invalidated)" />
           <TextBlock DockPanel.Dock="Left" Width="14" FontWeight="Bold" Text="{Binding Marker}" />
           <TextBlock Text="{Binding Display}" TextTrimming="CharacterEllipsis" />
         </DockPanel>
