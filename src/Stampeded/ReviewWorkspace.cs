@@ -90,6 +90,9 @@ public sealed class ReviewWorkspace(string repoPath)
 	public event Action? SemanticsChanged;
 	public event Action? CoverageChanged;
 	public event Action? ChecksLoaded;
+	public event Action<string, string>? PickaxeRequested;
+
+	public void RequestPickaxe(string text, string path) => PickaxeRequested?.Invoke(text, path);
 	public event Action<string, IReadOnlyList<ReferenceItem>>? ReferencesAvailable;
 
 	CancellationTokenSource? sessionCts;

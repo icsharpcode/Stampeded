@@ -1,0 +1,29 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:panes="using:Stampeded.Panes"
+             x:Class="Stampeded.Panes.CommitsPaneView"
+             x:DataType="panes:CommitsPaneViewModel">
+  <DockPanel>
+    <TextBlock DockPanel.Dock="Bottom" Margin="6,4" Opacity="0.7" TextWrapping="Wrap"
+               Text="{Binding State.Status}" />
+    <Grid ColumnDefinitions="3*,4,2*">
+      <ListBox Grid.Column="0" x:Name="List" ItemsSource="{Binding Commits}"
+               SelectionChanged="OnCommitSelected" FontFamily="monospace" FontSize="12">
+        <ListBox.ItemTemplate>
+          <DataTemplate x:DataType="panes:CommitRow">
+            <TextBlock Text="{Binding Display}" TextTrimming="CharacterEllipsis" />
+          </DataTemplate>
+        </ListBox.ItemTemplate>
+      </ListBox>
+      <GridSplitter Grid.Column="1" />
+      <ListBox Grid.Column="2" x:Name="FilesList" ItemsSource="{Binding CommitFiles}"
+               DoubleTapped="OnFileOpened" FontFamily="monospace" FontSize="12">
+        <ListBox.ItemTemplate>
+          <DataTemplate x:DataType="panes:CommitFileRow">
+            <TextBlock Text="{Binding Display}" TextTrimming="CharacterEllipsis" />
+          </DataTemplate>
+        </ListBox.ItemTemplate>
+      </ListBox>
+    </Grid>
+  </DockPanel>
+</UserControl>

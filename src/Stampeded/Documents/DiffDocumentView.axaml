@@ -14,6 +14,7 @@
           <MenuItem Header="Next Hunk" InputGesture="N" Click="OnCtxNextHunk" />
           <MenuItem Header="Previous Hunk" InputGesture="P" Click="OnCtxPrevHunk" />
           <MenuItem Header="Toggle Blame Margin" InputGesture="B" Click="OnCtxToggleBlame" />
+          <MenuItem Header="History of Selection" Click="OnCtxHistoryOfSelection" />
           <MenuItem Header="Comment Here" InputGesture="C" Click="OnCtxComment" />
           <Separator />
           <MenuItem Header="Copy" InputGesture="Ctrl+C" Click="OnCtxCopy" />

@@ -32,6 +32,8 @@
         <MenuItem Header="Checks Pane" Tag="Checks" Click="OnShowPane" />
         <MenuItem Header="Tests Pane" Tag="Tests" Click="OnShowPane" />
         <MenuItem Header="Guide Pane" Tag="Guide" Click="OnShowPane" />
+        <MenuItem Header="Commits Pane" Tag="Commits" Click="OnShowPane" />
+        <MenuItem Header="History Pane" Tag="History" Click="OnShowPane" />
         <MenuItem Header="Run Pane" Tag="Run" Click="OnShowPane" />
         <MenuItem Header="Log Pane" Tag="Log" Click="OnShowPane" />
       </MenuItem>

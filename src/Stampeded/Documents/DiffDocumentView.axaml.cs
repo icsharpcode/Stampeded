@@ -137,6 +137,14 @@ public partial class DiffDocumentView : UserControl
 	void OnCtxPrevHunk(object? s, RoutedEventArgs e) => JumpToHunk(-1);
 	void OnCtxToggleBlame(object? s, RoutedEventArgs e) => ToggleBlameCommand();
 	void OnCtxComment(object? s, RoutedEventArgs e) => CommentAtCaretCommand();
+
+	void OnCtxHistoryOfSelection(object? s, RoutedEventArgs e)
+	{
+		string text = Editor.SelectedText;
+		if (viewModel is null || string.IsNullOrWhiteSpace(text))
+			return;
+		App.Workspace?.RequestPickaxe(text, viewModel.File.Path);
+	}
 	void OnCtxCopy(object? s, RoutedEventArgs e) => Editor.Copy();
 
 	void OnPointerPressedForContextMenu(object? sender, PointerPressedEventArgs e)
