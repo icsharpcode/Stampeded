@@ -12,6 +12,13 @@ public class DiffDocumentViewModel(FileDiff file, DiffDocumentModel model) : Doc
 	/// <summary>True for plain source views of unchanged files (identity diff model).</summary>
 	public bool IsSourceView { get; private init; }
 
+	/// <summary>True for a historical commit diff: line numbers reference that commit's
+	/// blobs, not the review head/base, so semantics, comments and coverage stay off.</summary>
+	public bool Historical { get; init; }
+
+	/// <summary>The commit shown when <see cref="Historical"/> (blame runs against it).</summary>
+	public string? HistoricalSha { get; init; }
+
 	int? pendingCaretLine;
 
 	public event Action<int>? CaretRequested;

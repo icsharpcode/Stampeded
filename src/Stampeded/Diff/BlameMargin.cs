@@ -24,6 +24,9 @@ public sealed class BlameMargin : AbstractMargin
 	readonly Typeface typeface = new("Consolas, Menlo, Monospace");
 	const double EmSize = 11;
 
+	/// <summary>Invoked with the clicked row's blame info (drill into the commit).</summary>
+	public Action<BlameLine>? CommitRequested { get; set; }
+
 	IReadOnlyList<BlameLine?>? lines;
 	long minTicks, maxTicks;
 	double charWidth;
@@ -98,6 +101,31 @@ public sealed class BlameMargin : AbstractMargin
 			< 700 => $"{(int)(age.TotalDays / 30)}mo",
 			_ => $"{(int)(age.TotalDays / 365)}y",
 		};
+	}
+
+	protected override void OnPointerPressed(PointerPressedEventArgs e)
+	{
+		base.OnPointerPressed(e);
+		if (!e.GetCurrentPoint(this).Properties.IsLeftButtonPressed)
+			return;
+		var blame = HitTestLine(e.GetPosition(this).Y);
+		if (blame is not null)
+		{
+			CommitRequested?.Invoke(blame);
+			e.Handled = true;
+		}
+	}
+
+	BlameLine? HitTestLine(double y)
+	{
+		var textView = TextView;
+		if (textView is null || lines is null || !textView.VisualLinesValid)
+			return null;
+		double adjusted = y + textView.VerticalOffset;
+		var visualLine = textView.VisualLines.FirstOrDefault(vl => vl.VisualTop <= adjusted && adjusted < vl.VisualTop + vl.Height);
+		return visualLine is not null && visualLine.FirstDocumentLine.LineNumber <= lines.Count
+			? lines[visualLine.FirstDocumentLine.LineNumber - 1]
+			: null;
 	}
 
 	protected override void OnPointerMoved(PointerEventArgs e)

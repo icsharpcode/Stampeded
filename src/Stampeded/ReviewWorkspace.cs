@@ -331,6 +331,47 @@ public sealed class ReviewWorkspace(string repoPath)
 		StatusMessage?.Invoke($"Pruned {removed} cached worktree(s).");
 	}
 
+	/// <summary>Opens one commit's change to one file as a read-only historical diff tab.</summary>
+	public async Task OpenHistoricalDiffAsync(string sha, string path)
+	{
+		string oldText = "";
+		string newText = "";
+		try
+		{
+			newText = await Git.ShowFileAsync(sha, path);
+		}
+		catch (ToolFailedException)
+		{
+			// Deleted in this commit, or the path is unknown at it (rename): fall back to
+			// the whole commit as text.
+			try
+			{
+				string patch = await ExternalTool.RunAsync("git", ["show", sha], RepoPath);
+				OpenTextDocument($"show:{sha}", $"commit {sha[..9]}", patch);
+			}
+			catch (ToolFailedException)
+			{
+			}
+			return;
+		}
+		try
+		{
+			oldText = await Git.ShowFileAsync($"{sha}^", path);
+		}
+		catch (ToolFailedException)
+		{
+			// Added in this commit (or rename): empty old side shows it as all-new.
+		}
+		var stub = new FileDiff(path, path, FileChangeKind.Modified, false, []);
+		var vm = ShowDocument($"hist:{sha}:{path}", () =>
+			new DiffDocumentViewModel(stub, DiffDocumentBuilder.Build(oldText, newText)) {
+				Title = $"{Path.GetFileName(path)} @ {sha[..9]}",
+				Historical = true,
+				HistoricalSha = sha,
+			});
+		CliLog.Write("action", $"historical diff {sha[..9]} {path}");
+	}
+
 	/// <summary>Opens a PR in the browser via gh.</summary>
 	public Task OpenOnGitHubAsync(int number)
 		=> ExternalTool.RunAsync("gh", ["pr", "view", number.ToString(), "--web"], RepoPath);

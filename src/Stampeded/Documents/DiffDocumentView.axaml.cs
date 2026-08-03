@@ -61,19 +61,33 @@ public partial class DiffDocumentView : UserControl
 		Editor.TextArea.AddHandler(KeyDownEvent, OnEditorKeyDown, RoutingStrategies.Tunnel);
 		Editor.TextArea.TextView.AddHandler(PointerReleasedEvent, OnTextViewPointerReleased, RoutingStrategies.Bubble, handledEventsToo: true);
 		Editor.TextArea.AddHandler(PointerPressedEvent, OnPointerPressedForContextMenu, RoutingStrategies.Tunnel);
-		AddHandler(GotFocusEvent, (_, _) => ActiveView = this, RoutingStrategies.Bubble, handledEventsToo: true);
+		AddHandler(GotFocusEvent, (_, _) => MakeActive(), RoutingStrategies.Bubble, handledEventsToo: true);
 		Editor.TextArea.TextView.PointerMoved += OnPointerMovedForHover;
 		Editor.TextArea.TextView.PointerExited += (_, _) => CancelHover();
 		hoverTimer.Tick += OnHoverTimerTick;
+		blameMargin.CommitRequested = blame =>
+			App.Workspace?.OpenHistoricalDiffAsync(blame.Sha, viewModel?.File.Path ?? "").HandleExceptions();
 	}
 
 	/// <summary>The most recently attached/focused diff view; menu commands route here.</summary>
 	public static DiffDocumentView? ActiveView { get; private set; }
 
+	/// <summary>Raised when the active diff view (or its document) changes; the History
+	/// pane follows it.</summary>
+	public static event Action? ActiveViewChanged;
+
+	internal DiffDocumentViewModel? ViewModel => viewModel;
+
+	void MakeActive()
+	{
+		ActiveView = this;
+		ActiveViewChanged?.Invoke();
+	}
+
 	protected override void OnAttachedToVisualTree(Avalonia.VisualTreeAttachmentEventArgs e)
 	{
 		base.OnAttachedToVisualTree(e);
-		ActiveView = this;
+		MakeActive();
 		if (App.Workspace is { } ws)
 		{
 			ws.SemanticsChanged += OnSemanticsChanged;
@@ -104,7 +118,7 @@ public partial class DiffDocumentView : UserControl
 
 	public void CommentAtCaretCommand()
 	{
-		if (CaretBlobPosition() is not { } pos)
+		if (viewModel is { Historical: true } || CaretBlobPosition() is not { } pos)
 			return;
 		var docLine = Editor.Document.GetLineByNumber(Editor.TextArea.Caret.Line);
 		string text = Editor.Document.GetText(docLine.Offset, docLine.Length);
@@ -150,7 +164,7 @@ public partial class DiffDocumentView : UserControl
 				: null;
 			coverageMargin.Tags = model?.Tags;
 			coverageMargin.HitsByNewLine = hits;
-			bool wanted = hits is not null;
+			bool wanted = hits is not null && viewModel is not { Historical: true };
 			if (wanted && !coverageMarginVisible)
 				Editor.TextArea.LeftMargins.Insert(0, coverageMargin);
 			else if (!wanted && coverageMarginVisible)
@@ -183,6 +197,8 @@ public partial class DiffDocumentView : UserControl
 		QueueSemanticsRefresh();
 		if (vm.TakePendingCaretLine() is int line)
 			Dispatcher.UIThread.Post(() => MoveCaretToLine(line));
+		if (ActiveView == this)
+			ActiveViewChanged?.Invoke();
 	}
 
 	#region Semantic layer (colors + clickable spans)
@@ -200,7 +216,7 @@ public partial class DiffDocumentView : UserControl
 
 	async Task RefreshSemanticsAsync()
 	{
-		if (model is null || viewModel is null || App.Workspace is not { } ws)
+		if (model is null || viewModel is null || viewModel.Historical || App.Workspace is not { } ws)
 			return;
 		var m = model;
 		var vm = viewModel;
@@ -407,7 +423,7 @@ public partial class DiffDocumentView : UserControl
 
 	void NavigateToDefinitionAtCaret()
 	{
-		if (CaretBlobPosition() is not { } pos || viewModel is null)
+		if (viewModel is null or { Historical: true } || CaretBlobPosition() is not { } pos)
 			return;
 		var origin = new ReviewWorkspace.NavEntryOrigin(viewModel.Id, Editor.TextArea.Caret.Line);
 		App.Workspace?.NavigateToDefinitionAsync(pos.RelPath, pos.Line, pos.Column, pos.OldSide, origin).HandleExceptions();
@@ -415,7 +431,7 @@ public partial class DiffDocumentView : UserControl
 
 	void ShowReferencesAtCaret()
 	{
-		if (CaretBlobPosition() is not { } pos)
+		if (viewModel is { Historical: true } || CaretBlobPosition() is not { } pos)
 			return;
 		App.Workspace?.ShowReferencesAtAsync(pos.RelPath, pos.Line, pos.Column, pos.OldSide).HandleExceptions();
 	}
@@ -423,7 +439,7 @@ public partial class DiffDocumentView : UserControl
 	async Task HighlightOccurrencesAtCaretAsync()
 	{
 		markers.RemoveAll(_ => true);
-		if (CaretBlobPosition() is not { } pos || model is null || App.Workspace is not { } ws)
+		if (viewModel is { Historical: true } || CaretBlobPosition() is not { } pos || model is null || App.Workspace is not { } ws)
 			return;
 		var occurrences = await ws.FindOccurrencesAsync(pos.RelPath, pos.Line, pos.Column, pos.OldSide);
 		foreach (var occ in occurrences)
@@ -471,12 +487,14 @@ public partial class DiffDocumentView : UserControl
 		var vm = viewModel;
 		IReadOnlyList<Core.Git.BlameLine> newBlame = [];
 		IReadOnlyList<Core.Git.BlameLine> oldBlame = [];
+		string newRev = vm.Historical ? vm.HistoricalSha! : ws.HeadSha;
+		string? oldRev = vm.Historical ? vm.HistoricalSha + "^" : ws.BaseSha;
 		try
 		{
 			if (vm.File.Kind != FileChangeKind.Deleted)
-				newBlame = await ws.Git.BlameAsync(ws.HeadSha, vm.File.Path);
-			if (ws.BaseSha is not null && m.Tags.Any(t => t.Kind == DiffLineKind.Removed))
-				oldBlame = await ws.Git.BlameAsync(ws.BaseSha, vm.File.OldPath);
+				newBlame = await ws.Git.BlameAsync(newRev, vm.File.Path);
+			if (oldRev is not null && m.Tags.Any(t => t.Kind == DiffLineKind.Removed))
+				oldBlame = await ws.Git.BlameAsync(oldRev, vm.File.OldPath);
 		}
 		catch (Core.Infra.ToolFailedException)
 		{
@@ -525,7 +543,7 @@ public partial class DiffDocumentView : UserControl
 
 	async Task ShowHoverAsync()
 	{
-		if (model is null || viewModel is null || App.Workspace is not { } ws)
+		if (model is null || viewModel is null || viewModel.Historical || App.Workspace is not { } ws)
 			return;
 		var position = Editor.GetPositionFromPoint(lastPointerPosition);
 		if (position is null)

@@ -52,4 +52,39 @@ public sealed class GitService(string repoPath)
 
 	public async Task<IReadOnlyList<BlameLine>> BlameAsync(string rev, string path, CancellationToken ct = default)
 		=> GitBlameParser.Parse(await RunAsync(ct, "blame", "--porcelain", rev, "--", path));
+
+	const string LogFormat = "--format=%H%x09%h%x09%an%x09%ad%x09%s";
+
+	public async Task<IReadOnlyList<CommitInfo>> LogAsync(
+		string? range, string? path, bool follow, int limit, CancellationToken ct = default)
+	{
+		var args = new List<string> { "log", LogFormat, "--date=short", $"-n{limit}" };
+		if (range is not null)
+			args.Add(range);
+		if (follow)
+			args.Add("--follow");
+		if (path is not null)
+		{
+			args.Add("--");
+			args.Add(path);
+		}
+		return GitLogParser.Parse(await RunAsync(ct, args.ToArray()));
+	}
+
+	/// <summary>Commits whose diff adds or removes the given text (`git log -S`).</summary>
+	public async Task<IReadOnlyList<CommitInfo>> LogPickaxeAsync(
+		string text, string? path, int limit, CancellationToken ct = default)
+	{
+		var args = new List<string> { "log", LogFormat, "--date=short", $"-n{limit}", $"-S{text}" };
+		if (path is not null)
+		{
+			args.Add("--");
+			args.Add(path);
+		}
+		return GitLogParser.Parse(await RunAsync(ct, args.ToArray()));
+	}
+
+	public async Task<IReadOnlyList<(char Status, string Path)>> DiffNameStatusAsync(
+		string a, string b, CancellationToken ct = default)
+		=> GitLogParser.ParseNameStatus(await RunAsync(ct, "diff", "--name-status", "--find-renames", a, b));
 }
