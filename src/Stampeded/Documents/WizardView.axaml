@@ -34,8 +34,8 @@
           <Button Classes="step" Classes.current="{Binding IsCurrent}" Click="OnStepClick">
             <StackPanel Orientation="Horizontal" Spacing="4">
               <TextBlock Text="{Binding Title}" />
-              <TextBlock Text="ok" FontSize="9" Opacity="0.7" VerticalAlignment="Center"
-                         IsVisible="{Binding IsSatisfied}" />
+              <TextBlock Text="✓" FontSize="11" FontWeight="Bold" Foreground="#2EA043"
+                         VerticalAlignment="Center" IsVisible="{Binding IsSatisfied}" />
             </StackPanel>
           </Button>
         </DataTemplate>
@@ -65,11 +65,7 @@
             <Border Padding="8,6" Margin="0,0,0,6" CornerRadius="3" BorderThickness="1"
                     BorderBrush="#40808080" IsVisible="{Binding IsCurrent}">
               <StackPanel Spacing="4">
-                <DockPanel>
-                  <CheckBox DockPanel.Dock="Right" IsChecked="{Binding IsChecked}" Padding="4,0"
-                            IsVisible="{Binding RequiresCheck}" Content="phase done" FontSize="11" />
-                  <TextBlock FontWeight="SemiBold" FontSize="14" Text="{Binding Title}" />
-                </DockPanel>
+                <TextBlock FontWeight="SemiBold" FontSize="14" Text="{Binding Title}" />
                 <TextBlock FontSize="12" Opacity="0.75" TextWrapping="Wrap" Text="{Binding Guidance}" />
                 <TextBlock FontSize="12" FontStyle="Italic" Opacity="0.9" TextWrapping="Wrap"
                            Text="{Binding Facts}"
@@ -93,8 +89,10 @@
                          ToolTip.Tip="Commits touching this file in the last year (hot spot indicator)" />
               <TextBlock DockPanel.Dock="Right" Width="66" FontSize="11" TextAlignment="Right"
                          VerticalAlignment="Center" Text="{Binding MinutesText}" />
-              <TextBlock DockPanel.Dock="Right" Width="90" FontSize="11" Opacity="0.8" TextAlignment="Right"
-                         VerticalAlignment="Center" Text="{Binding Delta}" />
+              <TextBlock DockPanel.Dock="Right" Width="46" FontSize="11" TextAlignment="Right"
+                         VerticalAlignment="Center" Foreground="#F85149" Text="{Binding RemovedText}" />
+              <TextBlock DockPanel.Dock="Right" Width="52" FontSize="11" TextAlignment="Right"
+                         VerticalAlignment="Center" Foreground="#2EA043" Text="{Binding AddedText}" />
               <TextBlock Text="{Binding Path}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
             </DockPanel>
           </DataTemplate>

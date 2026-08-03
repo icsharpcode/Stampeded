@@ -36,7 +36,7 @@ public sealed partial class WizardStep(string id, string title, string guidance,
 	bool isCurrent;
 }
 
-public sealed record TriageRowDisplay(string Marker, string Path, string Delta, string MinutesText, string Churn);
+public sealed record TriageRowDisplay(string Marker, string Path, string AddedText, string RemovedText, string MinutesText, string Churn);
 
 public sealed partial class WizardState : ObservableObject
 {
@@ -172,6 +172,7 @@ public class WizardViewModel : Document
 	{
 		foreach (var s in Steps)
 			s.IsCurrent = s == step;
+		Title = step == SelectStep ? "Wizard" : $"Wizard - {step.Title}";
 	}
 
 	public WizardStep Current => Steps.First(s => s.IsCurrent);
@@ -269,7 +270,7 @@ public class WizardViewModel : Document
 			};
 			int churn = workspace.ChurnByFile?.GetValueOrDefault(row.Path) ?? 0;
 			TriageRows.Add(new TriageRowDisplay(
-				marker, row.Path, $"+{row.Added} -{row.Removed}", $"~{row.Minutes} min",
+				marker, row.Path, $"+{row.Added}", $"-{row.Removed}", $"~{row.Minutes} min",
 				churn > 0 ? $"{churn}x/yr" : ""));
 		}
 	}
