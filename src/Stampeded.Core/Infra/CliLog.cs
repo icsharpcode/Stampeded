@@ -9,5 +9,9 @@ public static class CliLog
 	public static Action<string>? Sink { get; set; }
 
 	public static void Write(string category, string message)
-		=> Sink?.Invoke($"{DateTime.Now:HH:mm:ss.fff} [{category}] {message}");
+	{
+		string line = $"{DateTime.Now:HH:mm:ss.fff} [{category}] {message}";
+		Console.WriteLine(line); // mirrors to any captured stdout for headless debugging
+		Sink?.Invoke(line);
+	}
 }

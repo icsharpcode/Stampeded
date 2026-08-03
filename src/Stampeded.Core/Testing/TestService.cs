@@ -17,7 +17,10 @@ public sealed class TestService(string worktreePath)
 			// developer-facing escape hatch, upgrade if quoted paths ever matter.
 			.WithArguments(argsLine.Split(' ', StringSplitOptions.RemoveEmptyEntries))
 			.WithWorkingDirectory(worktreePath)
-			.WithEnvironmentVariables(env => env.Set("OPENSSL_ENABLE_SHA1_SIGNATURES", "1"))
+			.WithEnvironmentVariables(env => {
+				env.Set("OPENSSL_ENABLE_SHA1_SIGNATURES", "1");
+				Stampeded.Core.Infra.ExternalTool.StripMsBuildLocatorVariables(env);
+			})
 			.WithValidation(CommandResultValidation.None)
 			.WithStandardOutputPipe(PipeTarget.ToDelegate(onOutputLine))
 			.WithStandardErrorPipe(PipeTarget.ToDelegate(onOutputLine));

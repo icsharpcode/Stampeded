@@ -19,6 +19,8 @@ public class App : Application
 		if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
 		{
 			desktop.MainWindow = new MainWindow();
+			if (Program.AutoOpenPr is { } pr)
+				Workspace?.OpenPrAsync(pr).HandleExceptions();
 		}
 		base.OnFrameworkInitializationCompleted();
 	}

@@ -137,12 +137,23 @@ public sealed class RoslynWorkspaceService : IDisposable
 		var result = await CliWrap.Cli.Wrap("dotnet")
 			.WithArguments(args)
 			.WithWorkingDirectory(worktreePath)
-			.WithEnvironmentVariables(env => env.Set("OPENSSL_ENABLE_SHA1_SIGNATURES", "1"))
+			.WithEnvironmentVariables(env => {
+				env.Set("OPENSSL_ENABLE_SHA1_SIGNATURES", "1");
+				ExternalTool.StripMsBuildLocatorVariables(env);
+			})
 			.WithValidation(CliWrap.CommandResultValidation.None)
 			.ExecuteBufferedAsync(ct);
 		if (result.ExitCode != 0)
 		{
-			// NuGet reports most errors on stdout, not stderr; keep both.
+			// NuGet reports most errors on stdout, not stderr; keep both, and when both
+			// are empty capture the host environment - an output-less exit 1 points at
+			// the dotnet host itself rather than at MSBuild/NuGet.
+			Log($"restore exit {result.ExitCode}; stdout {result.StandardOutput.Length} chars, stderr {result.StandardError.Length} chars");
+			Log(Tail(result.StandardOutput, 4000));
+			Log(result.StandardError);
+			CliLog.Write("dotnet", $"restore failed (exit {result.ExitCode}); stdout={result.StandardOutput.Length}ch stderr={result.StandardError.Length}ch");
+			if (result.StandardOutput.Length == 0 && result.StandardError.Length == 0)
+				await LogHostDiagnosticsAsync(ct);
 			throw new ToolFailedException("dotnet restore", result.ExitCode,
 				result.StandardError + "\n" + Tail(result.StandardOutput, 4000));
 		}
@@ -152,6 +163,25 @@ public sealed class RoslynWorkspaceService : IDisposable
 
 	static string Tail(string text, int maxChars)
 		=> text.Length <= maxChars ? text : text[^maxChars..];
+
+	async Task LogHostDiagnosticsAsync(CancellationToken ct)
+	{
+		foreach (var name in new[] { "PATH", "DOTNET_ROOT", "DOTNET_HOST_PATH", "MSBUILD_EXE_PATH", "MSBuildSDKsPath", "MSBuildExtensionsPath" })
+			CliLog.Write("env", $"{name}={Environment.GetEnvironmentVariable(name) ?? "(unset)"}");
+		try
+		{
+			var info = await CliWrap.Cli.Wrap("dotnet")
+				.WithArguments(["--version"])
+				.WithWorkingDirectory(worktreePath)
+				.WithValidation(CliWrap.CommandResultValidation.None)
+				.ExecuteBufferedAsync(ct);
+			CliLog.Write("env", $"dotnet --version -> exit {info.ExitCode}: {info.StandardOutput.Trim()} {info.StandardError.Trim()}");
+		}
+		catch (Exception ex)
+		{
+			CliLog.Write("env", $"dotnet --version failed to start: {ex.Message}");
+		}
+	}
 
 	void DeleteBuildArtifacts()
 	{

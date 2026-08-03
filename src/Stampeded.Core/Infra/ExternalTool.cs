@@ -13,6 +13,20 @@ public sealed class ToolFailedException(string tool, int exitCode, string stdErr
 
 public static class ExternalTool
 {
+	/// <summary>
+	/// Removes MSBuildLocator's process-wide variables from a child's environment.
+	/// RegisterDefaults picks the SDK matching the HOST runtime and pins MSBUILD_EXE_PATH/
+	/// MSBuildSDKsPath to it; a child dotnet whose global.json resolves a different SDK
+	/// then gets foreign Sdks/targets forced onto it and fails its build or restore with
+	/// no output at all. Children must resolve their own SDK.
+	/// </summary>
+	public static void StripMsBuildLocatorVariables(CliWrap.Builders.EnvironmentVariablesBuilder env)
+	{
+		env.Set("MSBUILD_EXE_PATH", null);
+		env.Set("MSBuildSDKsPath", null);
+		env.Set("MSBuildExtensionsPath", null);
+	}
+
 	/// <summary>Runs a CLI tool, throwing <see cref="ToolFailedException"/> (with stderr) on a
 	/// non-zero exit; returns stdout. Cancellation kills the process tree (CliWrap).</summary>
 	public static async Task<string> RunAsync(
@@ -22,6 +36,7 @@ public static class ExternalTool
 		var result = await CliWrap.Cli.Wrap(exe)
 			.WithArguments(args)
 			.WithWorkingDirectory(workingDir)
+			.WithEnvironmentVariables(StripMsBuildLocatorVariables)
 			.WithValidation(CommandResultValidation.None)
 			.ExecuteBufferedAsync(ct);
 		string argsText = string.Join(' ', args);

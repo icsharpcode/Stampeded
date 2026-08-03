@@ -7,6 +7,9 @@ internal static class Program
 	/// <summary>The repository under review: first non-option argument, else the CWD.</summary>
 	public static string RepoPath { get; private set; } = Environment.CurrentDirectory;
 
+	/// <summary>PR to open right after startup (--pr N), for scripted/diagnostic runs.</summary>
+	public static int? AutoOpenPr { get; private set; }
+
 	[STAThread]
 	public static void Main(string[] args)
 	{
@@ -21,6 +24,9 @@ internal static class Program
 		var repoArg = args.FirstOrDefault(a => !a.StartsWith('-'));
 		if (repoArg is not null)
 			RepoPath = Path.GetFullPath(repoArg);
+		int prIndex = Array.IndexOf(args, "--pr");
+		if (prIndex >= 0 && prIndex + 1 < args.Length && int.TryParse(args[prIndex + 1], out int pr))
+			AutoOpenPr = pr;
 		BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
 	}
 
