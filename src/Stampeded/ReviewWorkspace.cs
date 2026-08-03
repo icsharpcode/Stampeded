@@ -58,6 +58,7 @@ public sealed class ReviewWorkspace(string repoPath)
 		var cts = sessionCts = new CancellationTokenSource();
 		var ct = cts.Token;
 
+		CliLog.Write("action", $"open local range {baseRef}..{headRef}");
 		string headSha = await ResolveAsync(headRef, ct);
 		string baseSha = await Git.GetMergeBaseAsync(await ResolveAsync(baseRef, ct), headSha, ct);
 		var files = await Git.DiffAsync(baseSha, headSha, ct);
@@ -88,6 +89,7 @@ public sealed class ReviewWorkspace(string repoPath)
 		var cts = sessionCts = new CancellationTokenSource();
 		var ct = cts.Token;
 
+		CliLog.Write("action", $"open PR #{number}");
 		var detail = await GitHub.GetPrAsync(number, ct);
 		string headSha = await Git.FetchPrHeadAsync(number, ct);
 		await Git.FetchBranchAsync(detail.BaseRefName, ct);
@@ -333,6 +335,7 @@ public sealed class ReviewWorkspace(string repoPath)
 		string? targetRel = sem.ToRelativePath(location.FilePath);
 		if (targetRel is null)
 			return;
+		CliLog.Write("action", $"goto definition: {targetRel}:{location.Line}{(oldSide ? " (base)" : "")}");
 		RecordOrigin(origin);
 		await NavigateToFileLineAsync(targetRel, location.Line, oldSide, record: true);
 	}

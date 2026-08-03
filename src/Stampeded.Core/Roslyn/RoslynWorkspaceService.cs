@@ -45,6 +45,7 @@ public sealed class RoslynWorkspaceService : IDisposable
 
 	void SetState(SemanticState state, string detail = "")
 	{
+		CliLog.Write("semantics", $"{state} {detail}".TrimEnd());
 		State = state;
 		StateDetail = detail;
 		StateChanged?.Invoke();
@@ -146,6 +147,7 @@ public sealed class RoslynWorkspaceService : IDisposable
 				result.StandardError + "\n" + Tail(result.StandardOutput, 4000));
 		}
 		Log($"restore ok ({(cleanRetry ? "clean retry" : "normal")})");
+		CliLog.Write("dotnet", $"restore {(cleanRetry ? "(clean retry) " : "")}-> exit 0");
 	}
 
 	static string Tail(string text, int maxChars)

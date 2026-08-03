@@ -1,0 +1,11 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:panes="using:Stampeded.Panes"
+             x:Class="Stampeded.Panes.LogPaneView"
+             x:DataType="panes:LogPaneViewModel">
+  <DockPanel>
+    <Button DockPanel.Dock="Top" HorizontalAlignment="Right" Margin="4,2" Content="Clear"
+            Click="OnClear" />
+    <ListBox x:Name="List" ItemsSource="{Binding Lines}" FontFamily="monospace" FontSize="11" />
+  </DockPanel>
+</UserControl>

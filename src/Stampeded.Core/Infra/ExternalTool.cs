@@ -18,11 +18,16 @@ public static class ExternalTool
 	public static async Task<string> RunAsync(
 		string exe, IReadOnlyList<string> args, string workingDir, CancellationToken ct = default)
 	{
+		var watch = System.Diagnostics.Stopwatch.StartNew();
 		var result = await CliWrap.Cli.Wrap(exe)
 			.WithArguments(args)
 			.WithWorkingDirectory(workingDir)
 			.WithValidation(CommandResultValidation.None)
 			.ExecuteBufferedAsync(ct);
+		string argsText = string.Join(' ', args);
+		if (argsText.Length > 160)
+			argsText = argsText[..160] + "...";
+		CliLog.Write(exe, $"{argsText} -> exit {result.ExitCode} ({watch.ElapsedMilliseconds} ms)");
 		if (result.ExitCode != 0)
 			throw new ToolFailedException(exe, result.ExitCode, result.StandardError);
 		return result.StandardOutput;

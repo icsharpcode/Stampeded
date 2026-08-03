@@ -21,7 +21,9 @@ public sealed class TestService(string worktreePath)
 			.WithValidation(CommandResultValidation.None)
 			.WithStandardOutputPipe(PipeTarget.ToDelegate(onOutputLine))
 			.WithStandardErrorPipe(PipeTarget.ToDelegate(onOutputLine));
+		Stampeded.Core.Infra.CliLog.Write("dotnet", $"{argsLine} (test run started)");
 		var result = await command.ExecuteAsync(ct);
+		Stampeded.Core.Infra.CliLog.Write("dotnet", $"{argsLine} -> exit {result.ExitCode}");
 
 		var results = new List<TestResult>();
 		foreach (var trx in Directory.EnumerateFiles(worktreePath, "*.trx", SearchOption.AllDirectories))
