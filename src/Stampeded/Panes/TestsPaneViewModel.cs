@@ -70,6 +70,16 @@ public class TestsPaneViewModel : Tool
 
 	static string DefaultArgs(string root)
 	{
+		// Full solutions often contain platform-bound projects (net472 add-ins,
+		// net*-windows test hosts) that cannot build off-Windows; prefer a
+		// cross-platform solution filter when the repo ships one (e.g. ILSpy.XPlat.slnf).
+		if (!OperatingSystem.IsWindows())
+		{
+			string? slnf = Directory.EnumerateFiles(root, "*.slnf", SearchOption.TopDirectoryOnly)
+				.FirstOrDefault(f => Path.GetFileName(f).Contains("xplat", StringComparison.OrdinalIgnoreCase));
+			if (slnf is not null)
+				return $"test --solution {Path.GetFileName(slnf)} --report-trx";
+		}
 		string? sln = Directory.EnumerateFiles(root, "*.sln", SearchOption.TopDirectoryOnly)
 			.OrderByDescending(f => new FileInfo(f).Length)
 			.FirstOrDefault();
