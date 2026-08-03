@@ -34,7 +34,10 @@ public partial class DiffDocumentView : UserControl
 	readonly DispatcherTimer hoverTimer = new() { Interval = TimeSpan.FromMilliseconds(400) };
 	readonly ReferenceElementGenerator referenceGenerator = new(_ => true);
 	readonly TextMarkerService markers;
+	readonly CommentBadgeRenderer commentBadges;
+	Dictionary<int, IReadOnlyList<CommentBadge>>? commentsByDocLine;
 	Avalonia.Point lastPointerPosition;
+	Avalonia.Point lastPointerPositionInTextView;
 	FoldingManager? foldingManager;
 	DiffDocumentModel? model;
 	DiffDocumentViewModel? viewModel;
@@ -48,6 +51,8 @@ public partial class DiffDocumentView : UserControl
 		Editor.TextArea.TextView.BackgroundRenderers.Add(new DiffLineBackgroundRenderer(() => model?.Tags));
 		markers = new TextMarkerService(Editor.TextArea.TextView);
 		Editor.TextArea.TextView.BackgroundRenderers.Add(markers);
+		commentBadges = new CommentBadgeRenderer(() => commentsByDocLine, () => (Editor.FontFamily, Editor.FontSize));
+		Editor.TextArea.TextView.BackgroundRenderers.Add(commentBadges);
 		Editor.TextArea.TextView.ElementGenerators.Add(referenceGenerator);
 		// Hand cursor only while Ctrl is held, matching the Ctrl+Click navigation gesture
 		// (a permanent hand over every identifier promises plain-click navigation we
@@ -92,10 +97,12 @@ public partial class DiffDocumentView : UserControl
 		{
 			ws.SemanticsChanged += OnSemanticsChanged;
 			ws.CoverageChanged += OnCoverageChanged;
+			ws.CommentsChanged += OnCommentsChangedForBadges;
 		}
 		Themes.ThemeManager.Current.ThemeChanged += OnThemeChangedForSemantics;
 		QueueSemanticsRefresh();
 		OnCoverageChanged();
+		OnCommentsChangedForBadges();
 	}
 
 	protected override void OnDetachedFromVisualTree(Avalonia.VisualTreeAttachmentEventArgs e)
@@ -106,6 +113,7 @@ public partial class DiffDocumentView : UserControl
 		{
 			ws.SemanticsChanged -= OnSemanticsChanged;
 			ws.CoverageChanged -= OnCoverageChanged;
+			ws.CommentsChanged -= OnCommentsChangedForBadges;
 		}
 		Themes.ThemeManager.Current.ThemeChanged -= OnThemeChangedForSemantics;
 		base.OnDetachedFromVisualTree(e);
@@ -134,6 +142,40 @@ public partial class DiffDocumentView : UserControl
 		CommentPopup.VerticalOffset = anchor.Y;
 		CommentPopup.IsOpen = true;
 		CommentBox.Focus();
+	}
+
+	void OnCommentsChangedForBadges()
+	{
+		Dispatcher.UIThread.Post(() => {
+			RebuildCommentBadges();
+			Editor.TextArea.TextView.Redraw();
+		});
+	}
+
+	void RebuildCommentBadges()
+	{
+		commentsByDocLine = null;
+		if (model is null || viewModel is null || viewModel.Historical || App.Workspace is not { } ws)
+			return;
+		var result = new Dictionary<int, List<CommentBadge>>();
+		void Add(string path, bool oldSide, int? blobLine, bool isDraft, string author, string body)
+		{
+			string expected = oldSide ? viewModel!.File.OldPath : viewModel!.File.Path;
+			if (blobLine is not { } line || path != expected)
+				return;
+			int? docLine = oldSide ? model!.DocLineFromOldLine(line) : model!.DocLineFromNewLine(line);
+			if (docLine is not { } dl)
+				return;
+			if (!result.TryGetValue(dl, out var list))
+				result[dl] = list = [];
+			list.Add(new CommentBadge(isDraft, author, body));
+		}
+		foreach (var draft in ws.Drafts)
+			Add(draft.Stored.Anchor.Path, draft.Stored.Anchor.OldSide, draft.CurrentLine, true, "you", draft.Stored.Body);
+		foreach (var posted in ws.PostedComments)
+			Add(posted.RelPath, posted.OldSide, posted.Line, false, posted.Author, posted.Body);
+		if (result.Count > 0)
+			commentsByDocLine = result.ToDictionary(kv => kv.Key, kv => (IReadOnlyList<CommentBadge>)kv.Value);
 	}
 
 	void OnCommentBoxKeyDown(object? sender, KeyEventArgs e)
@@ -255,6 +297,7 @@ public partial class DiffDocumentView : UserControl
 		referenceGenerator.References = null;
 		markers.RemoveAll(_ => true);
 		QueueSemanticsRefresh();
+		OnCommentsChangedForBadges();
 		if (vm.TakePendingCaretLine() is int line)
 			Dispatcher.UIThread.Post(() => MoveCaretToLine(line));
 		if (ActiveView == this)
@@ -604,6 +647,7 @@ public partial class DiffDocumentView : UserControl
 	void OnPointerMovedForHover(object? sender, PointerEventArgs e)
 	{
 		lastPointerPosition = e.GetPosition(Editor);
+		lastPointerPositionInTextView = e.GetPosition(Editor.TextArea.TextView);
 		ToolTip.SetIsOpen(Editor, false);
 		hoverTimer.Stop();
 		hoverTimer.Start();
@@ -623,6 +667,16 @@ public partial class DiffDocumentView : UserControl
 
 	async Task ShowHoverAsync()
 	{
+		// Comment badges win over symbol hover: their full bodies are only readable here.
+		foreach (var (rect, fullText) in commentBadges.HitRects)
+		{
+			if (rect.Contains(lastPointerPositionInTextView))
+			{
+				ToolTip.SetTip(Editor, fullText);
+				ToolTip.SetIsOpen(Editor, true);
+				return;
+			}
+		}
 		if (model is null || viewModel is null || viewModel.Historical || App.Workspace is not { } ws)
 			return;
 		var position = Editor.GetPositionFromPoint(lastPointerPosition);

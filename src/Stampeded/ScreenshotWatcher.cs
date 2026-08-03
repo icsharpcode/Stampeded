@@ -33,6 +33,12 @@ static class ScreenshotWatcher
 				// so interactive UI (e.g. the inline comment editor) can be verified.
 				if (lines.Contains("comment"))
 					Documents.DiffDocumentView.ActiveView?.CommentAtCaretCommand();
+				foreach (var command in lines.Where(l => l.StartsWith("goto:", StringComparison.Ordinal)))
+				{
+					var parts = command.Split(':', 3);
+					if (parts.Length == 3 && int.TryParse(parts[2], out int gotoLine))
+						App.Workspace?.NavigateToFileLineAsync(parts[1], gotoLine, oldSide: false, record: false).HandleExceptions();
+				}
 				var size = new Avalonia.PixelSize((int)window.Bounds.Width, (int)window.Bounds.Height);
 				using var bitmap = new RenderTargetBitmap(size, new Avalonia.Vector(96, 96));
 				bitmap.Render(window);
