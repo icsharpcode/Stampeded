@@ -26,6 +26,8 @@ public partial class WizardView : UserControl
 
 	void OnNext(object? sender, RoutedEventArgs e) => Vm?.NextStep();
 
+	void OnSkip(object? sender, RoutedEventArgs e) => Vm?.SkipStep();
+
 	void OnBounce(object? sender, RoutedEventArgs e) => Vm?.Bounce();
 
 	void OnRecord(object? sender, RoutedEventArgs e) => Vm?.OpenRecord();

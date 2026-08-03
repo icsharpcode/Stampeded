@@ -195,10 +195,17 @@ public class WizardViewModel : Document
 
 	public void NextStep()
 	{
-		// Next is the completion gesture: advancing past a phase marks it done. Browsing
-		// without committing is what the step chips are for.
+		// Next is the completion gesture: advancing past a phase marks it done. Skip (and
+		// the step chips) move on without committing.
 		if (Current.RequiresCheck)
 			Current.IsChecked = true;
+		Advance();
+	}
+
+	public void SkipStep() => Advance();
+
+	void Advance()
+	{
 		int i = Steps.IndexOf(Current);
 		if (i < Steps.Count - 1)
 			SelectStepCommand(Steps[i + 1]);
