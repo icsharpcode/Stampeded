@@ -310,12 +310,12 @@ public sealed class ReviewWorkspace(string repoPath)
 		});
 	}
 
-	DiffDocumentViewModel? ShowDocument(string id, Func<DiffDocumentViewModel> create)
+	T? ShowDocument<T>(string id, Func<T> create) where T : Dock.Model.Mvvm.Controls.Document
 	{
 		if (Documents is null || Factory is null)
 			return null;
 		var existing = Documents.VisibleDockables?
-			.OfType<DiffDocumentViewModel>()
+			.OfType<T>()
 			.FirstOrDefault(d => d.Id == id);
 		if (existing is null)
 		{
@@ -463,11 +463,7 @@ public sealed class ReviewWorkspace(string repoPath)
 	/// <summary>Opens (or activates) a plain text document tab (CI logs, reports, ...).</summary>
 	public void OpenTextDocument(string id, string title, string text)
 	{
-		ShowDocument(id, () => {
-			var vm = DiffDocumentViewModel.ForSource(title, text);
-			vm.Title = title;
-			return vm;
-		});
+		ShowDocument(id, () => new TextDocumentViewModel(text) { Title = title });
 	}
 
 	public async Task OpenAdjacentFileAsync(int delta)

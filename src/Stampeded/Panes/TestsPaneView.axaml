@@ -24,6 +24,6 @@
       </ListBox.ItemTemplate>
     </ListBox>
     <TextBox Grid.Row="3" x:Name="OutputBox" Text="{Binding State.Output}" IsReadOnly="True"
-             AcceptsReturn="True" FontFamily="monospace" FontSize="11" TextWrapping="NoWrap" />
+             AcceptsReturn="True" FontFamily="monospace" FontSize="11" TextWrapping="Wrap" />
   </Grid>
 </UserControl>

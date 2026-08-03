@@ -15,6 +15,6 @@
     </DockPanel>
     <TextBlock Grid.Row="1" Margin="6,2" Opacity="0.7" TextWrapping="Wrap" Text="{Binding State.Status}" />
     <TextBox Grid.Row="2" x:Name="OutputBox" Text="{Binding State.Output}" IsReadOnly="True"
-             AcceptsReturn="True" FontFamily="monospace" FontSize="11" TextWrapping="NoWrap" />
+             AcceptsReturn="True" FontFamily="monospace" FontSize="11" TextWrapping="Wrap" />
   </Grid>
 </UserControl>
