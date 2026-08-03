@@ -71,7 +71,8 @@ public class PrListPaneViewModel : Tool
 				return;
 			}
 			var prs = await workspace.GitHub.ListOpenPrsAsync();
-			foreach (var pr in prs)
+			// Drafts are not asking for review yet: they sink to the bottom.
+			foreach (var pr in prs.OrderBy(p => p.IsDraft ? 1 : 0))
 				Items.Add(pr);
 			State.Status = $"{prs.Count} open pull request(s)";
 		}

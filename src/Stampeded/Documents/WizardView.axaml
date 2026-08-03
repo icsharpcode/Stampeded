@@ -156,13 +156,28 @@
           <TextBlock DockPanel.Dock="Bottom" Opacity="0.7" FontSize="11" TextWrapping="Wrap"
                      Margin="0,4,0,0" Text="{Binding PrList.State.Status}" />
           <ListBox x:Name="PrListBox" ItemsSource="{Binding PrList.Items}" DoubleTapped="OnPrDoubleTapped">
+            <ListBox.Styles>
+              <Style Selector="StackPanel.draftpr">
+                <Setter Property="Opacity" Value="0.55" />
+              </Style>
+            </ListBox.Styles>
             <ListBox.ItemTemplate>
               <DataTemplate x:DataType="gh:PrSummary">
-                <StackPanel Margin="2">
-                  <TextBlock FontWeight="SemiBold" TextTrimming="CharacterEllipsis">
-                    <Run Text="{Binding NumberDisplay}" /> <Run Text="{Binding Title}" />
-                  </TextBlock>
-                  <TextBlock Opacity="0.6" FontSize="11">
+                <StackPanel Margin="2" Classes.draftpr="{Binding IsDraft}">
+                  <DockPanel>
+                    <Panel DockPanel.Dock="Left" Width="14" VerticalAlignment="Center"
+                           ToolTip.Tip="CI: green / in progress / failing">
+                      <TextBlock Text="●" Foreground="#2EA043" IsVisible="{Binding ChecksGreen}" />
+                      <TextBlock Text="●" Foreground="#D29922" IsVisible="{Binding ChecksPending}" />
+                      <TextBlock Text="●" Foreground="#F85149" IsVisible="{Binding ChecksFailed}" />
+                    </Panel>
+                    <TextBlock DockPanel.Dock="Right" Text="draft" FontSize="10" Opacity="0.8"
+                               VerticalAlignment="Center" IsVisible="{Binding IsDraft}" />
+                    <TextBlock FontWeight="SemiBold" TextTrimming="CharacterEllipsis">
+                      <Run Text="{Binding NumberDisplay}" /> <Run Text="{Binding Title}" />
+                    </TextBlock>
+                  </DockPanel>
+                  <TextBlock Opacity="0.6" FontSize="11" Margin="14,0,0,0">
                     <Run Text="{Binding Author.Login}" /> · <Run Text="{Binding HeadRefName}" />
                   </TextBlock>
                 </StackPanel>

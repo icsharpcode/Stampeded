@@ -16,8 +16,39 @@ public sealed record PrSummary(
 	string HeadRefName,
 	string BaseRefName,
 	bool IsDraft,
-	DateTimeOffset UpdatedAt)
+	DateTimeOffset UpdatedAt,
+	System.Text.Json.JsonElement? StatusCheckRollup = null)
 {
+	/// <summary>"fail" / "pending" / "green" / "none", folded from the check rollup
+	/// (check runs carry status+conclusion, legacy status contexts carry state).</summary>
+	public string ChecksBucket {
+		get {
+			if (StatusCheckRollup is not { ValueKind: System.Text.Json.JsonValueKind.Array } rollup
+				|| rollup.GetArrayLength() == 0)
+				return "none";
+			bool pending = false;
+			foreach (var item in rollup.EnumerateArray())
+			{
+				string? conclusion = item.TryGetProperty("conclusion", out var c) ? c.GetString() : null;
+				string? state = item.TryGetProperty("state", out var s) ? s.GetString() : null;
+				string verdict = (conclusion is { Length: > 0 } ? conclusion : state) ?? "";
+				switch (verdict.ToUpperInvariant())
+				{
+					case "FAILURE" or "ERROR" or "TIMED_OUT" or "STARTUP_FAILURE":
+						return "fail";
+					case "" or "PENDING" or "IN_PROGRESS" or "QUEUED" or "EXPECTED" or "WAITING" or "REQUESTED":
+						pending = true;
+						break;
+				}
+			}
+			return pending ? "pending" : "green";
+		}
+	}
+
+	public bool ChecksFailed => ChecksBucket == "fail";
+	public bool ChecksPending => ChecksBucket == "pending";
+	public bool ChecksGreen => ChecksBucket == "green";
+
 	public string NumberDisplay => $"#{Number}";
 }
 
@@ -80,7 +111,7 @@ public sealed class GitHubService(string repoPath)
 	public Task<IReadOnlyList<PrSummary>> ListOpenPrsAsync(CancellationToken ct = default)
 		=> JsonAsync<IReadOnlyList<PrSummary>>(ct,
 			"pr", "list",
-			"--json", "number,title,author,headRefName,baseRefName,isDraft,updatedAt",
+			"--json", "number,title,author,headRefName,baseRefName,isDraft,updatedAt,statusCheckRollup",
 			"--limit", "50");
 
 	public Task<PrDetail> GetPrAsync(int number, CancellationToken ct = default)
