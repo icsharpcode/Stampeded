@@ -7,7 +7,16 @@ namespace Stampeded.Documents;
 public class DiffDocumentViewModel(FileDiff file, DiffDocumentModel model) : Document
 {
 	public FileDiff File { get; } = file;
-	public DiffDocumentModel Model { get; } = model;
+
+	/// <summary>The diff as built from the blobs, without synthetic thread lines; the
+	/// base every comment-thread re-splice starts from.</summary>
+	public DiffDocumentModel PristineModel { get; } = model;
+
+	public DiffDocumentModel Model { get; private set; } = model;
+
+	/// <summary>Swaps the displayed model (e.g. after inserting comment-thread lines);
+	/// the view re-applies text, tags and foldings.</summary>
+	public void ReplaceModel(DiffDocumentModel replacement) => Model = replacement;
 
 	/// <summary>True for plain source views of unchanged files (identity diff model).</summary>
 	public bool IsSourceView { get; private init; }

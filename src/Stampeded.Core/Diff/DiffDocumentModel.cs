@@ -6,6 +6,8 @@ public enum DiffLineKind
 	Added,
 	Removed,
 	Filler,
+	/// <summary>A synthetic line reserved for an inline comment thread; maps to no blob line.</summary>
+	Comment,
 }
 
 /// <summary>A changed character range within one document line (line-relative offsets).</summary>
@@ -71,7 +73,74 @@ public sealed class DiffDocumentModel
 	/// <summary>1-based document line for a 1-based old-file line, or null.</summary>
 	public int? DocLineFromOldLine(int oldLine)
 		=> oldToDoc.Value.TryGetValue(oldLine, out int doc) ? doc : null;
+
+	public const string ThreadMarkerPrefix = "@@thread:";
+	public const string ThreadMarkerSuffix = "@@";
+
+	/// <summary>Derives a model with one synthetic marker line inserted below each
+	/// anchor's document line. The marker text carries the anchor key; the view replaces
+	/// it with an interactive thread control. A pure splice - the diff is not recomputed,
+	/// blob mappings shift with the insertions, and hunk spans stretch over insertions
+	/// inside them.</summary>
+	public DiffDocumentModel WithThreadLines(IReadOnlyList<ThreadAnchor> anchors)
+	{
+		var insertAfter = new SortedDictionary<int, List<string>>();
+		foreach (var anchor in anchors)
+		{
+			int? docLine = anchor.OldSide ? DocLineFromOldLine(anchor.BlobLine) : DocLineFromNewLine(anchor.BlobLine);
+			if (docLine is not { } dl)
+				continue;
+			if (!insertAfter.TryGetValue(dl, out var keys))
+				insertAfter[dl] = keys = [];
+			keys.Add(anchor.Key);
+		}
+		if (insertAfter.Count == 0)
+			return this;
+
+		var sourceLines = Text.Split('\n');
+		var newLines = new List<string>(sourceLines.Length + anchors.Count);
+		var newTags = new List<DiffLineTag>(Tags.Count + anchors.Count);
+		// 1-based doc line -> number of lines inserted at or before it, for hunk shifting.
+		var shiftAt = new int[Tags.Count + 2];
+		for (int i = 0; i < Tags.Count; i++)
+		{
+			newLines.Add(sourceLines[i]);
+			newTags.Add(Tags[i]);
+			if (insertAfter.TryGetValue(i + 1, out var keys))
+			{
+				foreach (var key in keys)
+				{
+					newLines.Add(ThreadMarkerPrefix + key + ThreadMarkerSuffix);
+					newTags.Add(new DiffLineTag(DiffLineKind.Comment, 0, 0, null));
+				}
+				shiftAt[i + 1] = keys.Count;
+			}
+		}
+		// Keep any trailing text beyond the tagged lines (e.g. final newline artifacts).
+		for (int i = Tags.Count; i < sourceLines.Length; i++)
+			newLines.Add(sourceLines[i]);
+		var cumulative = new int[shiftAt.Length];
+		for (int i = 1; i < shiftAt.Length; i++)
+			cumulative[i] = cumulative[i - 1] + shiftAt[i];
+		int Shift(int docLine) => docLine + cumulative[Math.Min(docLine, cumulative.Length - 1)];
+		// An insertion sits BELOW its anchor line, so a hunk ending exactly at the anchor
+		// stretches over the thread; a hunk starting after it just moves down.
+		var newHunks = Hunks
+			.Select(h => new HunkSpan(
+				h.FirstDocLine + cumulative[Math.Min(h.FirstDocLine - 1, cumulative.Length - 1)],
+				Shift(h.LastDocLine)))
+			.ToList();
+		return new DiffDocumentModel {
+			Text = string.Join('\n', newLines),
+			Tags = newTags,
+			Hunks = newHunks,
+		};
+	}
 }
+
+/// <summary>Where a comment thread attaches: a blob line on one side, plus the key the
+/// view uses to find the thread content for the marker line.</summary>
+public sealed record ThreadAnchor(bool OldSide, int BlobLine, string Key);
 
 // DiffLib annotates its generic parameters as IList<T?>, which makes every call site a
 // nullability mismatch for T=string even though our inputs never contain nulls. The

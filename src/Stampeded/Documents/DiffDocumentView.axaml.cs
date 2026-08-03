@@ -34,10 +34,9 @@ public partial class DiffDocumentView : UserControl
 	readonly DispatcherTimer hoverTimer = new() { Interval = TimeSpan.FromMilliseconds(400) };
 	readonly ReferenceElementGenerator referenceGenerator = new(_ => true);
 	readonly TextMarkerService markers;
-	readonly CommentBadgeRenderer commentBadges;
-	Dictionary<int, IReadOnlyList<CommentBadge>>? commentsByDocLine;
+	readonly Editor.ThreadElementGenerator threadGenerator = new();
+	Dictionary<string, ThreadData>? threadsByKey;
 	Avalonia.Point lastPointerPosition;
-	Avalonia.Point lastPointerPositionInTextView;
 	FoldingManager? foldingManager;
 	DiffDocumentModel? model;
 	DiffDocumentViewModel? viewModel;
@@ -51,8 +50,8 @@ public partial class DiffDocumentView : UserControl
 		Editor.TextArea.TextView.BackgroundRenderers.Add(new DiffLineBackgroundRenderer(() => model?.Tags));
 		markers = new TextMarkerService(Editor.TextArea.TextView);
 		Editor.TextArea.TextView.BackgroundRenderers.Add(markers);
-		commentBadges = new CommentBadgeRenderer(() => commentsByDocLine, () => (Editor.FontFamily, Editor.FontSize));
-		Editor.TextArea.TextView.BackgroundRenderers.Add(commentBadges);
+		threadGenerator.ControlFactory = BuildThreadControl;
+		Editor.TextArea.TextView.ElementGenerators.Add(threadGenerator);
 		Editor.TextArea.TextView.ElementGenerators.Add(referenceGenerator);
 		// Hand cursor only while Ctrl is held, matching the Ctrl+Click navigation gesture
 		// (a permanent hand over every identifier promises plain-click navigation we
@@ -97,12 +96,12 @@ public partial class DiffDocumentView : UserControl
 		{
 			ws.SemanticsChanged += OnSemanticsChanged;
 			ws.CoverageChanged += OnCoverageChanged;
-			ws.CommentsChanged += OnCommentsChangedForBadges;
+			ws.CommentsChanged += OnCommentsChangedForThreads;
 		}
 		Themes.ThemeManager.Current.ThemeChanged += OnThemeChangedForSemantics;
 		QueueSemanticsRefresh();
 		OnCoverageChanged();
-		OnCommentsChangedForBadges();
+		OnCommentsChangedForThreads();
 	}
 
 	protected override void OnDetachedFromVisualTree(Avalonia.VisualTreeAttachmentEventArgs e)
@@ -113,7 +112,7 @@ public partial class DiffDocumentView : UserControl
 		{
 			ws.SemanticsChanged -= OnSemanticsChanged;
 			ws.CoverageChanged -= OnCoverageChanged;
-			ws.CommentsChanged -= OnCommentsChangedForBadges;
+			ws.CommentsChanged -= OnCommentsChangedForThreads;
 		}
 		Themes.ThemeManager.Current.ThemeChanged -= OnThemeChangedForSemantics;
 		base.OnDetachedFromVisualTree(e);
@@ -144,38 +143,132 @@ public partial class DiffDocumentView : UserControl
 		CommentBox.Focus();
 	}
 
-	void OnCommentsChangedForBadges()
+	sealed record ThreadComment(bool IsDraft, string Author, string Body, Guid? DraftId);
+
+	sealed record ThreadData(bool OldSide, int BlobLine, List<ThreadComment> Comments);
+
+	void OnCommentsChangedForThreads()
 	{
-		Dispatcher.UIThread.Post(() => {
-			RebuildCommentBadges();
-			Editor.TextArea.TextView.Redraw();
-		});
+		Dispatcher.UIThread.Post(RebuildThreads);
 	}
 
-	void RebuildCommentBadges()
+	/// <summary>Recomputes the comment threads of this file and re-splices the document
+	/// with a reserved line per thread; caret and view position are restored via the
+	/// blob mapping, which survives the reflow.</summary>
+	void RebuildThreads()
 	{
-		commentsByDocLine = null;
-		if (model is null || viewModel is null || viewModel.Historical || App.Workspace is not { } ws)
+		if (viewModel is null || viewModel.Historical || App.Workspace is not { } ws)
 			return;
-		var result = new Dictionary<int, List<CommentBadge>>();
-		void Add(string path, bool oldSide, int? blobLine, bool isDraft, string author, string body)
+		var threads = new Dictionary<string, ThreadData>();
+		void Add(string path, bool oldSide, int? blobLine, bool isDraft, string author, string body, Guid? draftId)
 		{
 			string expected = oldSide ? viewModel!.File.OldPath : viewModel!.File.Path;
 			if (blobLine is not { } line || path != expected)
 				return;
-			int? docLine = oldSide ? model!.DocLineFromOldLine(line) : model!.DocLineFromNewLine(line);
-			if (docLine is not { } dl)
-				return;
-			if (!result.TryGetValue(dl, out var list))
-				result[dl] = list = [];
-			list.Add(new CommentBadge(isDraft, author, body));
+			string key = $"{(oldSide ? "o" : "n")}{line}";
+			if (!threads.TryGetValue(key, out var thread))
+				threads[key] = thread = new ThreadData(oldSide, line, []);
+			thread.Comments.Add(new ThreadComment(isDraft, author, body, draftId));
 		}
-		foreach (var draft in ws.Drafts)
-			Add(draft.Stored.Anchor.Path, draft.Stored.Anchor.OldSide, draft.CurrentLine, true, "you", draft.Stored.Body);
 		foreach (var posted in ws.PostedComments)
-			Add(posted.RelPath, posted.OldSide, posted.Line, false, posted.Author, posted.Body);
-		if (result.Count > 0)
-			commentsByDocLine = result.ToDictionary(kv => kv.Key, kv => (IReadOnlyList<CommentBadge>)kv.Value);
+			Add(posted.RelPath, posted.OldSide, posted.Line, false, posted.Author, posted.Body, null);
+		foreach (var draft in ws.Drafts)
+			Add(draft.Stored.Anchor.Path, draft.Stored.Anchor.OldSide, draft.CurrentLine, true, "you (draft)", draft.Stored.Body, draft.Stored.Id);
+
+		threadsByKey = threads.Count == 0 ? null : threads;
+		var anchors = threads
+			.OrderBy(t => t.Value.BlobLine)
+			.Select(t => new Core.Diff.ThreadAnchor(t.Value.OldSide, t.Value.BlobLine, t.Key))
+			.ToList();
+		var target = anchors.Count == 0
+			? viewModel.PristineModel
+			: viewModel.PristineModel.WithThreadLines(anchors);
+		if (ReferenceEquals(target, model) || target.Text == model?.Text)
+		{
+			Editor.TextArea.TextView.Redraw();
+			return;
+		}
+		var caret = CaretBlobPosition();
+		viewModel.ReplaceModel(target);
+		model = target;
+		ApplyModelToEditor(target);
+		if (caret is { } restore)
+		{
+			int? docLine = restore.OldSide ? target.DocLineFromOldLine(restore.Line) : target.DocLineFromNewLine(restore.Line);
+			if (docLine is { } dl)
+				MoveCaretToLine(dl);
+		}
+	}
+
+	void ApplyModelToEditor(DiffDocumentModel m)
+	{
+		Editor.Text = m.Text;
+		margin.Tags = m.Tags;
+		margin.InvalidateMeasure();
+		Overview.Attach(Editor, m.Tags);
+		InstallFoldings(m);
+		referenceGenerator.References = null;
+		markers.RemoveAll(_ => true);
+		QueueSemanticsRefresh();
+	}
+
+	Avalonia.Controls.Control? BuildThreadControl(string key)
+	{
+		if (threadsByKey is null || !threadsByKey.TryGetValue(key, out var thread))
+			return null;
+		bool dark = Themes.ThemeManager.Current.IsDarkTheme;
+		var panel = new Avalonia.Controls.StackPanel { Spacing = 4 };
+		foreach (var comment in thread.Comments)
+		{
+			var header = new Avalonia.Controls.DockPanel();
+			if (comment.DraftId is { } draftId)
+			{
+				var delete = new Avalonia.Controls.Button {
+					Content = "Delete draft",
+					FontSize = 10,
+					Padding = new Avalonia.Thickness(5, 1),
+					[Avalonia.Controls.DockPanel.DockProperty] = Avalonia.Controls.Dock.Right,
+				};
+				delete.Click += (_, _) => App.Workspace?.RemoveDraft(draftId);
+				header.Children.Add(delete);
+			}
+			header.Children.Add(new Avalonia.Controls.TextBlock {
+				Text = comment.Author,
+				FontWeight = Avalonia.Media.FontWeight.SemiBold,
+				FontSize = 12,
+				Foreground = comment.IsDraft
+					? new Avalonia.Media.SolidColorBrush(Avalonia.Media.Color.Parse("#D29922"))
+					: (dark ? Avalonia.Media.Brushes.Gainsboro : Avalonia.Media.Brushes.Black),
+			});
+			panel.Children.Add(header);
+			panel.Children.Add(new Avalonia.Controls.SelectableTextBlock {
+				Text = comment.Body,
+				TextWrapping = Avalonia.Media.TextWrapping.Wrap,
+				FontSize = 12,
+				Margin = new Avalonia.Thickness(0, 0, 0, 4),
+			});
+		}
+		var reply = new Avalonia.Controls.Button { Content = "Reply", FontSize = 10, Padding = new Avalonia.Thickness(6, 1) };
+		reply.Click += (_, _) => {
+			int? docLine = thread.OldSide ? model?.DocLineFromOldLine(thread.BlobLine) : model?.DocLineFromNewLine(thread.BlobLine);
+			if (docLine is { } dl)
+			{
+				MoveCaretToLine(dl);
+				CommentAtCaretCommand();
+			}
+		};
+		panel.Children.Add(reply);
+		return new Avalonia.Controls.Border {
+			Child = panel,
+			Background = new Avalonia.Media.SolidColorBrush(Avalonia.Media.Color.Parse(dark ? "#2B2417" : "#FFF8C5"), dark ? 0.9 : 0.9),
+			BorderBrush = new Avalonia.Media.SolidColorBrush(Avalonia.Media.Color.Parse("#D2992255")),
+			BorderThickness = new Avalonia.Thickness(1),
+			CornerRadius = new Avalonia.CornerRadius(4),
+			Padding = new Avalonia.Thickness(10, 6),
+			Margin = new Avalonia.Thickness(24, 2, 8, 2),
+			MaxWidth = 760,
+			HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Left,
+		};
 	}
 
 	void OnCommentBoxKeyDown(object? sender, KeyEventArgs e)
@@ -297,7 +390,7 @@ public partial class DiffDocumentView : UserControl
 		referenceGenerator.References = null;
 		markers.RemoveAll(_ => true);
 		QueueSemanticsRefresh();
-		OnCommentsChangedForBadges();
+		OnCommentsChangedForThreads();
 		if (vm.TakePendingCaretLine() is int line)
 			Dispatcher.UIThread.Post(() => MoveCaretToLine(line));
 		if (ActiveView == this)
@@ -647,7 +740,6 @@ public partial class DiffDocumentView : UserControl
 	void OnPointerMovedForHover(object? sender, PointerEventArgs e)
 	{
 		lastPointerPosition = e.GetPosition(Editor);
-		lastPointerPositionInTextView = e.GetPosition(Editor.TextArea.TextView);
 		ToolTip.SetIsOpen(Editor, false);
 		hoverTimer.Stop();
 		hoverTimer.Start();
@@ -667,16 +759,6 @@ public partial class DiffDocumentView : UserControl
 
 	async Task ShowHoverAsync()
 	{
-		// Comment badges win over symbol hover: their full bodies are only readable here.
-		foreach (var (rect, fullText) in commentBadges.HitRects)
-		{
-			if (rect.Contains(lastPointerPositionInTextView))
-			{
-				ToolTip.SetTip(Editor, fullText);
-				ToolTip.SetIsOpen(Editor, true);
-				return;
-			}
-		}
 		if (model is null || viewModel is null || viewModel.Historical || App.Workspace is not { } ws)
 			return;
 		var position = Editor.GetPositionFromPoint(lastPointerPosition);
