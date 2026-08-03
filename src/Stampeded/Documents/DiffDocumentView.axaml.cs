@@ -222,6 +222,12 @@ public partial class DiffDocumentView : UserControl
 		}
 	}
 
+	void ApplyMarginCursors()
+	{
+		foreach (var marginControl in Editor.TextArea.LeftMargins.OfType<Avalonia.Controls.Control>())
+			marginControl.Cursor = new Cursor(StandardCursorType.Arrow);
+	}
+
 	void ApplyModelToEditor(DiffDocumentModel m)
 	{
 		Editor.Text = m.Text;
@@ -229,6 +235,7 @@ public partial class DiffDocumentView : UserControl
 		margin.InvalidateMeasure();
 		Overview.Attach(Editor, m.Tags);
 		InstallFoldings(m);
+		ApplyMarginCursors();
 		referenceGenerator.References = null;
 		markers.RemoveAll(_ => true);
 		QueueSemanticsRefresh();
@@ -323,7 +330,12 @@ public partial class DiffDocumentView : UserControl
 				Foreground = new Avalonia.Media.SolidColorBrush(Avalonia.Media.Color.Parse("#2EA043")),
 			});
 		}
+		foreach (var button in Avalonia.LogicalTree.LogicalExtensions.GetLogicalDescendants(panel).OfType<Avalonia.Controls.Button>())
+			button.Cursor = new Cursor(StandardCursorType.Hand);
 		return new Avalonia.Controls.Border {
+			// The editor's I-beam must not bleed over the embedded box; children without
+			// their own cursor inherit the arrow from here.
+			Cursor = new Cursor(StandardCursorType.Arrow),
 			Opacity = resolvedThread ? 0.55 : 1.0,
 			Child = panel,
 			Background = new Avalonia.Media.SolidColorBrush(Avalonia.Media.Color.Parse(dark ? "#2B2417" : "#FFF8C5"), dark ? 0.9 : 0.9),
@@ -453,6 +465,7 @@ public partial class DiffDocumentView : UserControl
 		margin.InvalidateMeasure();
 		Overview.Attach(Editor, vm.Model.Tags);
 		InstallFoldings(vm.Model);
+		ApplyMarginCursors();
 		referenceGenerator.References = null;
 		markers.RemoveAll(_ => true);
 		QueueSemanticsRefresh();
@@ -806,9 +819,35 @@ public partial class DiffDocumentView : UserControl
 	void OnPointerMovedForHover(object? sender, PointerEventArgs e)
 	{
 		lastPointerPosition = e.GetPosition(Editor);
+		UpdateTextCursor(e);
 		ToolTip.SetIsOpen(Editor, false);
 		hoverTimer.Stop();
 		hoverTimer.Start();
+	}
+
+	bool foldCursorActive;
+
+	/// <summary>Hand cursor over collapsed-fold markers - they are drawn text, not
+	/// controls, so the affordance has to be set at the view level.</summary>
+	void UpdateTextCursor(PointerEventArgs e)
+	{
+		var view = Editor.TextArea.TextView;
+		bool overFold = false;
+		var point = e.GetPosition(view) + view.ScrollOffset;
+		var visualLine = view.GetVisualLineFromVisualTop(point.Y);
+		if (visualLine is not null)
+		{
+			var textLine = visualLine.GetTextLineByVisualYPosition(point.Y);
+			int column = visualLine.GetVisualColumn(textLine, point.X, allowVirtualSpace: false);
+			var element = visualLine.Elements.FirstOrDefault(el =>
+				el.VisualColumn <= column && column < el.VisualColumn + el.VisualLength);
+			overFold = element?.GetType().Name.Contains("Folding", StringComparison.Ordinal) == true;
+		}
+		if (overFold != foldCursorActive)
+		{
+			foldCursorActive = overFold;
+			view.Cursor = new Cursor(overFold ? StandardCursorType.Hand : StandardCursorType.Ibeam);
+		}
 	}
 
 	void CancelHover()

@@ -16,6 +16,12 @@ namespace Stampeded.Diff;
 /// </summary>
 public sealed class OverviewBar : Control
 {
+	public OverviewBar()
+	{
+		// Click-to-jump surface, not text.
+		Cursor = new Cursor(StandardCursorType.Arrow);
+	}
+
 	static readonly IBrush AddedTick = new SolidColorBrush(Color.Parse("#2EA043"));
 	static readonly IBrush RemovedTick = new SolidColorBrush(Color.Parse("#F85149"));
 	static readonly IBrush ViewportBrush = new SolidColorBrush(Colors.Gray, 0.25);
