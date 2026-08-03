@@ -49,6 +49,10 @@ public sealed partial class PrepareItem(string label) : ObservableObject
 
 /// <summary>A local branch on the start page, annotated with its associated PR when one
 /// exists - including whether the local head differs from what the PR is showing.</summary>
+public sealed record FileCostRow(string Marker, string Added, string Removed, string Minutes, string Churn, string Path);
+
+public sealed record CommitLine(string ShortSha, string Added, string Removed, string Subject);
+
 public sealed record BranchRow(BranchInfo Info, string PrTag)
 {
 	public bool HasPrTag => PrTag.Length > 0;
@@ -60,10 +64,10 @@ public sealed partial class WizardState : ObservableObject
 	string prColumnHeader = "Pull Requests";
 
 	[ObservableProperty]
-	string commitsSummary = "";
+	string commitsHeader = "";
 
 	[ObservableProperty]
-	string filesSummary = "";
+	string filesHeader = "";
 
 	[ObservableProperty]
 	string branchColumnHeader = "Branches";
@@ -96,6 +100,8 @@ public class WizardViewModel : Document
 	public ObservableCollection<WizardStep> Steps { get; } = [];
 	public ObservableCollection<ReviewWorkspace.SweepItem> SweepItems { get; } = [];
 	public ObservableCollection<PrepareItem> PrepareItems { get; } = [];
+	public ObservableCollection<FileCostRow> FileCosts { get; } = [];
+	public ObservableCollection<CommitLine> CommitLines { get; } = [];
 	public WizardState State { get; } = new();
 
 	// Start-page data.
@@ -201,21 +207,54 @@ public class WizardViewModel : Document
 
 	async Task LoadCommitsSummaryAsync()
 	{
-		State.CommitsSummary = "";
+		State.CommitsHeader = "";
+		CommitLines.Clear();
 		if (workspace.BaseSha is not { } baseSha || workspace.HeadSha is not { } headSha)
 			return;
 		try
 		{
 			var commits = await workspace.Git.LogAsync($"{baseSha}..{headSha}", null, follow: false, limit: 20);
-			State.CommitsSummary = commits.Count == 0 ? "" :
-				$"{commits.Count} commit(s):\n" + string.Join("\n",
-					commits.Take(8).Select(c => $"  {c.ShortSha}  {c.Subject}"))
-				+ (commits.Count > 8 ? $"\n  ... and {commits.Count - 8} more (Commits pane)" : "");
+			var stats = await LoadCommitStatsAsync(baseSha, headSha);
+			foreach (var commit in commits.Take(8))
+			{
+				var (added, removed) = stats.GetValueOrDefault(commit.Sha);
+				CommitLines.Add(new CommitLine(commit.ShortSha, $"+{added}", $"-{removed}", commit.Subject));
+			}
+			if (commits.Count > 8)
+				CommitLines.Add(new CommitLine("", "", "", $"... and {commits.Count - 8} more (Commits pane)"));
+			State.CommitsHeader = commits.Count == 0 ? "" : $"{commits.Count} commit(s):";
 		}
 		catch (ToolFailedException)
 		{
 			// No commit summary is fine; the Commits pane still works.
 		}
+	}
+
+	/// <summary>Per-commit added/removed line counts over the review range, from one
+	/// `git log --shortstat` pass (full-sha line, then a "N insertions / M deletions" line).</summary>
+	async Task<Dictionary<string, (int Added, int Removed)>> LoadCommitStatsAsync(string baseSha, string headSha)
+	{
+		var stats = new Dictionary<string, (int, int)>(StringComparer.Ordinal);
+		string output = await ExternalTool.RunAsync("git",
+			["log", "--format=%H", "--shortstat", $"{baseSha}..{headSha}"], workspace.RepoPath);
+		string? currentSha = null;
+		foreach (var line in output.ReplaceLineEndings("\n").Split('\n'))
+		{
+			string trimmed = line.Trim();
+			if (trimmed.Length == 40 && trimmed.All(char.IsAsciiHexDigit))
+			{
+				currentSha = trimmed;
+			}
+			else if (currentSha is not null && trimmed.Contains("changed", StringComparison.Ordinal))
+			{
+				var insertions = System.Text.RegularExpressions.Regex.Match(trimmed, @"(\d+) insertion");
+				var deletions = System.Text.RegularExpressions.Regex.Match(trimmed, @"(\d+) deletion");
+				stats[currentSha] = (
+					insertions.Success ? int.Parse(insertions.Groups[1].Value) : 0,
+					deletions.Success ? int.Parse(deletions.Groups[1].Value) : 0);
+			}
+		}
+		return stats;
 	}
 
 	async Task LoadStartPageAsync()
@@ -367,7 +406,7 @@ public class WizardViewModel : Document
 	void RebuildTriageRows()
 	{
 		var totals = workspace.ComputeTriage();
-		var lines = new List<string>();
+		FileCosts.Clear();
 		foreach (var row in totals.Rows.Take(20))
 		{
 			string marker = row.Category switch {
@@ -377,12 +416,12 @@ public class WizardViewModel : Document
 				_ => "impl",
 			};
 			int churn = workspace.ChurnByFile?.GetValueOrDefault(row.Path) ?? 0;
-			string churnText = churn > 0 ? $"{churn}x/yr" : "";
-			lines.Add($"  {marker,-5} {$"+{row.Added}",6} {$"-{row.Removed}",6}  {$"~{row.Minutes} min",-8} {churnText,-7} {row.Path}");
+			FileCosts.Add(new FileCostRow(marker, $"+{row.Added}", $"-{row.Removed}", $"~{row.Minutes} min",
+				churn > 0 ? $"{churn}x/yr" : "", row.Path));
 		}
 		if (totals.Rows.Count > 20)
-			lines.Add($"  ... and {totals.Rows.Count - 20} more file(s)");
-		State.FilesSummary = lines.Count == 0 ? "" : $"{totals.Rows.Count} file(s):\n" + string.Join("\n", lines);
+			FileCosts.Add(new FileCostRow("", "", "", "", "", $"... and {totals.Rows.Count - 20} more file(s)"));
+		State.FilesHeader = totals.Rows.Count == 0 ? "" : $"{totals.Rows.Count} file(s):";
 	}
 
 	void LoadChecks()

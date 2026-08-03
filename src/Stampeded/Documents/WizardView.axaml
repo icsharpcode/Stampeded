@@ -108,17 +108,45 @@
       <DockPanel IsVisible="{Binding TriageStep.IsCurrent}">
         <Border DockPanel.Dock="Bottom" Margin="0,6,0,0" Padding="8,4" CornerRadius="3"
                 BorderThickness="1" BorderBrush="#40808080"
-                IsVisible="{Binding State.FilesSummary, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
-          <SelectableTextBlock FontSize="11" FontFamily="monospace" Opacity="0.85"
-                               TextWrapping="Wrap" Text="{Binding State.FilesSummary}"
-                               ToolTip.Tip="Category, delta, weighted minutes, churn (commits/year) per file" />
+                IsVisible="{Binding State.FilesHeader, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                ToolTip.Tip="Category, delta, weighted minutes, churn (commits/year) per file">
+          <StackPanel>
+            <TextBlock FontSize="11" FontFamily="monospace" Opacity="0.85" Text="{Binding State.FilesHeader}" />
+            <ItemsControl ItemsSource="{Binding FileCosts}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="docs:FileCostRow">
+                  <StackPanel Orientation="Horizontal">
+                    <TextBlock FontSize="11" FontFamily="monospace" Opacity="0.7" Width="44" Text="{Binding Marker}" Margin="12,0,0,0" />
+                    <TextBlock FontSize="11" FontFamily="monospace" Width="50" TextAlignment="Right" Foreground="#2EA043" Text="{Binding Added}" />
+                    <TextBlock FontSize="11" FontFamily="monospace" Width="46" TextAlignment="Right" Foreground="#F85149" Text="{Binding Removed}" />
+                    <TextBlock FontSize="11" FontFamily="monospace" Width="70" TextAlignment="Right" Opacity="0.9" Text="{Binding Minutes}" Margin="0,0,8,0" />
+                    <TextBlock FontSize="11" FontFamily="monospace" Width="56" Opacity="0.8" Text="{Binding Churn}" />
+                    <TextBlock FontSize="11" FontFamily="monospace" Opacity="0.85" Text="{Binding Path}" TextTrimming="CharacterEllipsis" />
+                  </StackPanel>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </StackPanel>
         </Border>
         <Border DockPanel.Dock="Bottom" Margin="0,6,0,0" Padding="8,4" CornerRadius="3"
                 BorderThickness="1" BorderBrush="#40808080"
-                IsVisible="{Binding State.CommitsSummary, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
-          <SelectableTextBlock FontSize="11" FontFamily="monospace" Opacity="0.85"
-                               TextWrapping="Wrap" Text="{Binding State.CommitsSummary}"
-                               ToolTip.Tip="The Commits pane (bottom dock) has per-commit file diffs" />
+                IsVisible="{Binding State.CommitsHeader, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                ToolTip.Tip="The Commits pane (bottom dock) has per-commit file diffs">
+          <StackPanel>
+            <TextBlock FontSize="11" FontFamily="monospace" Opacity="0.85" Text="{Binding State.CommitsHeader}" />
+            <ItemsControl ItemsSource="{Binding CommitLines}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="docs:CommitLine">
+                  <StackPanel Orientation="Horizontal">
+                    <TextBlock FontSize="11" FontFamily="monospace" Opacity="0.7" Width="86" Text="{Binding ShortSha}" Margin="12,0,0,0" />
+                    <TextBlock FontSize="11" FontFamily="monospace" Width="50" TextAlignment="Right" Foreground="#2EA043" Text="{Binding Added}" />
+                    <TextBlock FontSize="11" FontFamily="monospace" Width="46" TextAlignment="Right" Foreground="#F85149" Text="{Binding Removed}" Margin="0,0,10,0" />
+                    <TextBlock FontSize="11" FontFamily="monospace" Opacity="0.85" Text="{Binding Subject}" TextTrimming="CharacterEllipsis" />
+                  </StackPanel>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </StackPanel>
         </Border>
         <Border BorderThickness="1" BorderBrush="#40808080" CornerRadius="3" Padding="8">
           <md:MarkdownScrollViewer Markdown="{Binding State.Description}" />
