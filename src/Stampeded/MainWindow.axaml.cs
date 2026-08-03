@@ -34,6 +34,8 @@ public partial class MainWindow : Window
 	}
 	void OnPruneWorktrees(object? s, RoutedEventArgs e) => App.Workspace?.PruneWorktreeCacheAsync().HandleExceptions();
 
+	void OnRebasePr(object? s, RoutedEventArgs e) => App.Workspace?.RebaseCurrentPrOnTargetAsync().HandleExceptions();
+
 	void OnOpenOnGitHub(object? s, RoutedEventArgs e)
 	{
 		if (App.Workspace is { CurrentPr: { } pr } ws)

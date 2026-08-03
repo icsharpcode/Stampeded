@@ -113,6 +113,21 @@ public sealed class GitHubService(string repoPath)
 		=> JsonAsync<IReadOnlyList<PostedComment>>(ct,
 			"api", $"repos/{{owner}}/{{repo}}/pulls/{number}/comments", "--paginate");
 
+	/// <summary>Rebases the PR branch onto its target via GitHub's update-branch API
+	/// (server-side; rewrites the PR branch, no local checkout involved).</summary>
+	public async Task UpdateBranchAsync(int number, CancellationToken ct = default)
+	{
+		var result = await CliWrap.Cli.Wrap("gh")
+			.WithArguments(["api", "-X", "PUT", $"repos/{{owner}}/{{repo}}/pulls/{number}/update-branch",
+				"-f", "update_method=rebase"])
+			.WithWorkingDirectory(repoPath)
+			.WithValidation(CliWrap.CommandResultValidation.None)
+			.ExecuteBufferedAsync(ct);
+		CliLog.Write("gh", $"update-branch (rebase) #{number} -> exit {result.ExitCode}");
+		if (result.ExitCode != 0)
+			throw new ToolFailedException("gh", result.ExitCode, result.StandardError + result.StandardOutput);
+	}
+
 	/// <summary>Submits a review (APPROVE / REQUEST_CHANGES / COMMENT) with line comments.</summary>
 	public async Task SubmitReviewAsync(int number, ReviewSubmission submission, CancellationToken ct = default)
 	{

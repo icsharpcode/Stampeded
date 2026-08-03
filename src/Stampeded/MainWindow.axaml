@@ -40,6 +40,7 @@
       </MenuItem>
       <MenuItem Header="Re_pository">
         <MenuItem Header="Open PR on GitHub" Click="OnOpenOnGitHub" />
+        <MenuItem Header="Rebase PR onto Target Branch" Click="OnRebasePr" />
         <MenuItem Header="Show Semantic Load Log" Click="OnShowSemanticLog" />
         <MenuItem Header="Prune Worktree Cache" Click="OnPruneWorktrees" />
       </MenuItem>
