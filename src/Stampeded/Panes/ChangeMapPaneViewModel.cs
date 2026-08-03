@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 
+using Avalonia.Media;
 using Avalonia.Threading;
 
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -14,21 +15,28 @@ public sealed partial class ChangeMapState : ObservableObject
 	string status = "The change map lists changed members once semantics are loaded.";
 }
 
-public sealed record ChangeMapRow(string Marker, string Display, bool IsHeader, ReviewWorkspace.ChangeMapEntry? Entry)
+public sealed class MapNode(string title, IBrush? foreground, ReviewWorkspace.ChangeMapEntry? entry)
 {
-	public string Text => IsHeader ? Display : $"{Marker} {Display}";
+	public string Title { get; } = title;
+	public IBrush Foreground { get; } = foreground ?? Brushes.Gray;
+	public ReviewWorkspace.ChangeMapEntry? Entry { get; } = entry;
+	public ObservableCollection<MapNode> Children { get; } = [];
 }
 
 /// <summary>
-/// Symbol-level inventory of the diff: judge the change at member granularity (which
-/// methods/types were touched or removed) and jump to any of them - the design-stage
-/// anchor of the review guide.
+/// Symbol-level inventory of the diff as a tree (project > file > members), colored by
+/// change kind: green added, blue modified, red removed. The design-stage anchor of the
+/// review guide; clicking a member jumps to it.
 /// </summary>
 public class ChangeMapPaneViewModel : Tool
 {
+	static readonly IBrush Added = new SolidColorBrush(Color.Parse("#2EA043"));
+	static readonly IBrush Modified = new SolidColorBrush(Color.Parse("#3794FF"));
+	static readonly IBrush Removed = new SolidColorBrush(Color.Parse("#F85149"));
+
 	readonly ReviewWorkspace workspace;
 
-	public ObservableCollection<ChangeMapRow> Rows { get; } = [];
+	public ObservableCollection<MapNode> Roots { get; } = [];
 	public ChangeMapState State { get; } = new();
 
 	public ChangeMapPaneViewModel(ReviewWorkspace workspace)
@@ -37,27 +45,36 @@ public class ChangeMapPaneViewModel : Tool
 		workspace.ChangeMapChanged += () => Dispatcher.UIThread.Post(Rebuild);
 	}
 
+	static IBrush BrushFor(string kind) => kind switch {
+		"Added" => Added,
+		"Removed" => Removed,
+		_ => Modified,
+	};
+
 	void Rebuild()
 	{
-		Rows.Clear();
+		Roots.Clear();
 		var map = workspace.ChangeMap;
 		foreach (var projectGroup in map.GroupBy(e => e.Project))
 		{
-			Rows.Add(new ChangeMapRow("", $"== {projectGroup.Key} ==", true, null));
+			var projectNode = new MapNode(projectGroup.Key, null, null);
 			foreach (var fileGroup in projectGroup.GroupBy(e => e.RelPath))
 			{
+				var fileNode = new MapNode(Path.GetFileName(fileGroup.Key), null, null);
 				foreach (var entry in fileGroup.OrderBy(e => e.Line))
-					Rows.Add(new ChangeMapRow(entry.Kind, entry.Display, false, entry));
+					fileNode.Children.Add(new MapNode(entry.Display, BrushFor(entry.Kind), entry));
+				projectNode.Children.Add(fileNode);
 			}
+			Roots.Add(projectNode);
 		}
 		State.Status = map.Count == 0
 			? "No changed members mapped (semantics still loading, or non-C# changes only)."
-			: $"{map.Count} changed member(s). M = modified/added at head, R = removed. Click to jump.";
+			: $"{map.Count} changed member(s): green added, blue modified, red removed. Click to jump.";
 	}
 
-	public void Open(ChangeMapRow row)
+	public void Open(MapNode node)
 	{
-		if (row.Entry is { } entry)
+		if (node.Entry is { } entry)
 			workspace.NavigateToFileLineAsync(entry.RelPath, entry.Line, entry.OldSide, record: true).HandleExceptions();
 	}
 }

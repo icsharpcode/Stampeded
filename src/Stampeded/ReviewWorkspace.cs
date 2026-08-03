@@ -435,6 +435,27 @@ public sealed class ReviewWorkspace(string repoPath)
 		CliLog.Write("action", $"historical diff {sha[..9]} {path}");
 	}
 
+	/// <summary>Rebases the current PR onto its target branch (server-side), then reopens
+	/// the review on the new head. Rewrites the PR branch - explicit user action only.</summary>
+	public async Task RebaseCurrentPrOnTargetAsync()
+	{
+		if (CurrentPr is not { } pr)
+			return;
+		using var busy = Busy.Begin($"Rebasing #{pr.Number} onto {pr.BaseRefName}");
+		try
+		{
+			await GitHub.UpdateBranchAsync(pr.Number);
+			StatusMessage?.Invoke($"#{pr.Number} rebased onto {pr.BaseRefName}; reloading the review...");
+			// The API is asynchronous server-side; give the new head a moment to exist.
+			await Task.Delay(TimeSpan.FromSeconds(3));
+			await OpenPrAsync(pr.Number);
+		}
+		catch (ToolFailedException ex)
+		{
+			StatusMessage?.Invoke($"Rebase failed: {ex.Message}");
+		}
+	}
+
 	/// <summary>Opens a PR in the browser via gh.</summary>
 	public Task OpenOnGitHubAsync(int number)
 		=> ExternalTool.RunAsync("gh", ["pr", "view", number.ToString(), "--web"], RepoPath);
@@ -515,7 +536,10 @@ public sealed class ReviewWorkspace(string repoPath)
 			return;
 		var location = sem!.GetDefinitionLocation(symbol);
 		if (location is null)
+		{
+			StatusMessage?.Invoke($"'{symbol.Name}' is defined in metadata ({symbol.ContainingAssembly?.Name}); decompiled navigation is not wired up yet.");
 			return;
+		}
 		string? targetRel = sem.ToRelativePath(location.FilePath);
 		if (targetRel is null)
 			return;
@@ -654,20 +678,29 @@ public sealed class ReviewWorkspace(string repoPath)
 			if (!file.Path.EndsWith(".cs", StringComparison.OrdinalIgnoreCase))
 				continue;
 			string project = file.Path.Split('/')[0];
+			var baseSem = BaseSemantics is { State: SemanticState.Ready or SemanticState.SyntaxOnly } b ? b : null;
 			var headMembers = addedLinesByFile.TryGetValue(file.Path, out var added) && added.Count > 0
 				? await head.MapLinesToMembersAsync(file.Path, added, CancellationToken.None)
 				: [];
+			var baseDisplays = baseSem is not null && file.Kind != FileChangeKind.Added
+				? await baseSem.ListMemberDisplaysAsync(file.OldPath, CancellationToken.None)
+				: new HashSet<string>();
 			foreach (var member in headMembers)
-				entries.Add(new ChangeMapEntry(file.Path, project, "M", member.Display, member.FirstLine, false));
-			if (BaseSemantics is { State: SemanticState.Ready or SemanticState.SyntaxOnly } baseSem
+			{
+				string kind = baseDisplays.Contains(member.Display) ? "Modified" : "Added";
+				entries.Add(new ChangeMapEntry(file.Path, project, kind, member.Display, member.FirstLine, false));
+			}
+			if (baseSem is not null
 				&& removedLinesByFile.TryGetValue(file.OldPath, out var removed) && removed.Count > 0)
 			{
 				var baseMembers = await baseSem.MapLinesToMembersAsync(file.OldPath, removed, CancellationToken.None);
-				var headNames = headMembers.Select(m => m.Display).ToHashSet();
+				var headDisplays = file.Kind != FileChangeKind.Deleted
+					? await head.ListMemberDisplaysAsync(file.Path, CancellationToken.None)
+					: new HashSet<string>();
 				foreach (var member in baseMembers)
 				{
-					if (!headNames.Contains(member.Display))
-						entries.Add(new ChangeMapEntry(file.OldPath, project, "R", member.Display, member.FirstLine, true));
+					if (!headDisplays.Contains(member.Display))
+						entries.Add(new ChangeMapEntry(file.OldPath, project, "Removed", member.Display, member.FirstLine, true));
 				}
 			}
 		}

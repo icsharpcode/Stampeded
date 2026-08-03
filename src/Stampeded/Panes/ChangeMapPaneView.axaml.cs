@@ -11,7 +11,7 @@ public partial class ChangeMapPaneView : UserControl
 
 	void OnSelectionChanged(object? sender, SelectionChangedEventArgs e)
 	{
-		if (DataContext is ChangeMapPaneViewModel vm && List.SelectedItem is ChangeMapRow row)
-			vm.Open(row);
+		if (DataContext is ChangeMapPaneViewModel vm && Tree.SelectedItem is MapNode node)
+			vm.Open(node);
 	}
 }

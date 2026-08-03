@@ -384,6 +384,36 @@ public sealed class RoslynWorkspaceService : IDisposable
 		ClassificationTypeNames.EnumMemberName or ClassificationTypeNames.LocalName or
 		ClassificationTypeNames.ParameterName or ClassificationTypeNames.NamespaceName;
 
+	/// <summary>All member display strings declared in a file (for classifying map
+	/// entries as added vs modified vs removed across base/head).</summary>
+	public async Task<IReadOnlySet<string>> ListMemberDisplaysAsync(string repoRelativePath, CancellationToken ct)
+	{
+		var document = GetDocument(ToAbsolutePath(repoRelativePath));
+		if (document is null)
+			return new HashSet<string>();
+		var semanticModel = await document.GetSemanticModelAsync(ct);
+		var root = await document.GetSyntaxRootAsync(ct);
+		if (semanticModel is null || root is null)
+			return new HashSet<string>();
+		var displays = new HashSet<string>();
+		foreach (var node in root.DescendantNodes().OfType<Microsoft.CodeAnalysis.CSharp.Syntax.MemberDeclarationSyntax>())
+		{
+			if (node is Microsoft.CodeAnalysis.CSharp.Syntax.BaseFieldDeclarationSyntax fields)
+			{
+				foreach (var variable in fields.Declaration.Variables)
+				{
+					if (semanticModel.GetDeclaredSymbol(variable, ct) is { } fieldSymbol)
+						displays.Add(fieldSymbol.ToDisplayString(SymbolDisplayFormat.CSharpShortErrorMessageFormat));
+				}
+			}
+			else if (semanticModel.GetDeclaredSymbol(node, ct) is { } symbol)
+			{
+				displays.Add(symbol.ToDisplayString(SymbolDisplayFormat.CSharpShortErrorMessageFormat));
+			}
+		}
+		return displays;
+	}
+
 	/// <summary>The distinct members (methods/properties/types/...) containing the given
 	/// 1-based lines of a file, for the symbol-level change map.</summary>
 	public async Task<IReadOnlyList<ChangedMember>> MapLinesToMembersAsync(
