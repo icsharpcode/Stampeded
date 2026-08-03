@@ -152,7 +152,7 @@ public sealed class ReviewWorkspace(string repoPath)
 
 	/// <summary>Opens a review of a local base..head range (no PR: checks, posted comments
 	/// and review submission stay empty/disabled; everything else works identically).</summary>
-	public async Task OpenLocalRangeAsync(string baseRef, string headRef)
+	public async Task OpenLocalRangeAsync(string baseRef, string headRef, bool guided = false)
 	{
 		sessionCts?.Cancel();
 		var cts = sessionCts = new CancellationTokenSource();
@@ -172,11 +172,14 @@ public sealed class ReviewWorkspace(string repoPath)
 		IndexAddedLines(files);
 		Store.OpenLocal(Path.GetFileName(RepoPath), $"{baseRef}..{headRef}", headSha);
 		await ApplyReReviewCarryOverAsync(ct);
+		ComputeChurnAsync().HandleExceptions();
 		history.Clear();
 		CloseOpenDiffs();
 		PostedComments = [];
 		ReviewChanged?.Invoke();
-		OpenUnviewedFilesAsync().HandleExceptions();
+		OpenUnviewedFilesAsync()
+			.ContinueWith(_ => Avalonia.Threading.Dispatcher.UIThread.Post(() => { if (guided) OpenWizard(); }))
+			.HandleExceptions();
 		LoadSemanticsAsync(headSha, baseSha, ct).HandleExceptions();
 		ReattachDraftsAsync(ct).HandleExceptions();
 		CommentsChanged?.Invoke();
@@ -185,7 +188,7 @@ public sealed class ReviewWorkspace(string repoPath)
 	async Task<string> ResolveAsync(string reference, CancellationToken ct)
 		=> (await Git.RevParseAsync(reference, ct)).Trim();
 
-	public async Task OpenPrAsync(int number)
+	public async Task OpenPrAsync(int number, bool guided = false)
 	{
 		sessionCts?.Cancel();
 		var cts = sessionCts = new CancellationTokenSource();
@@ -207,10 +210,15 @@ public sealed class ReviewWorkspace(string repoPath)
 		IndexAddedLines(files);
 		Store.Open(Path.GetFileName(RepoPath), number, headSha);
 		await ApplyReReviewCarryOverAsync(ct);
+		ComputeChurnAsync().HandleExceptions();
 		history.Clear();
 		CloseOpenDiffs();
 		ReviewChanged?.Invoke();
-		OpenUnviewedFilesAsync().ContinueWith(_ => Avalonia.Threading.Dispatcher.UIThread.Post(OpenOverviewDocument)).HandleExceptions();
+		// Guided reviews keep the wizard in front (the description is inline there);
+		// plain opens lead with the overview tab.
+		OpenUnviewedFilesAsync()
+			.ContinueWith(_ => Avalonia.Threading.Dispatcher.UIThread.Post(guided ? OpenWizard : OpenOverviewDocument))
+			.HandleExceptions();
 		LoadSemanticsAsync(headSha, baseSha, ct).HandleExceptions();
 		ReattachDraftsAsync(ct).HandleExceptions();
 		LoadPostedCommentsAsync(number, ct).HandleExceptions();
@@ -425,34 +433,31 @@ public sealed class ReviewWorkspace(string repoPath)
 
 	#region Review phases: triage / sweep / record
 
-	public sealed record TriageSummary(int FileCount, int ProjectCount, int Added, int Removed,
-		int TestFileCount, int DependencyFileCount, int EstimatedMinutes, int EstimatedSittings);
+	public Core.Review.TriageTotals ComputeTriage() => Core.Review.TriageEstimate.Compute(Files);
 
-	static readonly string[] DependencyFileHints = [".csproj", ".props", ".targets", "packages.lock.json", "global.json", ".sln", ".slnx", "nuget.config"];
+	/// <summary>Commits per file over the last year - churn correlates with defect density,
+	/// so a change in a hot spot deserves more triage caution. Computed once per repo.</summary>
+	public IReadOnlyDictionary<string, int>? ChurnByFile { get; private set; }
 
-	static bool IsDependencyFile(string path)
-		=> DependencyFileHints.Any(h => path.EndsWith(h, StringComparison.OrdinalIgnoreCase) || Path.GetFileName(path).Equals(h, StringComparison.OrdinalIgnoreCase));
+	public event Action? ChurnChanged;
 
-	/// <summary>Size and shape of the change, priced honestly: ~5 reviewed lines/minute and
-	/// 75-minute sittings (SmartBear's 200-400 lines per 60-90 min band).</summary>
-	public TriageSummary ComputeTriage()
+	async Task ComputeChurnAsync()
 	{
-		int added = 0, removed = 0;
-		foreach (var file in Files)
+		if (ChurnByFile is not null)
+			return;
+		try
 		{
-			added += file.Hunks.Sum(h => h.Lines.Count(l => l.Kind == PatchLineKind.Added));
-			removed += file.Hunks.Sum(h => h.Lines.Count(l => l.Kind == PatchLineKind.Removed));
+			string output = await ExternalTool.RunAsync("git", ["log", "--since=1.year", "--name-only", "--format="], RepoPath);
+			var counts = new Dictionary<string, int>(StringComparer.Ordinal);
+			foreach (var line in output.Split('\n', StringSplitOptions.RemoveEmptyEntries))
+				counts[line] = counts.GetValueOrDefault(line) + 1;
+			ChurnByFile = counts;
+			ChurnChanged?.Invoke();
 		}
-		int changed = added + removed;
-		int minutes = (changed + 4) / 5;
-		return new TriageSummary(
-			Files.Count,
-			Files.Select(f => f.Path.Split('/')[0]).Distinct().Count(),
-			added, removed,
-			Files.Count(f => Core.Review.TestPaths.IsTestPath(f.Path)),
-			Files.Count(f => IsDependencyFile(f.Path)),
-			minutes,
-			Math.Max(1, (minutes + 74) / 75));
+		catch (ToolFailedException)
+		{
+			// Shallow or odd repos: triage simply shows no churn column.
+		}
 	}
 
 	public int AddedLineCount(string path)
@@ -509,7 +514,7 @@ public sealed class ReviewWorkspace(string repoPath)
 			}
 		}
 
-		foreach (var file in Files.Where(f => IsDependencyFile(f.Path)))
+		foreach (var file in Files.Where(f => Core.Review.TriageEstimate.IsDependencyFile(f.Path)))
 			items.Add(new SweepItem($"Dependency/manifest change: {file.Path}", file.Path, 1));
 
 		bool testsTouched = Files.Any(f => Core.Review.TestPaths.IsTestPath(f.Path));
@@ -587,11 +592,12 @@ public sealed class ReviewWorkspace(string repoPath)
 	public void PrepareBounceBody()
 	{
 		var t = ComputeTriage();
+		int changed = t.Rows.Sum(r => r.Added + r.Removed);
 		if (CommentsPane is Panes.CommentsPaneViewModel comments)
 		{
 			comments.State.ReviewBody =
-				$"Bouncing this for now: {t.Added + t.Removed} changed lines across {t.FileCount} files " +
-				$"is ~{t.EstimatedSittings} review sitting(s). Could this be split into smaller PRs? " +
+				$"Bouncing this for now: {changed} changed lines across {Files.Count} files " +
+				$"is ~{t.Sittings} review sitting(s) (~{t.Minutes} min). Could this be split into smaller PRs? " +
 				"Happy to review the pieces promptly.";
 		}
 		StatusMessage?.Invoke("Bounce comment drafted in the Comments pane (submit as COMMENT).");

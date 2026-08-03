@@ -89,13 +89,26 @@ public class App : Application
 		await OpenRepositoryAsync(target, prNumber);
 	}
 
+	static async Task OpenAutoPrAsync(int pr)
+	{
+		if (Workspace is not { } workspace)
+			return;
+		await workspace.OpenPrAsync(pr, guided: true);
+		var wizard = workspace.Documents?.VisibleDockables?.OfType<Documents.WizardViewModel>().FirstOrDefault();
+		if (wizard is not null)
+			Avalonia.Threading.Dispatcher.UIThread.Post(() => wizard.SelectStepCommand(wizard.TriageStep));
+	}
+
 	public override void OnFrameworkInitializationCompleted()
 	{
 		if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
 		{
 			desktop.MainWindow = new MainWindow();
 			if (Program.AutoOpenPr is { } pr)
-				Workspace?.OpenPrAsync(pr).HandleExceptions();
+			{
+				// --pr N means "open guided": land the wizard on Triage like Open Guided does.
+				OpenAutoPrAsync(pr).HandleExceptions();
+			}
 		}
 		base.OnFrameworkInitializationCompleted();
 	}

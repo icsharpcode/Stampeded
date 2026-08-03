@@ -36,6 +36,8 @@ public sealed partial class WizardStep(string id, string title, string guidance,
 	bool isCurrent;
 }
 
+public sealed record TriageRowDisplay(string Marker, string Path, string Delta, string MinutesText, string Churn);
+
 public sealed partial class WizardState : ObservableObject
 {
 	[ObservableProperty]
@@ -65,6 +67,7 @@ public class WizardViewModel : Document
 
 	public ObservableCollection<WizardStep> Steps { get; } = [];
 	public ObservableCollection<ReviewWorkspace.SweepItem> SweepItems { get; } = [];
+	public ObservableCollection<TriageRowDisplay> TriageRows { get; } = [];
 	public WizardState State { get; } = new();
 
 	// Start-page data.
@@ -132,6 +135,7 @@ public class WizardViewModel : Document
 			State.Description = workspace.CurrentPr?.Body is { Length: > 0 } body
 				? body.ReplaceLineEndings("\n")
 				: "(no description)";
+			RebuildTriageRows();
 			Recompute();
 		};
 		workspace.ViewedChanged += (_, _) => Recompute();
@@ -140,6 +144,7 @@ public class WizardViewModel : Document
 		workspace.ChecksLoaded += Recompute;
 		workspace.ChangeMapChanged += Recompute;
 		workspace.DepthChanged += Recompute;
+		workspace.ChurnChanged += () => Dispatcher.UIThread.Post(RebuildTriageRows);
 		workspace.ApprovalGate = Gate;
 		sessionTimer.Tick += (_, _) => Recompute();
 		SelectCurrent(SelectStep);
@@ -206,14 +211,14 @@ public class WizardViewModel : Document
 
 	public void OpenPr(PrSummary pr, bool guided)
 	{
-		PrList.Open(pr);
+		workspace.OpenPrAsync(pr.Number, guided).HandleExceptions();
 		if (guided)
 			SelectStepCommand(TriageStep);
 	}
 
 	public void OpenBranch(BranchInfo branch, bool guided)
 	{
-		PrList.OpenRange($"{defaultBase}..{branch.Name}");
+		workspace.OpenLocalRangeAsync(defaultBase, branch.Name, guided).HandleExceptions();
 		if (guided)
 			SelectStepCommand(TriageStep);
 	}
@@ -237,6 +242,25 @@ public class WizardViewModel : Document
 		foreach (var item in items)
 			SweepItems.Add(item);
 		Recompute();
+	}
+
+	void RebuildTriageRows()
+	{
+		TriageRows.Clear();
+		var totals = workspace.ComputeTriage();
+		foreach (var row in totals.Rows)
+		{
+			string marker = row.Category switch {
+				Core.Review.FileCategory.Test => "test",
+				Core.Review.FileCategory.Dependency => "deps",
+				Core.Review.FileCategory.Generated => "gen",
+				_ => "impl",
+			};
+			int churn = workspace.ChurnByFile?.GetValueOrDefault(row.Path) ?? 0;
+			TriageRows.Add(new TriageRowDisplay(
+				marker, row.Path, $"+{row.Added} -{row.Removed}", $"~{row.Minutes} min",
+				churn > 0 ? $"{churn}x/yr" : ""));
+		}
 	}
 
 	void LoadChecks()
@@ -264,10 +288,17 @@ public class WizardViewModel : Document
 					string rereview = workspace.TouchedSinceLastPass is not null
 						? $"\nRE-REVIEW: only {workspace.Files.Count(f => workspace.IsTouchedSinceLastPass(f.Path))} of {total} file(s) changed since your last pass (marked 'new!'); earlier viewed flags carried over."
 						: "";
+					var checks = workspace.Checks;
+					string ci = checks is null
+						? "CI: not loaded yet."
+						: checks.Count(c => c.Bucket == "fail") is var failing && failing > 0
+							? $"CI: {failing} of {checks.Count} check(s) FAILING - is this ready for review?"
+							: $"CI: all {checks.Count} check(s) passing or skipped.";
 					step.Facts = total == 0 ? "Open a review first (Start step)." :
-						$"{t.FileCount} file(s) in {t.ProjectCount} project(s): +{t.Added} -{t.Removed}.\n" +
-						$"Estimated: ~{t.EstimatedMinutes} min = {t.EstimatedSittings} sitting(s) of focused review.\n" +
-						$"{t.TestFileCount} test file(s) touched; {t.DependencyFileCount} dependency/manifest file(s)." + rereview;
+						$"Weighted estimate: ~{t.Minutes} min = {t.Sittings} sitting(s). " +
+						$"Implementation {t.ImplChanged} line(s) @5/min, tests {t.TestChanged} @15/min, " +
+						$"generated {t.GeneratedChanged} @50/min, {t.DependencyFiles} manifest file(s) flat.\n" +
+						ci + " Per-file cost and churn below - hot files (high churn) deserve extra caution." + rereview;
 					break;
 				case "orient":
 					step.Facts = workspace.CurrentPr is { } pr ? $"#{pr.Number} {pr.Title}" : "";
