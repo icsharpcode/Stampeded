@@ -107,6 +107,7 @@ public class StampededDockFactory(ReviewWorkspace workspace) : Factory
 		var log = new LogPaneViewModel { Id = "Log", Title = "Log" };
 		var run = new RunPaneViewModel(workspace) { Id = "Run", Title = "Run" };
 		var guide = new GuidePaneViewModel(workspace) { Id = "Guide", Title = "Guide" };
+		guide.PaneRequested += ShowPane;
 		var commits = new CommitsPaneViewModel(workspace) { Id = "Commits", Title = "Commits" };
 		var history = new HistoryPaneViewModel(workspace) { Id = "History", Title = "History" };
 		var bottomDock = new ToolDock {

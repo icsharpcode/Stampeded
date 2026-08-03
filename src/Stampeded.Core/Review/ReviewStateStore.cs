@@ -5,7 +5,7 @@ namespace Stampeded.Core.Review;
 
 public sealed record StoredComment(Guid Id, CommentAnchor Anchor, string Body, DateTimeOffset CreatedAt);
 
-sealed record ReviewStateFile(string HeadSha, Dictionary<string, bool> Viewed, List<StoredComment>? Drafts, Dictionary<string, bool>? GuideChecks);
+sealed record ReviewStateFile(string HeadSha, Dictionary<string, bool> Viewed, List<StoredComment>? Drafts, Dictionary<string, bool>? GuideChecks, Dictionary<string, string>? Depth = null);
 
 [JsonSourceGenerationOptions(WriteIndented = true)]
 [JsonSerializable(typeof(ReviewStateFile))]
@@ -88,6 +88,21 @@ public sealed class ReviewStateStore
 		if (current.GuideChecks is null)
 			current = current with { GuideChecks = [] };
 		current.GuideChecks![stageId] = value;
+		Save();
+	}
+
+	/// <summary>Planned review depth for a file: "deep", "skim", "trust" or "" (unset).
+	/// Depth marks survive force-pushes - the plan outlives the head, unlike viewed flags.</summary>
+	public string GetDepth(string path)
+		=> current?.Depth?.GetValueOrDefault(path) ?? "";
+
+	public void SetDepth(string path, string depth)
+	{
+		if (current is null)
+			return;
+		if (current.Depth is null)
+			current = current with { Depth = [] };
+		current.Depth![path] = depth;
 		Save();
 	}
 

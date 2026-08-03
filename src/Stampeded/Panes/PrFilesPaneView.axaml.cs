@@ -32,4 +32,19 @@ public partial class PrFilesPaneView : UserControl
 		if (List.SelectedItem is FileEntry entry)
 			entry.IsViewed = !entry.IsViewed;
 	}
+
+	void SetDepth(string depth)
+	{
+		if (DataContext is PrFilesPaneViewModel vm && List.SelectedItem is FileEntry entry)
+		{
+			vm.SetDepth(entry, depth);
+			entry.Depth = depth;
+		}
+	}
+
+	void OnDepthDeep(object? sender, RoutedEventArgs e) => SetDepth("deep");
+
+	void OnDepthSkim(object? sender, RoutedEventArgs e) => SetDepth("skim");
+
+	void OnDepthTrust(object? sender, RoutedEventArgs e) => SetDepth("trust");
 }

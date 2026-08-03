@@ -36,6 +36,23 @@ public sealed class FileEntry(FileDiff file, bool viewed) : ObservableObject
 		get => coverageBadge;
 		set => SetProperty(ref coverageBadge, value);
 	}
+
+	string depth = "";
+	/// <summary>Planned review depth: "deep", "skim", "trust" or "" (unplanned).</summary>
+	public string Depth {
+		get => depth;
+		set {
+			if (SetProperty(ref depth, value))
+				OnPropertyChanged(nameof(DepthBadge));
+		}
+	}
+
+	public string DepthBadge => Depth switch {
+		"deep" => "deep",
+		"skim" => "skim",
+		"trust" => "trust",
+		_ => "",
+	};
 }
 
 /// <summary>
@@ -63,17 +80,35 @@ public class PrFilesPaneViewModel : Tool
 		workspace.ReviewChanged += Rebuild;
 		workspace.ViewedChanged += OnViewedChanged;
 		workspace.CoverageChanged += RefreshCoverageBadges;
+		workspace.DepthChanged += RefreshDepths;
 	}
+
+	public void SetDepth(FileEntry entry, string depth)
+		=> workspace.SetDepth(entry.File.Path, depth);
+
+	void RefreshDepths()
+	{
+		foreach (var entry in Files)
+			entry.Depth = workspace.GetDepth(entry.File.Path);
+	}
+
+	static int DepthRank(string depth) => depth switch {
+		"deep" => 0,
+		"skim" => 1,
+		"" => 2,
+		_ => 3, // trust reads last (or not at all)
+	};
 
 	void Rebuild()
 	{
 		Files.Clear();
 		var ordered = workspace.Files
 			.OrderBy(f => GuidePaneViewModel.IsTestPath(f.Path) == testsFirst ? 0 : 1)
+			.ThenBy(f => DepthRank(workspace.GetDepth(f.Path)))
 			.ThenBy(f => f.Path, StringComparer.Ordinal);
 		foreach (var file in ordered)
 		{
-			var entry = new FileEntry(file, workspace.Store.IsViewed(file.Path));
+			var entry = new FileEntry(file, workspace.Store.IsViewed(file.Path)) { Depth = workspace.GetDepth(file.Path) };
 			entry.PropertyChanged += OnEntryChanged;
 			Files.Add(entry);
 		}

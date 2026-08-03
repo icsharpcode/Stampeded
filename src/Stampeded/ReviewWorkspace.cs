@@ -333,7 +333,7 @@ public sealed class ReviewWorkspace(string repoPath)
 
 	/// <summary>Intent-first: a summary tab (title, description, change shape) activated on
 	/// review start, so the review begins with understanding rather than with line 1.</summary>
-	void OpenOverviewDocument()
+	public void OpenOverviewDocument()
 	{
 		if (CurrentPr is not { } pr)
 			return;
@@ -354,6 +354,182 @@ public sealed class ReviewWorkspace(string repoPath)
 	}
 
 	public event Action<string>? StatusMessage;
+
+	#region Review phases: triage / sweep / record
+
+	public sealed record TriageSummary(int FileCount, int ProjectCount, int Added, int Removed,
+		int TestFileCount, int DependencyFileCount, int EstimatedMinutes, int EstimatedSittings);
+
+	static readonly string[] DependencyFileHints = [".csproj", ".props", ".targets", "packages.lock.json", "global.json", ".sln", ".slnx", "nuget.config"];
+
+	static bool IsDependencyFile(string path)
+		=> DependencyFileHints.Any(h => path.EndsWith(h, StringComparison.OrdinalIgnoreCase) || Path.GetFileName(path).Equals(h, StringComparison.OrdinalIgnoreCase));
+
+	/// <summary>Size and shape of the change, priced honestly: ~5 reviewed lines/minute and
+	/// 75-minute sittings (SmartBear's 200-400 lines per 60-90 min band).</summary>
+	public TriageSummary ComputeTriage()
+	{
+		int added = 0, removed = 0;
+		foreach (var file in Files)
+		{
+			added += file.Hunks.Sum(h => h.Lines.Count(l => l.Kind == PatchLineKind.Added));
+			removed += file.Hunks.Sum(h => h.Lines.Count(l => l.Kind == PatchLineKind.Removed));
+		}
+		int changed = added + removed;
+		int minutes = (changed + 4) / 5;
+		return new TriageSummary(
+			Files.Count,
+			Files.Select(f => f.Path.Split('/')[0]).Distinct().Count(),
+			added, removed,
+			Files.Count(f => Panes.GuidePaneViewModel.IsTestPath(f.Path)),
+			Files.Count(f => IsDependencyFile(f.Path)),
+			minutes,
+			Math.Max(1, (minutes + 74) / 75));
+	}
+
+	public int AddedLineCount(string path)
+		=> addedLinesByFile.TryGetValue(path, out var lines) ? lines.Count : 0;
+
+	public string GetDepth(string path) => Store.GetDepth(path);
+
+	public void SetDepth(string path, string depth)
+	{
+		Store.SetDepth(path, depth);
+		DepthChanged?.Invoke();
+	}
+
+	public event Action? DepthChanged;
+
+	public sealed record SweepItem(string Title, string? Path, int Line);
+
+	public IReadOnlyList<SweepItem>? LastSweep { get; private set; }
+
+	/// <summary>The delocalized-consequence checklist, answered mechanically where possible.
+	/// These are prompts to a human, not verdicts - noise is acceptable, silence is not.</summary>
+	public async Task<IReadOnlyList<SweepItem>> ComputeSweepAsync()
+	{
+		var items = new List<SweepItem>();
+
+		// Removed members whose name still appears in the head worktree (surviving callers).
+		var removedNames = ChangeMap
+			.Where(e => e.Kind == "Removed")
+			.Select(e => MemberSimpleName(e.Display))
+			.Where(n => n.Length >= 3)
+			.Distinct()
+			.Take(20)
+			.ToList();
+		foreach (var name in removedNames)
+		{
+			if (WorktreePath is null)
+				break;
+			try
+			{
+				string hits = await ExternalTool.RunAsync("git", ["grep", "-n", "-w", "--", name], WorktreePath);
+				var first = hits.Split('\n', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault();
+				int count = hits.Count(c => c == '\n');
+				if (first is not null)
+				{
+					var parts = first.Split(':', 3);
+					int.TryParse(parts.ElementAtOrDefault(1), out int line);
+					items.Add(new SweepItem($"Removed '{name}' still mentioned {count + 1}x at head - surviving caller?",
+						parts[0], Math.Max(1, line)));
+				}
+			}
+			catch (ToolFailedException)
+			{
+				// exit 1 = no hits: the removal is clean.
+			}
+		}
+
+		foreach (var file in Files.Where(f => IsDependencyFile(f.Path)))
+			items.Add(new SweepItem($"Dependency/manifest change: {file.Path}", file.Path, 1));
+
+		bool testsTouched = Files.Any(f => Panes.GuidePaneViewModel.IsTestPath(f.Path));
+		int nonTestMembers = ChangeMap.Count(e => !Panes.GuidePaneViewModel.IsTestPath(e.RelPath));
+		if (nonTestMembers > 0 && !testsTouched)
+			items.Add(new SweepItem($"{nonTestMembers} changed member(s) but NO test file touched", null, 0));
+
+		foreach (var file in Files)
+		{
+			int newLine = 0;
+			foreach (var hunk in file.Hunks)
+			{
+				newLine = hunk.NewStart;
+				foreach (var line in hunk.Lines)
+				{
+					if (line.Kind == PatchLineKind.Added
+						&& (line.Text.Contains("TODO") || line.Text.Contains("FIXME") || line.Text.Contains("HACK")))
+					{
+						items.Add(new SweepItem($"Added TODO/FIXME in {file.Path}", file.Path, newLine));
+					}
+					if (line.Kind != PatchLineKind.Removed)
+						newLine++;
+				}
+			}
+		}
+
+		var (uncovered, measured) = UncoveredAddedLines();
+		if (Coverage is null)
+			items.Add(new SweepItem("No coverage run - added lines unverified (Tests pane > Run + Coverage)", null, 0));
+		else if (uncovered > 0)
+			items.Add(new SweepItem($"{uncovered} of {measured} measured added line(s) uncovered", null, 0));
+
+		LastSweep = items;
+		return items;
+	}
+
+	static string MemberSimpleName(string display)
+	{
+		int paren = display.IndexOf('(');
+		string noArgs = paren < 0 ? display : display[..paren];
+		int dot = noArgs.LastIndexOf('.');
+		return dot < 0 ? noArgs : noArgs[(dot + 1)..];
+	}
+
+	/// <summary>The honest close-out artifact: what was reviewed at what depth, what was
+	/// verified, and what was deliberately not looked at.</summary>
+	public void OpenReviewRecord()
+	{
+		var text = new System.Text.StringBuilder();
+		text.AppendLine(CurrentPr is { } pr ? $"Review record: #{pr.Number} {pr.Title}" : "Review record");
+		text.AppendLine($"Head: {HeadSha}");
+		text.AppendLine();
+		foreach (var group in Files.GroupBy(f => GetDepth(f.Path) is "" ? "(unplanned)" : GetDepth(f.Path)).OrderBy(g => g.Key))
+		{
+			text.AppendLine($"---- {group.Key} ----");
+			foreach (var file in group)
+				text.AppendLine($"  {(Store.IsViewed(file.Path) ? "viewed " : "NOT viewed")}  {file.Path}");
+		}
+		text.AppendLine();
+		var (uncovered, measured) = UncoveredAddedLines();
+		text.AppendLine(Coverage is null
+			? "Coverage: not measured."
+			: $"Coverage: {uncovered} uncovered of {measured} measured added line(s).");
+		text.AppendLine($"Sweep findings: {(LastSweep is null ? "sweep not run" : $"{LastSweep.Count} item(s)")}");
+		text.AppendLine($"Draft comments pending: {Drafts.Count}");
+		text.AppendLine();
+		text.AppendLine("Not reviewed (trust or unviewed):");
+		foreach (var file in Files.Where(f => GetDepth(f.Path) == "trust" || !Store.IsViewed(f.Path)))
+			text.AppendLine($"  {file.Path}");
+		OpenTextDocument($"record:{CurrentPr?.Number ?? 0}", "Review record", text.ToString());
+	}
+
+	/// <summary>Triage's bounce outcome as a first-class action: drafts a review body naming
+	/// the cost, so declining a review is one click instead of a social confrontation.</summary>
+	public void PrepareBounceBody()
+	{
+		var t = ComputeTriage();
+		if (CommentsPane is Panes.CommentsPaneViewModel comments)
+		{
+			comments.State.ReviewBody =
+				$"Bouncing this for now: {t.Added + t.Removed} changed lines across {t.FileCount} files " +
+				$"is ~{t.EstimatedSittings} review sitting(s). Could this be split into smaller PRs? " +
+				"Happy to review the pieces promptly.";
+		}
+		StatusMessage?.Invoke("Bounce comment drafted in the Comments pane (submit as COMMENT).");
+	}
+
+	#endregion
 
 	/// <summary>Opens the side-by-side view of the active file (or a given one).</summary>
 	public async Task OpenSideBySideAsync(FileDiff? file = null)

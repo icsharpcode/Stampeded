@@ -11,6 +11,10 @@
       <ContextMenu>
         <MenuItem Header="Open Diff (double-click)" Click="OnOpenClicked" />
         <MenuItem Header="Toggle Viewed" Click="OnToggleViewedClicked" />
+        <Separator />
+        <MenuItem Header="Plan: Verify Deeply" Click="OnDepthDeep" />
+        <MenuItem Header="Plan: Skim" Click="OnDepthSkim" />
+        <MenuItem Header="Plan: Trust" Click="OnDepthTrust" />
       </ContextMenu>
     </ListBox.ContextMenu>
     <ListBox.ItemTemplate>
@@ -21,6 +25,9 @@
           <TextBlock DockPanel.Dock="Right" Margin="4,0" FontSize="10" VerticalAlignment="Center"
                      Foreground="#F85149" Text="{Binding CoverageBadge}"
                      ToolTip.Tip="Uncovered added lines from the last coverage run" />
+          <TextBlock DockPanel.Dock="Right" Margin="4,0" FontSize="10" VerticalAlignment="Center"
+                     Opacity="0.75" Text="{Binding DepthBadge}"
+                     ToolTip.Tip="Planned review depth (right-click to set)" />
           <TextBlock DockPanel.Dock="Left" Width="14" FontWeight="Bold" Text="{Binding Marker}" />
           <TextBlock Text="{Binding Display}" TextTrimming="CharacterEllipsis" />
         </DockPanel>
