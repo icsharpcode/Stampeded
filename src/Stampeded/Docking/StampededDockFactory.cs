@@ -101,14 +101,15 @@ public class StampededDockFactory(ReviewWorkspace workspace) : Factory
 		var comments = new CommentsPaneViewModel(workspace) { Id = "Comments", Title = "Comments" };
 		workspace.CommentsPane = comments;
 		var log = new LogPaneViewModel { Id = "Log", Title = "Log" };
+		var run = new RunPaneViewModel(workspace) { Id = "Run", Title = "Run" };
 		var bottomDock = new ToolDock {
 			Id = "BottomDock",
 			Alignment = Alignment.Bottom,
 			Proportion = 0.28,
-			VisibleDockables = CreateList<IDockable>(references, comments, checks, tests, log),
+			VisibleDockables = CreateList<IDockable>(references, comments, checks, tests, run, log),
 			ActiveDockable = references,
 		};
-		foreach (var pane in new Tool[] { references, comments, checks, tests, log })
+		foreach (var pane in new Tool[] { references, comments, checks, tests, run, log })
 			panes[pane.Id!] = (pane, bottomDock);
 		var rightSide = new ProportionalDock {
 			Orientation = Orientation.Vertical,
