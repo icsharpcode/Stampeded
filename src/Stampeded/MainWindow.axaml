@@ -34,6 +34,7 @@
         <MenuItem Header="Log Pane" Tag="Log" Click="OnShowPane" />
       </MenuItem>
       <MenuItem Header="Re_pository">
+        <MenuItem Header="Open PR on GitHub" Click="OnOpenOnGitHub" />
         <MenuItem Header="Show Semantic Load Log" Click="OnShowSemanticLog" />
         <MenuItem Header="Prune Worktree Cache" Click="OnPruneWorktrees" />
       </MenuItem>

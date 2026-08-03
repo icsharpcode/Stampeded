@@ -20,6 +20,7 @@
       <ListBox.ContextMenu>
         <ContextMenu>
           <MenuItem Header="Open Review (double-click)" Click="OnOpenClicked" />
+          <MenuItem Header="Open on GitHub" Click="OnOpenOnGitHubClicked" />
         </ContextMenu>
       </ListBox.ContextMenu>
       <ListBox.ItemTemplate>

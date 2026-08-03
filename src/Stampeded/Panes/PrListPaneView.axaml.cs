@@ -29,6 +29,12 @@ public partial class PrListPaneView : UserControl
 			vm.Open(pr);
 	}
 
+	void OnOpenOnGitHubClicked(object? sender, RoutedEventArgs e)
+	{
+		if (List.SelectedItem is PrSummary pr)
+			App.Workspace?.OpenOnGitHubAsync(pr.Number).HandleExceptions();
+	}
+
 	void OnRefreshClicked(object? sender, RoutedEventArgs e)
 	{
 		if (DataContext is PrListPaneViewModel vm)

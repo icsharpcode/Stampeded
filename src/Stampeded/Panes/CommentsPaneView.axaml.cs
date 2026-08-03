@@ -15,7 +15,7 @@ public partial class CommentsPaneView : UserControl
 
 	void OnAddDraft(object? s, RoutedEventArgs e) => Vm?.AddDraft();
 
-	void OnDoubleTapped(object? s, TappedEventArgs e) => OpenSelected();
+	void OnSelectionChanged(object? s, SelectionChangedEventArgs e) => OpenSelected();
 
 	void OnGoTo(object? s, RoutedEventArgs e) => OpenSelected();
 

@@ -14,17 +14,27 @@
                  Watermark="Draft comment text..." />
       </DockPanel>
     </StackPanel>
-    <ListBox Grid.Row="2" x:Name="List" ItemsSource="{Binding Items}" DoubleTapped="OnDoubleTapped"
-             FontFamily="monospace" FontSize="12">
+    <ListBox Grid.Row="2" x:Name="List" ItemsSource="{Binding Items}" SelectionChanged="OnSelectionChanged">
       <ListBox.ContextMenu>
         <ContextMenu>
-          <MenuItem Header="Go to Line (double-click)" Click="OnGoTo" />
+          <MenuItem Header="Go to Line (click)" Click="OnGoTo" />
           <MenuItem Header="Delete Draft" Click="OnDelete" />
         </ContextMenu>
       </ListBox.ContextMenu>
       <ListBox.ItemTemplate>
         <DataTemplate x:DataType="panes:CommentRow">
-          <TextBlock Text="{Binding Display}" TextTrimming="CharacterEllipsis" />
+          <Border Margin="2,3" Padding="6,4" CornerRadius="3"
+                  BorderThickness="1" BorderBrush="#40808080">
+            <StackPanel Spacing="3">
+              <DockPanel>
+                <TextBlock DockPanel.Dock="Right" FontSize="10" Opacity="0.8"
+                           Text="DRAFT" IsVisible="{Binding IsDraft}" />
+                <TextBlock FontSize="11" Opacity="0.65" FontFamily="monospace"
+                           TextTrimming="CharacterEllipsis" Text="{Binding Header}" />
+              </DockPanel>
+              <TextBlock Text="{Binding Body}" TextWrapping="Wrap" FontSize="12" />
+            </StackPanel>
+          </Border>
         </DataTemplate>
       </ListBox.ItemTemplate>
     </ListBox>

@@ -264,6 +264,10 @@ public sealed class ReviewWorkspace(string repoPath)
 		StatusMessage?.Invoke($"Pruned {removed} cached worktree(s).");
 	}
 
+	/// <summary>Opens a PR in the browser via gh.</summary>
+	public Task OpenOnGitHubAsync(int number)
+		=> ExternalTool.RunAsync("gh", ["pr", "view", number.ToString(), "--web"], RepoPath);
+
 	/// <summary>Opens (or activates) a plain text document tab (CI logs, reports, ...).</summary>
 	public void OpenTextDocument(string id, string title, string text)
 	{

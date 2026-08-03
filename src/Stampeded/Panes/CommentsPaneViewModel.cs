@@ -25,8 +25,10 @@ public sealed partial class CommentsState : ObservableObject
 
 public sealed record CommentRow(string RelPath, int? Line, bool OldSide, string Body, Guid? DraftId, string Author)
 {
-	public string Display =>
-		$"{(DraftId is not null ? "[draft]" : $"[{Author}]")} {RelPath}:{(Line?.ToString() ?? "outdated")}{(OldSide ? " (base)" : "")}  {Body.ReplaceLineEndings(" ")}";
+	public string Header =>
+		$"{(DraftId is not null ? "draft" : Author)}  ·  {RelPath}:{(Line?.ToString() ?? "outdated")}{(OldSide ? " (base)" : "")}";
+
+	public bool IsDraft => DraftId is not null;
 }
 
 /// <summary>
