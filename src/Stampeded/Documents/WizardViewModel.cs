@@ -62,6 +62,9 @@ public sealed partial class WizardState : ObservableObject
 	string prColumnHeader = "Pull Requests";
 
 	[ObservableProperty]
+	string commitsSummary = "";
+
+	[ObservableProperty]
 	string branchColumnHeader = "Branches";
 
 	[ObservableProperty]
@@ -102,7 +105,6 @@ public class WizardViewModel : Document
 	public PrListPaneViewModel PrList { get; }
 
 	// Inline content of the phase steps.
-	public CommitsPaneViewModel Commits { get; }
 	public ChangeMapPaneViewModel Map { get; }
 	public PrFilesPaneViewModel FilesList { get; }
 
@@ -123,7 +125,6 @@ public class WizardViewModel : Document
 		this.workspace = workspace;
 		Title = "Review Wizard";
 		PrList = new PrListPaneViewModel(workspace);
-		Commits = new CommitsPaneViewModel(workspace);
 		Map = new ChangeMapPaneViewModel(workspace);
 		FilesList = new PrFilesPaneViewModel(workspace);
 
@@ -167,6 +168,7 @@ public class WizardViewModel : Document
 		State.PropertyChanged += (_, _) => Recompute();
 
 		workspace.ReviewChanged += () => {
+			LoadCommitsSummaryAsync().HandleExceptions();
 			LoadChecks();
 			traverseStarted = null;
 			breakSuggested = false;
@@ -195,6 +197,25 @@ public class WizardViewModel : Document
 		SelectCurrent(SelectStep);
 		Recompute();
 		LoadStartPageAsync().HandleExceptions();
+	}
+
+	async Task LoadCommitsSummaryAsync()
+	{
+		State.CommitsSummary = "";
+		if (workspace.BaseSha is not { } baseSha || workspace.HeadSha is not { } headSha)
+			return;
+		try
+		{
+			var commits = await workspace.Git.LogAsync($"{baseSha}..{headSha}", null, follow: false, limit: 20);
+			State.CommitsSummary = commits.Count == 0 ? "" :
+				$"{commits.Count} commit(s):\n" + string.Join("\n",
+					commits.Take(8).Select(c => $"  {c.ShortSha}  {c.Subject}"))
+				+ (commits.Count > 8 ? $"\n  ... and {commits.Count - 8} more (Commits pane)" : "");
+		}
+		catch (ToolFailedException)
+		{
+			// No commit summary is fine; the Commits pane still works.
+		}
 	}
 
 	async Task LoadStartPageAsync()
