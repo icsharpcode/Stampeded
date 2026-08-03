@@ -27,6 +27,7 @@ public sealed class ReviewWorkspace(string repoPath)
 	public GitHubService GitHub { get; } = new(repoPath);
 	public WorktreeManager Worktrees { get; } = new(repoPath);
 	public ReviewStateStore Store { get; } = new();
+	public BusyTracker Busy { get; } = new();
 
 	// Set by MainViewModel once the layout exists.
 	public Docking.StampededDockFactory? Factory { get; set; }
@@ -58,6 +59,7 @@ public sealed class ReviewWorkspace(string repoPath)
 		var cts = sessionCts = new CancellationTokenSource();
 		var ct = cts.Token;
 
+		using var busy = Busy.Begin($"Opening {baseRef}..{headRef}");
 		CliLog.Write("action", $"open local range {baseRef}..{headRef}");
 		string headSha = await ResolveAsync(headRef, ct);
 		string baseSha = await Git.GetMergeBaseAsync(await ResolveAsync(baseRef, ct), headSha, ct);
@@ -89,6 +91,7 @@ public sealed class ReviewWorkspace(string repoPath)
 		var cts = sessionCts = new CancellationTokenSource();
 		var ct = cts.Token;
 
+		using var busy = Busy.Begin($"Opening PR #{number}");
 		CliLog.Write("action", $"open PR #{number}");
 		var detail = await GitHub.GetPrAsync(number, ct);
 		string headSha = await Git.FetchPrHeadAsync(number, ct);
@@ -120,14 +123,20 @@ public sealed class ReviewWorkspace(string repoPath)
 		var semantics = Semantics = new RoslynWorkspaceService();
 		semantics.StateChanged += () => SemanticsChanged?.Invoke();
 		SemanticsChanged?.Invoke();
-		WorktreePath = await Worktrees.GetOrCreateAsync(headSha, ct);
-		await Task.Run(() => semantics.LoadAsync(WorktreePath, ct), ct);
+		using (Busy.Begin("Loading semantics (head)"))
+		{
+			WorktreePath = await Worktrees.GetOrCreateAsync(headSha, ct);
+			await Task.Run(() => semantics.LoadAsync(WorktreePath, ct), ct);
+		}
 		// The base-side workspace powers navigation FROM removed lines; load it after the
 		// head side so the common case is interactive first.
 		var baseSemantics = BaseSemantics = new RoslynWorkspaceService();
 		baseSemantics.StateChanged += () => SemanticsChanged?.Invoke();
-		BaseWorktreePath = await Worktrees.GetOrCreateAsync(baseSha, ct);
-		await Task.Run(() => baseSemantics.LoadAsync(BaseWorktreePath, ct), ct);
+		using (Busy.Begin("Loading semantics (base)"))
+		{
+			BaseWorktreePath = await Worktrees.GetOrCreateAsync(baseSha, ct);
+			await Task.Run(() => baseSemantics.LoadAsync(BaseWorktreePath, ct), ct);
+		}
 	}
 
 	void IndexAddedLines(IReadOnlyList<FileDiff> files)

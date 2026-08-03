@@ -118,6 +118,7 @@ public class TestsPaneViewModel : Tool
 
 	async Task RunCoreAsync(string worktree, CancellationToken ct)
 	{
+		using var busy = workspace.Busy.Begin("Running tests");
 		try
 		{
 			// The semantic load runs dotnet restore and design-time builds in this same

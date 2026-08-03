@@ -38,6 +38,12 @@
         <MenuItem Header="Forward" InputGesture="Alt+Right" Click="OnForward" />
       </MenuItem>
     </Menu>
+    <Border DockPanel.Dock="Bottom" Padding="8,3" IsVisible="{Binding Busy.IsBusy}">
+      <StackPanel Orientation="Horizontal" Spacing="8">
+        <TextBlock Text="{Binding Busy.SpinnerFrame}" FontFamily="monospace" />
+        <TextBlock Text="{Binding Busy.Text}" Opacity="0.8" />
+      </StackPanel>
+    </Border>
     <dock:DockControl Layout="{Binding Layout}" />
   </DockPanel>
 </Window>
