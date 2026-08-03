@@ -12,6 +12,11 @@
       <Setter Property="Padding" Value="9,4" />
       <Setter Property="Margin" Value="1,0" />
     </Style>
+    <Style Selector="Button.step.done">
+      <Setter Property="BorderBrush" Value="#2EA043" />
+      <Setter Property="BorderThickness" Value="0,0,0,2" />
+      <Setter Property="Background" Value="#182EA043" />
+    </Style>
     <Style Selector="Button.step.current">
       <Setter Property="FontWeight" Value="Bold" />
       <Setter Property="BorderBrush" Value="#3794FF" />
@@ -31,7 +36,7 @@
       </ItemsControl.ItemsPanel>
       <ItemsControl.ItemTemplate>
         <DataTemplate x:DataType="docs:WizardStep">
-          <Button Classes="step" Classes.current="{Binding IsCurrent}" Click="OnStepClick">
+          <Button Classes="step" Classes.current="{Binding IsCurrent}" Classes.done="{Binding IsSatisfied}" Click="OnStepClick">
             <StackPanel Orientation="Horizontal" Spacing="4">
               <TextBlock Text="{Binding Title}" />
               <TextBlock Text="✓" FontSize="11" FontWeight="Bold" Foreground="#2EA043"
