@@ -102,6 +102,11 @@ public class CommentsPaneViewModel : Tool
 
 	public void Submit(string eventType)
 	{
+		if (eventType == "APPROVE" && workspace.ApprovalGate?.Invoke() is { Ok: false } gate)
+		{
+			State.Status = $"Approval blocked by the review guide - incomplete: {gate.Detail}  (override in the Guide pane)";
+			return;
+		}
 		SubmitAsync(eventType).HandleExceptions();
 
 		async Task SubmitAsync(string type)

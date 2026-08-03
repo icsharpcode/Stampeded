@@ -43,6 +43,40 @@ public sealed class ReviewWorkspace(string repoPath)
 	/// <summary>Per worktree-relative file: line -> hit count, from the last coverage run.</summary>
 	public IReadOnlyDictionary<string, IReadOnlyDictionary<int, int>>? Coverage { get; private set; }
 
+	/// <summary>Latest CI check runs, published by the Checks pane for the guide.</summary>
+	public IReadOnlyList<CheckRun>? Checks { get; private set; }
+
+	public void SetChecks(IReadOnlyList<CheckRun> checks)
+	{
+		Checks = checks;
+		ChecksLoaded?.Invoke();
+	}
+
+	/// <summary>Set by the guide pane: whether approval should be allowed right now.</summary>
+	public Func<(bool Ok, string Detail)>? ApprovalGate { get; set; }
+
+	/// <summary>(uncovered, measured) added lines across the diff, from the last coverage run.</summary>
+	public (int Uncovered, int Measured) UncoveredAddedLines()
+	{
+		if (Coverage is null)
+			return (0, 0);
+		int uncovered = 0, measured = 0;
+		foreach (var (path, added) in addedLinesByFile)
+		{
+			if (!Coverage.TryGetValue(path, out var hits))
+				continue;
+			foreach (var line in added)
+			{
+				if (!hits.TryGetValue(line, out int h))
+					continue;
+				measured++;
+				if (h == 0)
+					uncovered++;
+			}
+		}
+		return (uncovered, measured);
+	}
+
 	public void SetCoverage(IReadOnlyDictionary<string, IReadOnlyDictionary<int, int>>? coverage)
 	{
 		Coverage = coverage;
@@ -55,6 +89,7 @@ public sealed class ReviewWorkspace(string repoPath)
 	public event Action<string, bool>? ViewedChanged;
 	public event Action? SemanticsChanged;
 	public event Action? CoverageChanged;
+	public event Action? ChecksLoaded;
 	public event Action<string, IReadOnlyList<ReferenceItem>>? ReferencesAvailable;
 
 	CancellationTokenSource? sessionCts;
@@ -119,7 +154,7 @@ public sealed class ReviewWorkspace(string repoPath)
 		history.Clear();
 		CloseOpenDiffs();
 		ReviewChanged?.Invoke();
-		OpenUnviewedFilesAsync().HandleExceptions();
+		OpenUnviewedFilesAsync().ContinueWith(_ => Avalonia.Threading.Dispatcher.UIThread.Post(OpenOverviewDocument)).HandleExceptions();
 		LoadSemanticsAsync(headSha, baseSha, ct).HandleExceptions();
 		ReattachDraftsAsync(ct).HandleExceptions();
 		LoadPostedCommentsAsync(number, ct).HandleExceptions();
@@ -231,6 +266,28 @@ public sealed class ReviewWorkspace(string repoPath)
 	}
 
 	public FileDiff? CurrentFile => (Documents?.ActiveDockable as DiffDocumentViewModel)?.File;
+
+	/// <summary>Intent-first: a summary tab (title, description, change shape) activated on
+	/// review start, so the review begins with understanding rather than with line 1.</summary>
+	void OpenOverviewDocument()
+	{
+		if (CurrentPr is not { } pr)
+			return;
+		var text = new System.Text.StringBuilder();
+		text.AppendLine($"#{pr.Number} {pr.Title}");
+		text.AppendLine($"{pr.State}  |  {pr.BaseRefName} <- {pr.HeadRefName}");
+		text.AppendLine();
+		text.AppendLine(string.IsNullOrWhiteSpace(pr.Body) ? "(no description)" : pr.Body.ReplaceLineEndings("\n"));
+		text.AppendLine();
+		text.AppendLine($"---- {Files.Count} changed file(s) ----");
+		foreach (var file in Files)
+		{
+			int adds = file.Hunks.Sum(h => h.Lines.Count(l => l.Kind == PatchLineKind.Added));
+			int dels = file.Hunks.Sum(h => h.Lines.Count(l => l.Kind == PatchLineKind.Removed));
+			text.AppendLine($"  {file.Kind,-8} {file.Path}  (+{adds} -{dels})");
+		}
+		OpenTextDocument($"overview:{pr.Number}", $"PR #{pr.Number}", text.ToString());
+	}
 
 	public event Action<string>? StatusMessage;
 

@@ -58,6 +58,7 @@ public partial class ChecksPaneViewModel : Tool
 		try
 		{
 			var checks = await workspace.GitHub.GetChecksAsync(pr.Number);
+			workspace.SetChecks(checks);
 			foreach (var check in checks.OrderBy(c => c.Bucket == "fail" ? 0 : c.Bucket == "pending" ? 1 : 2))
 				Items.Add(new CheckRow(check));
 			int failed = checks.Count(c => c.Bucket == "fail");

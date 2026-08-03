@@ -5,7 +5,7 @@ namespace Stampeded.Core.Review;
 
 public sealed record StoredComment(Guid Id, CommentAnchor Anchor, string Body, DateTimeOffset CreatedAt);
 
-sealed record ReviewStateFile(string HeadSha, Dictionary<string, bool> Viewed, List<StoredComment>? Drafts);
+sealed record ReviewStateFile(string HeadSha, Dictionary<string, bool> Viewed, List<StoredComment>? Drafts, Dictionary<string, bool>? GuideChecks);
 
 [JsonSourceGenerationOptions(WriteIndented = true)]
 [JsonSerializable(typeof(ReviewStateFile))]
@@ -58,7 +58,7 @@ public sealed class ReviewStateStore
 			}
 		}
 		if (current is null)
-			current = new ReviewStateFile(headSha, [], []);
+			current = new ReviewStateFile(headSha, [], [], []);
 		else if (current.HeadSha != headSha)
 		{
 			// ponytail: viewed resets wholesale on force-push; per-file diff-hash
@@ -75,6 +75,19 @@ public sealed class ReviewStateStore
 		if (current is null)
 			return;
 		current.Viewed[path] = viewed;
+		Save();
+	}
+
+	public bool GetGuideCheck(string stageId)
+		=> current?.GuideChecks?.GetValueOrDefault(stageId) ?? false;
+
+	public void SetGuideCheck(string stageId, bool value)
+	{
+		if (current is null)
+			return;
+		if (current.GuideChecks is null)
+			current = current with { GuideChecks = [] };
+		current.GuideChecks![stageId] = value;
 		Save();
 	}
 

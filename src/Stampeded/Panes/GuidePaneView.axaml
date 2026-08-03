@@ -1,0 +1,40 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:panes="using:Stampeded.Panes"
+             x:Class="Stampeded.Panes.GuidePaneView"
+             x:DataType="panes:GuidePaneViewModel">
+  <DockPanel>
+    <StackPanel DockPanel.Dock="Bottom" Margin="6,4" Spacing="2">
+      <TextBlock FontWeight="SemiBold" Text="{Binding State.Progress}" />
+      <CheckBox IsChecked="{Binding State.OverrideGate}" FontSize="11"
+                Content="Allow approving anyway (override the guide)" />
+    </StackPanel>
+    <ScrollViewer>
+      <ItemsControl ItemsSource="{Binding Stages}" Margin="4">
+        <ItemsControl.ItemTemplate>
+          <DataTemplate x:DataType="panes:GuideStage">
+            <Border Margin="0,3" Padding="6,4" CornerRadius="3" BorderThickness="1"
+                    BorderBrush="#40808080">
+              <StackPanel Spacing="3">
+                <DockPanel>
+                  <TextBlock DockPanel.Dock="Right" Text="done" FontSize="10" Opacity="0.8"
+                             IsVisible="{Binding IsSatisfied}" />
+                  <CheckBox IsChecked="{Binding IsChecked}" IsVisible="{Binding RequiresCheck}"
+                            Padding="4,0" VerticalAlignment="Center">
+                    <TextBlock FontWeight="SemiBold" Text="{Binding Title}" />
+                  </CheckBox>
+                  <TextBlock FontWeight="SemiBold" Text="{Binding Title}"
+                             IsVisible="{Binding !RequiresCheck}" />
+                </DockPanel>
+                <TextBlock FontSize="11" Opacity="0.75" TextWrapping="Wrap" Text="{Binding Guidance}" />
+                <TextBlock FontSize="11" FontStyle="Italic" Opacity="0.9" TextWrapping="Wrap"
+                           Text="{Binding AutoFact}"
+                           IsVisible="{Binding AutoFact, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+              </StackPanel>
+            </Border>
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+    </ScrollViewer>
+  </DockPanel>
+</UserControl>

@@ -24,6 +24,7 @@ public class ViewLocator : IDataTemplate
 		[typeof(CommentsPaneViewModel)] = () => new Panes.CommentsPaneView(),
 		[typeof(LogPaneViewModel)] = () => new Panes.LogPaneView(),
 		[typeof(RunPaneViewModel)] = () => new Panes.RunPaneView(),
+		[typeof(GuidePaneViewModel)] = () => new Panes.GuidePaneView(),
 	};
 
 	public Control Build(object? data)

@@ -52,7 +52,10 @@ public class PrFilesPaneViewModel : Tool
 	void Rebuild()
 	{
 		Files.Clear();
-		foreach (var file in workspace.Files)
+		var ordered = workspace.Files
+			.OrderBy(f => GuidePaneViewModel.IsTestPath(f.Path) ? 1 : 0)
+			.ThenBy(f => f.Path, StringComparer.Ordinal);
+		foreach (var file in ordered)
 		{
 			var entry = new FileEntry(file, workspace.Store.IsViewed(file.Path));
 			entry.PropertyChanged += OnEntryChanged;
