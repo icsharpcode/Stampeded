@@ -41,6 +41,7 @@ public class TestsPaneViewModel : Tool
 	readonly StringBuilder outputBuffer = new();
 	readonly DispatcherTimer flushTimer = new() { Interval = TimeSpan.FromMilliseconds(300) };
 	CancellationTokenSource? runCts;
+	string? runLogFile;
 
 	public ObservableCollection<TestRow> Failures { get; } = [];
 	public TestsState State { get; } = new();
@@ -102,8 +103,12 @@ public class TestsPaneViewModel : Tool
 			return;
 		}
 		var cts = runCts = new CancellationTokenSource();
+		string logDir = Path.Combine(
+			Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "stampeded", "logs");
+		Directory.CreateDirectory(logDir);
+		runLogFile = Path.Combine(logDir, $"test-{DateTime.Now:yyyyMMdd-HHmmss}.log");
 		State.Running = true;
-		State.Status = "Running: dotnet " + State.Args;
+		State.Status = $"Running: dotnet {State.Args}  (full log: {runLogFile})";
 		State.Output = "";
 		outputBuffer.Clear();
 		Failures.Clear();
@@ -122,9 +127,10 @@ public class TestsPaneViewModel : Tool
 				Failures.Add(new TestRow(failure));
 			int passed = results.Count(r => r.Outcome == TestOutcome.Passed);
 			int skipped = results.Count(r => r.Outcome == TestOutcome.Skipped);
-			State.Status = results.Count == 0
+			string logHint = runLogFile is null ? "" : $"  Full log: {runLogFile}";
+			State.Status = (results.Count == 0
 				? $"Run finished (exit {exitCode}) - no .trx results found."
-				: $"{passed} passed, {failed.Count} failed, {skipped} skipped. Double-click a failure to open its frame.";
+				: $"{passed} passed, {failed.Count} failed, {skipped} skipped. Double-click a failure to open its frame.") + logHint;
 		}
 		catch (OperationCanceledException)
 		{
@@ -146,12 +152,25 @@ public class TestsPaneViewModel : Tool
 
 	void FlushOutput()
 	{
+		string chunk;
 		lock (outputBuffer)
 		{
 			if (outputBuffer.Length == 0)
 				return;
-			State.Output += outputBuffer.ToString();
+			chunk = outputBuffer.ToString();
 			outputBuffer.Clear();
+		}
+		State.Output += chunk;
+		if (runLogFile is not null)
+		{
+			try
+			{
+				File.AppendAllText(runLogFile, chunk);
+			}
+			catch (IOException)
+			{
+				// Logging must never break the run; the pane still holds the output.
+			}
 		}
 	}
 

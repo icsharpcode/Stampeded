@@ -48,11 +48,55 @@ public sealed class WorktreeManager(string repoPath)
 	{
 		string dir = Path.GetFullPath(Path.Combine(CacheRoot, Path.GetFileName(repoPath), sha[..9]));
 		if (Directory.Exists(dir) && File.Exists(Path.Combine(dir, ".git")))
+		{
+			LinkSubmodulesFromSource(dir);
 			return dir;
+		}
 		Directory.CreateDirectory(Path.GetDirectoryName(dir)!);
 		// A stale registration for a deleted directory blocks re-adding; prune first.
 		await ExternalTool.RunAsync("git", ["worktree", "prune"], repoPath, ct);
 		await ExternalTool.RunAsync("git", ["worktree", "add", "--detach", dir, sha], repoPath, ct);
+		LinkSubmodulesFromSource(dir);
 		return dir;
+	}
+
+	/// <summary>
+	/// `git worktree add` leaves submodules as empty stubs; share the source clone's
+	/// checkouts via symlinks so worktree test runs find their fixtures (e.g. ILSpy's
+	/// heavyweight ILSpy-tests submodule with its offline nuget cache).
+	/// </summary>
+	void LinkSubmodulesFromSource(string worktreeDir)
+	{
+		string gitmodules = Path.Combine(worktreeDir, ".gitmodules");
+		if (!File.Exists(gitmodules))
+			return;
+		foreach (var line in File.ReadAllLines(gitmodules))
+		{
+			string trimmed = line.Trim();
+			if (!trimmed.StartsWith("path", StringComparison.Ordinal))
+				continue;
+			int eq = trimmed.IndexOf('=');
+			if (eq < 0)
+				continue;
+			string rel = trimmed[(eq + 1)..].Trim();
+			string source = Path.Combine(repoPath, rel);
+			string target = Path.Combine(worktreeDir, rel);
+			bool sourcePopulated = Directory.Exists(source) && Directory.EnumerateFileSystemEntries(source).Any();
+			bool targetPopulated = (Directory.Exists(target) && Directory.EnumerateFileSystemEntries(target).Any())
+				|| File.Exists(target); // already a symlink or file
+			if (!sourcePopulated || targetPopulated)
+				continue;
+			try
+			{
+				if (Directory.Exists(target))
+					Directory.Delete(target);
+				Directory.CreateSymbolicLink(target, source);
+				CliLog.Write("worktree", $"linked submodule {rel} from source clone");
+			}
+			catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+			{
+				CliLog.Write("worktree", $"could not link submodule {rel}: {ex.Message}");
+			}
+		}
 	}
 }
