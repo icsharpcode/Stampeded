@@ -68,10 +68,7 @@ public class CommentsPaneViewModel : Tool
 				draft.Stored.Body, draft.Stored.Id, ""));
 		}
 		foreach (var posted in workspace.PostedComments)
-		{
-			bool oldSide = posted.Side == "LEFT";
-			Items.Add(new CommentRow(posted.Path, posted.Line, oldSide, posted.Body, null, posted.User?.Login ?? "?"));
-		}
+			Items.Add(new CommentRow(posted.RelPath, posted.Line, posted.OldSide, posted.Body, null, posted.Author));
 		int outdated = workspace.Drafts.Count(d => d.CurrentLine is null);
 		State.Status = $"{workspace.Drafts.Count} draft(s){(outdated > 0 ? $" ({outdated} outdated)" : "")}, {workspace.PostedComments.Count} posted.";
 	}

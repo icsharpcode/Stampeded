@@ -467,8 +467,10 @@ public sealed class ReviewWorkspace(string repoPath)
 
 	public sealed record CommentTarget(string RelPath, bool OldSide, int Line, string LineText);
 
+	public sealed record PostedCommentView(string RelPath, int? Line, bool OldSide, string Body, string Author);
+
 	public IReadOnlyList<DraftComment> Drafts { get; private set; } = [];
-	public IReadOnlyList<PostedComment> PostedComments { get; private set; } = [];
+	public IReadOnlyList<PostedCommentView> PostedComments { get; private set; } = [];
 	public CommentTarget? PendingCommentTarget { get; private set; }
 
 	public event Action? CommentsChanged;
@@ -550,13 +552,59 @@ public sealed class ReviewWorkspace(string repoPath)
 	{
 		try
 		{
-			PostedComments = await GitHub.GetReviewCommentsAsync(number, ct);
+			var raw = await GitHub.GetReviewCommentsAsync(number, ct);
+			var views = new List<PostedCommentView>();
+			foreach (var comment in raw)
+			{
+				bool oldSide = comment.Side == "LEFT";
+				int? line = comment.Line ?? await ReanchorPostedAsync(comment, oldSide, ct);
+				views.Add(new PostedCommentView(
+					comment.Path, line, oldSide, comment.Body, comment.User?.Login ?? "?"));
+			}
+			PostedComments = views;
 		}
 		catch (ToolFailedException)
 		{
 			PostedComments = [];
 		}
 		CommentsChanged?.Invoke();
+	}
+
+	/// <summary>GitHub nulls `line` once the diff moved on; the comment's diff_hunk
+	/// excerpt ends at the commented line, so re-anchor it by content (line text plus up
+	/// to two same-side context lines) against the current blob, like drafts.</summary>
+	async Task<int?> ReanchorPostedAsync(PostedComment comment, bool oldSide, CancellationToken ct)
+	{
+		if (comment.DiffHunk is null || comment.OriginalLine is null)
+			return null;
+		string? rev = oldSide ? BaseSha : HeadSha;
+		if (rev is null)
+			return null;
+		var sideLines = new List<string>();
+		foreach (var hunkLine in comment.DiffHunk.ReplaceLineEndings("\n").Split('\n'))
+		{
+			if (hunkLine.StartsWith("@@", StringComparison.Ordinal))
+				continue;
+			char marker = hunkLine.Length > 0 ? hunkLine[0] : ' ';
+			if (marker == ' ' || (oldSide ? marker == '-' : marker == '+'))
+				sideLines.Add(hunkLine.Length > 0 ? hunkLine[1..] : "");
+		}
+		if (sideLines.Count == 0)
+			return null;
+		string lineText = sideLines[^1];
+		var before = sideLines.Count > 1
+			? sideLines.GetRange(Math.Max(0, sideLines.Count - 3), Math.Min(2, sideLines.Count - 1))
+			: [];
+		var anchor = new CommentAnchor(comment.Path, oldSide, comment.OriginalLine.Value, lineText, before, []);
+		try
+		{
+			var blobLines = SplitBlobLines(await Git.ShowFileAsync(rev, comment.Path, ct));
+			return anchor.Reattach(blobLines);
+		}
+		catch (ToolFailedException)
+		{
+			return null;
+		}
 	}
 
 	/// <summary>Lines each side of a file that GitHub accepts review comments on (lines

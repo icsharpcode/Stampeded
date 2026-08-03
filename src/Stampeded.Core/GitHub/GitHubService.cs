@@ -33,7 +33,14 @@ public sealed record CheckRun(string Name, string State, string Bucket, string? 
 
 public sealed record PostedUser(string Login);
 
-public sealed record PostedComment(string Body, string Path, int? Line, string? Side, PostedUser? User);
+public sealed record PostedComment(
+	string Body,
+	string Path,
+	int? Line,
+	string? Side,
+	PostedUser? User,
+	[property: JsonPropertyName("original_line")] int? OriginalLine,
+	[property: JsonPropertyName("diff_hunk")] string? DiffHunk);
 
 public sealed record ReviewCommentDto(string Path, int Line, string Side, string Body);
 
