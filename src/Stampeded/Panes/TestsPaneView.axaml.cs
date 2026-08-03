@@ -50,6 +50,12 @@ public partial class TestsPaneView : UserControl
 			vm.Run();
 	}
 
+	void OnImpactedFilterClicked(object? sender, RoutedEventArgs e)
+	{
+		if (DataContext is TestsPaneViewModel vm)
+			vm.ApplyImpactedFilter();
+	}
+
 	void OnRunCoverageClicked(object? sender, RoutedEventArgs e)
 	{
 		if (DataContext is TestsPaneViewModel vm)

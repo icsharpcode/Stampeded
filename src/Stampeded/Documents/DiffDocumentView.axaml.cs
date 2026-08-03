@@ -138,6 +138,8 @@ public partial class DiffDocumentView : UserControl
 	void OnCtxToggleBlame(object? s, RoutedEventArgs e) => ToggleBlameCommand();
 	void OnCtxComment(object? s, RoutedEventArgs e) => CommentAtCaretCommand();
 
+	void OnCtxNextUncovered(object? s, RoutedEventArgs e) => JumpToNextUncovered();
+
 	void OnCtxHistoryOfSelection(object? s, RoutedEventArgs e)
 	{
 		string text = Editor.SelectedText;
@@ -378,6 +380,10 @@ public partial class DiffDocumentView : UserControl
 				ShowReferencesAtCaret();
 				e.Handled = true;
 				break;
+			case (Key.U, KeyModifiers.None):
+				JumpToNextUncovered();
+				e.Handled = true;
+				break;
 			case (Key.B, KeyModifiers.None):
 				ToggleBlameAsync().HandleExceptions();
 				e.Handled = true;
@@ -460,6 +466,22 @@ public partial class DiffDocumentView : UserControl
 				continue;
 			var marker = markers.Create(line.Offset + occ.Column - 1, occ.Length);
 			marker.BackgroundColor = occ.Classification == "definition" ? DefinitionOccurrenceColor : OccurrenceColor;
+		}
+	}
+
+	void JumpToNextUncovered()
+	{
+		if (model is null || viewModel is null || App.Workspace is not { } ws)
+			return;
+		int start = Editor.TextArea.Caret.Line;
+		for (int line = start + 1; line <= model.Tags.Count; line++)
+		{
+			var tag = model.Tags[line - 1];
+			if (tag.NewLine > 0 && ws.IsUncoveredAdded(viewModel.File.Path, tag.NewLine))
+			{
+				MoveCaretToLine(line);
+				return;
+			}
 		}
 	}
 

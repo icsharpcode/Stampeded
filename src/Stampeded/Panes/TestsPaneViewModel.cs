@@ -91,6 +91,29 @@ public class TestsPaneViewModel : Tool
 		return $"test --solution {name} --report-trx";
 	}
 
+	public void ApplyImpactedFilter()
+	{
+		ApplyImpactedFilterAsync().HandleExceptions();
+
+		async Task ApplyImpactedFilterAsync()
+		{
+			State.Status = "Finding test classes referencing the changed members...";
+			var classes = await workspace.SuggestImpactedTestClassesAsync();
+			if (classes.Count == 0)
+			{
+				State.Status = "No referencing test classes found (semantics/change map not ready, or the change is untested).";
+				return;
+			}
+			string baseArgs = State.Args;
+			int cut = baseArgs.IndexOf(" -- --filter", StringComparison.Ordinal);
+			if (cut >= 0)
+				baseArgs = baseArgs[..cut];
+			string filter = string.Join('|', classes.Select(c => $"FullyQualifiedName~{c}"));
+			State.Args = $"{baseArgs} -- --filter \"{filter}\"";
+			State.Status = $"Filter set to {classes.Count} impacted test class(es): {string.Join(", ", classes)}.";
+		}
+	}
+
 	public void RunWithCoverage()
 	{
 		withCoverage = true;

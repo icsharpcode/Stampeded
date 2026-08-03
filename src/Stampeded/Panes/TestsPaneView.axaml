@@ -6,6 +6,8 @@
   <Grid RowDefinitions="Auto,Auto,*,2*">
     <DockPanel Grid.Row="0" Margin="4">
       <Button DockPanel.Dock="Right" Margin="4,0,0,0" Content="Clear" Click="OnClearClicked" />
+      <Button DockPanel.Dock="Right" Margin="4,0,0,0" Content="Impacted Filter" Click="OnImpactedFilterClicked"
+              ToolTip.Tip="Fill the filter with test classes that reference the changed members (from the Map)" />
       <Button DockPanel.Dock="Right" Margin="4,0,0,0" Content="Run + Coverage" Click="OnRunCoverageClicked"
               ToolTip.Tip="Wraps the run with dotnet-coverage and overlays line coverage on the diffs" />
       <Button DockPanel.Dock="Right" Margin="4,0,0,0" Click="OnRunClicked"
