@@ -28,6 +28,7 @@
         <MenuItem Header="Pull Requests Pane" Tag="PullRequests" Click="OnShowPane" />
         <MenuItem Header="Files Pane" Tag="Files" Click="OnShowPane" />
         <MenuItem Header="Change Map Pane" Tag="Map" Click="OnShowPane" />
+        <MenuItem Header="File Browser Pane" Tag="Browser" Click="OnShowPane" />
         <MenuItem Header="References Pane" Tag="References" Click="OnShowPane" />
         <MenuItem Header="Comments Pane" Tag="Comments" Click="OnShowPane" />
         <MenuItem Header="Checks Pane" Tag="Checks" Click="OnShowPane" />
