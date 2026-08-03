@@ -26,6 +26,7 @@
         <MenuItem Header="Side-by-Side of Current File" Click="OnSideBySide" />
       </MenuItem>
       <MenuItem Header="Re_pository">
+        <MenuItem Header="Show Semantic Load Log" Click="OnShowSemanticLog" />
         <MenuItem Header="Prune Worktree Cache" Click="OnPruneWorktrees" />
       </MenuItem>
       <MenuItem Header="_Navigate">

@@ -50,6 +50,14 @@ public sealed class RoslynWorkspaceService : IDisposable
 		StateChanged?.Invoke();
 	}
 
+	/// <summary>Accumulated restore/load output and diagnostics, for the load-log view.</summary>
+	public string LoadLog { get; private set; } = "";
+
+	void Log(string message)
+	{
+		LoadLog += message + "\n";
+	}
+
 	public async Task LoadAsync(string worktree, CancellationToken ct)
 	{
 		worktreePath = worktree;
@@ -61,10 +69,26 @@ public sealed class RoslynWorkspaceService : IDisposable
 			if (sln is not null)
 			{
 				SetState(SemanticState.Restoring, Path.GetFileName(sln));
-				await RestoreAsync(sln, ct);
+				try
+				{
+					await RestoreAsync(sln, cleanRetry: false, ct);
+				}
+				catch (ToolFailedException ex)
+				{
+					// Common causes: stale packages.lock.json on the PR branch (the repo
+					// may restore in locked mode) or broken obj/ state from an earlier
+					// interrupted restore in this cached worktree. The worktree is a
+					// disposable copy, so retry clean and unlocked.
+					Log("First restore failed, retrying clean with --force-evaluate:");
+					Log(ex.Message);
+					SetState(SemanticState.Restoring, "clean retry");
+					await RestoreAsync(sln, cleanRetry: true, ct);
+				}
 				SetState(SemanticState.Loading, Path.GetFileName(sln));
 				var msbuild = MSBuildWorkspace.Create();
 				var loaded = await msbuild.OpenSolutionAsync(sln, cancellationToken: ct);
+				foreach (var diagnostic in msbuild.Diagnostics)
+					Log($"[workspace] {diagnostic.Kind}: {diagnostic.Message}");
 				if (loaded.Projects.Any(p => p.Documents.Any()))
 				{
 					workspace = msbuild;
@@ -85,6 +109,7 @@ public sealed class RoslynWorkspaceService : IDisposable
 		{
 			// A broken solution load must not take navigation down with it: degrade to
 			// the syntax-only workspace, which cannot fail structurally.
+			Log(ex.ToString());
 			try
 			{
 				LoadSyntaxOnly(worktree, ct);
@@ -97,19 +122,50 @@ public sealed class RoslynWorkspaceService : IDisposable
 		}
 	}
 
-	async Task RestoreAsync(string sln, CancellationToken ct)
+	async Task RestoreAsync(string sln, bool cleanRetry, CancellationToken ct)
 	{
+		if (cleanRetry)
+			DeleteBuildArtifacts();
 		// Pruning would rewrite committed packages.lock.json files in repos that carry
 		// full lock files (e.g. ILSpy); locked-mode restores also depend on them staying
-		// whole. SHA1 signature acceptance matches the local OpenSSL setup.
+		// whole - except on the clean retry, where the lock files themselves may be the
+		// problem and this worktree copy is free to regenerate them.
+		string[] args = cleanRetry
+			? ["restore", sln, "-p:RestoreEnablePackagePruning=false", "--force", "--force-evaluate", "-p:RestoreLockedMode=false"]
+			: ["restore", sln, "-p:RestoreEnablePackagePruning=false"];
 		var result = await CliWrap.Cli.Wrap("dotnet")
-			.WithArguments(["restore", sln, "-p:RestoreEnablePackagePruning=false"])
+			.WithArguments(args)
 			.WithWorkingDirectory(worktreePath)
 			.WithEnvironmentVariables(env => env.Set("OPENSSL_ENABLE_SHA1_SIGNATURES", "1"))
 			.WithValidation(CliWrap.CommandResultValidation.None)
 			.ExecuteBufferedAsync(ct);
 		if (result.ExitCode != 0)
-			throw new ToolFailedException("dotnet restore", result.ExitCode, result.StandardError);
+		{
+			// NuGet reports most errors on stdout, not stderr; keep both.
+			throw new ToolFailedException("dotnet restore", result.ExitCode,
+				result.StandardError + "\n" + Tail(result.StandardOutput, 4000));
+		}
+		Log($"restore ok ({(cleanRetry ? "clean retry" : "normal")})");
+	}
+
+	static string Tail(string text, int maxChars)
+		=> text.Length <= maxChars ? text : text[^maxChars..];
+
+	void DeleteBuildArtifacts()
+	{
+		foreach (var dir in Directory.EnumerateDirectories(worktreePath, "*", SearchOption.AllDirectories)
+			.Where(d => Path.GetFileName(d) is "obj" or "bin")
+			.OrderByDescending(d => d.Length))
+		{
+			try
+			{
+				Directory.Delete(dir, recursive: true);
+			}
+			catch (IOException)
+			{
+				// Locked or already gone: the restore that follows will cope or fail loudly.
+			}
+		}
 	}
 
 	void LoadSyntaxOnly(string worktree, CancellationToken ct)
