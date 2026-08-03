@@ -18,12 +18,10 @@ public class StampededDockFactory(ReviewWorkspace workspace) : Factory
 
 	public override IRootDock CreateLayout()
 	{
-		var welcome = new WelcomeDocumentViewModel { Id = "Welcome", Title = "Welcome" };
 		Documents = new DocumentDock {
 			Id = "Documents",
 			IsCollapsable = false,
-			VisibleDockables = CreateList<IDockable>(welcome),
-			ActiveDockable = welcome,
+			VisibleDockables = CreateList<IDockable>(),
 		};
 
 		var prList = new PrListPaneViewModel(workspace) { Id = "PullRequests", Title = "Pull Requests" };
