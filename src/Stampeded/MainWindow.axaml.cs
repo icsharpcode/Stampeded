@@ -26,6 +26,12 @@ public partial class MainWindow : Window
 	void OnFindReferences(object? s, RoutedEventArgs e) => View?.FindReferencesCommand();
 	void OnHighlightOccurrences(object? s, RoutedEventArgs e) => View?.HighlightOccurrencesCommand();
 	void OnSideBySide(object? s, RoutedEventArgs e) => App.Workspace?.OpenSideBySideAsync().HandleExceptions();
+
+	void OnShowPane(object? s, RoutedEventArgs e)
+	{
+		if (s is MenuItem { Tag: string id })
+			App.Workspace?.Factory?.ShowPane(id);
+	}
 	void OnPruneWorktrees(object? s, RoutedEventArgs e) => App.Workspace?.PruneWorktreeCacheAsync().HandleExceptions();
 
 	void OnShowSemanticLog(object? s, RoutedEventArgs e)

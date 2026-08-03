@@ -24,6 +24,14 @@
       </MenuItem>
       <MenuItem Header="_View">
         <MenuItem Header="Side-by-Side of Current File" Click="OnSideBySide" />
+        <Separator />
+        <MenuItem Header="Pull Requests Pane" Tag="PullRequests" Click="OnShowPane" />
+        <MenuItem Header="Files Pane" Tag="Files" Click="OnShowPane" />
+        <MenuItem Header="References Pane" Tag="References" Click="OnShowPane" />
+        <MenuItem Header="Comments Pane" Tag="Comments" Click="OnShowPane" />
+        <MenuItem Header="Checks Pane" Tag="Checks" Click="OnShowPane" />
+        <MenuItem Header="Tests Pane" Tag="Tests" Click="OnShowPane" />
+        <MenuItem Header="Log Pane" Tag="Log" Click="OnShowPane" />
       </MenuItem>
       <MenuItem Header="Re_pository">
         <MenuItem Header="Show Semantic Load Log" Click="OnShowSemanticLog" />

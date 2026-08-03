@@ -16,6 +16,51 @@ public class StampededDockFactory(ReviewWorkspace workspace) : Factory
 {
 	public DocumentDock? Documents { get; private set; }
 
+	readonly Dictionary<string, (Tool Pane, ToolDock Home)> panes = [];
+
+	/// <summary>Brings a tool pane back: re-added to its home dock when it was closed
+	/// (e.g. its floating window was dismissed), then activated and focused.</summary>
+	public void ShowPane(string id)
+	{
+		if (!panes.TryGetValue(id, out var entry))
+			return;
+		if (entry.Home.VisibleDockables?.Contains(entry.Pane) != true
+			&& FindDockable(entry.Pane) is null)
+		{
+			AddDockable(entry.Home, entry.Pane);
+		}
+		SetActiveDockable(entry.Pane);
+		SetFocusedDockable(entry.Home, entry.Pane);
+	}
+
+	IDockable? FindDockable(IDockable dockable)
+	{
+		// Present anywhere in the layout (including floating windows) means no re-add.
+		bool found = false;
+		void Visit(IDock dock)
+		{
+			foreach (var child in dock.VisibleDockables ?? [])
+			{
+				if (child == dockable)
+					found = true;
+				else if (child is IDock nested)
+					Visit(nested);
+			}
+		}
+		if (RootDock is IDock root)
+		{
+			Visit(root);
+			foreach (var window in (RootDock as IRootDock)?.Windows ?? [])
+			{
+				if (window.Layout is IDock layout)
+					Visit(layout);
+			}
+		}
+		return found ? dockable : null;
+	}
+
+	IRootDock? RootDock { get; set; }
+
 	public override IRootDock CreateLayout()
 	{
 		Documents = new DocumentDock {
@@ -26,24 +71,28 @@ public class StampededDockFactory(ReviewWorkspace workspace) : Factory
 
 		var prList = new PrListPaneViewModel(workspace) { Id = "PullRequests", Title = "Pull Requests" };
 		var files = new PrFilesPaneViewModel(workspace) { Id = "Files", Title = "Files" };
+		var prListDock = new ToolDock {
+			Id = "PrListDock",
+			Alignment = Alignment.Left,
+			Proportion = 0.45,
+			VisibleDockables = CreateList<IDockable>(prList),
+			ActiveDockable = prList,
+		};
+		var filesDock = new ToolDock {
+			Id = "FilesDock",
+			Alignment = Alignment.Left,
+			VisibleDockables = CreateList<IDockable>(files),
+			ActiveDockable = files,
+		};
+		panes[prList.Id] = (prList, prListDock);
+		panes[files.Id] = (files, filesDock);
 		var leftDock = new ProportionalDock {
 			Proportion = 0.22,
 			Orientation = Orientation.Vertical,
 			VisibleDockables = CreateList<IDockable>(
-				new ToolDock {
-					Id = "PrListDock",
-					Alignment = Alignment.Left,
-					Proportion = 0.45,
-					VisibleDockables = CreateList<IDockable>(prList),
-					ActiveDockable = prList,
-				},
+				prListDock,
 				new ProportionalDockSplitter(),
-				new ToolDock {
-					Id = "FilesDock",
-					Alignment = Alignment.Left,
-					VisibleDockables = CreateList<IDockable>(files),
-					ActiveDockable = files,
-				}),
+				filesDock),
 		};
 
 		var references = new ReferencesPaneViewModel(workspace) { Id = "References", Title = "References" };
@@ -52,18 +101,21 @@ public class StampededDockFactory(ReviewWorkspace workspace) : Factory
 		var comments = new CommentsPaneViewModel(workspace) { Id = "Comments", Title = "Comments" };
 		workspace.CommentsPane = comments;
 		var log = new LogPaneViewModel { Id = "Log", Title = "Log" };
+		var bottomDock = new ToolDock {
+			Id = "BottomDock",
+			Alignment = Alignment.Bottom,
+			Proportion = 0.28,
+			VisibleDockables = CreateList<IDockable>(references, comments, checks, tests, log),
+			ActiveDockable = references,
+		};
+		foreach (var pane in new Tool[] { references, comments, checks, tests, log })
+			panes[pane.Id!] = (pane, bottomDock);
 		var rightSide = new ProportionalDock {
 			Orientation = Orientation.Vertical,
 			VisibleDockables = CreateList<IDockable>(
 				Documents,
 				new ProportionalDockSplitter(),
-				new ToolDock {
-					Id = "BottomDock",
-					Alignment = Alignment.Bottom,
-					Proportion = 0.28,
-					VisibleDockables = CreateList<IDockable>(references, comments, checks, tests, log),
-					ActiveDockable = references,
-				}),
+				bottomDock),
 		};
 
 		var mainLayout = new ProportionalDock {
@@ -79,6 +131,7 @@ public class StampededDockFactory(ReviewWorkspace workspace) : Factory
 		root.VisibleDockables = CreateList<IDockable>(mainLayout);
 		root.ActiveDockable = mainLayout;
 		root.DefaultDockable = mainLayout;
+		RootDock = root;
 		return root;
 	}
 }
