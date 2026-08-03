@@ -179,7 +179,12 @@ public sealed class ReviewWorkspace(string repoPath)
 		CommentsLoaded = true;
 		ReviewChanged?.Invoke();
 		OpenUnviewedFilesAsync()
-			.ContinueWith(_ => Avalonia.Threading.Dispatcher.UIThread.Post(() => { if (guided) OpenWizard(); }))
+			.ContinueWith(_ => Avalonia.Threading.Dispatcher.UIThread.Post(() => {
+				if (guided)
+					OpenWizard();
+				else
+					ShowDockMode();
+			}))
 			.HandleExceptions();
 		LoadSemanticsAsync(headSha, baseSha, ct).HandleExceptions();
 		ReattachDraftsAsync(ct).HandleExceptions();
@@ -218,7 +223,17 @@ public sealed class ReviewWorkspace(string repoPath)
 		// Guided reviews keep the wizard in front (the description is inline there);
 		// plain opens lead with the overview tab.
 		OpenUnviewedFilesAsync()
-			.ContinueWith(_ => Avalonia.Threading.Dispatcher.UIThread.Post(guided ? OpenWizard : OpenOverviewDocument))
+			.ContinueWith(_ => Avalonia.Threading.Dispatcher.UIThread.Post(() => {
+				if (guided)
+				{
+					OpenWizard();
+				}
+				else
+				{
+					OpenOverviewDocument();
+					ShowDockMode();
+				}
+			}))
 			.HandleExceptions();
 		LoadSemanticsAsync(headSha, baseSha, ct).HandleExceptions();
 		ReattachDraftsAsync(ct).HandleExceptions();
@@ -721,12 +736,29 @@ public sealed class ReviewWorkspace(string repoPath)
 	public Task OpenOnGitHubAsync(int number)
 		=> ExternalTool.RunAsync("gh", ["pr", "view", number.ToString(), "--web"], RepoPath);
 
-	/// <summary>The wizard instance of this workspace; also drives the progress strip.</summary>
+	/// <summary>The wizard instance of this workspace; drives the phase pages and the strip.</summary>
 	public Documents.WizardViewModel? Wizard { get; private set; }
 
-	/// <summary>Opens (or refocuses) the review wizard document.</summary>
+	/// <summary>False: a wizard phase page fills the window. True: the dock layout
+	/// (diff tabs, panes) does. The strip stays above both.</summary>
+	public event Action<bool>? ViewModeChanged;
+
+	/// <summary>Shows the wizard page of the current step (page mode).</summary>
 	public void OpenWizard()
-		=> Wizard = ShowDocument("wizard", () => new Documents.WizardViewModel(this));
+	{
+		Wizard ??= new Documents.WizardViewModel(this);
+		ViewModeChanged?.Invoke(false);
+	}
+
+	/// <summary>Shows the dock layout (working mode).</summary>
+	public void ShowDockMode() => ViewModeChanged?.Invoke(true);
+
+	/// <summary>Brings the Comments pane to the front (the close phase submits there).</summary>
+	public void ActivateCommentsPane()
+	{
+		if (CommentsPane is not null && Factory is not null)
+			Factory.SetActiveDockable(CommentsPane);
+	}
 
 	/// <summary>Brings the first open diff tab to the front (entering a working phase
 	/// hands the center back to the code).</summary>

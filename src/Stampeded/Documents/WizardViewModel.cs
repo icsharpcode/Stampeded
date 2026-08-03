@@ -331,12 +331,19 @@ public class WizardViewModel : Document
 		}
 		if (step == SweepStep)
 			RunSweepAsync().HandleExceptions();
-		// Reading phases own the center; working phases hand it back to the code and
-		// live in the progress strip.
-		if (step == PlanStep || step == TraverseStep)
-			workspace.ActivateFirstDiff();
-		else if (step == SelectStep || step == TriageStep || step == SurveyStep || step == SweepStep || step == CloseStep)
+		// Reading phases fill the window with their page; working phases show the dock.
+		if (step == PlanStep || step == TraverseStep || step == CloseStep)
+		{
+			workspace.ShowDockMode();
+			if (step == CloseStep)
+				workspace.ActivateCommentsPane();
+			else
+				workspace.ActivateFirstDiff();
+		}
+		else
+		{
 			workspace.OpenWizard();
+		}
 		Recompute();
 	}
 
@@ -406,7 +413,10 @@ public class WizardViewModel : Document
 	public void OpenSweepItem(ReviewWorkspace.SweepItem item)
 	{
 		if (item.Path is not null)
+		{
+			workspace.ShowDockMode();
 			workspace.NavigateToFileLineAsync(item.Path, Math.Max(1, item.Line), oldSide: false, record: true).HandleExceptions();
+		}
 	}
 
 	async Task RunSweepAsync()
@@ -459,7 +469,10 @@ public class WizardViewModel : Document
 	public void OpenSurveyRow(SurveyRow row)
 	{
 		if (row.Entry is { } entry)
+		{
+			workspace.ShowDockMode();
 			workspace.NavigateToFileLineAsync(entry.RelPath, entry.Line, entry.OldSide, record: true).HandleExceptions();
+		}
 	}
 
 	void RebuildTriageRows()

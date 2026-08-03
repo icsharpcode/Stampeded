@@ -29,7 +29,8 @@
     </Style>
   </UserControl.Styles>
   <DockPanel Margin="8">
-    <ItemsControl DockPanel.Dock="Top" ItemsSource="{Binding Steps}" Margin="0,0,0,6">
+    <ItemsControl DockPanel.Dock="Top" ItemsSource="{Binding Steps}" Margin="0,0,0,6"
+                  IsVisible="{Binding !State.HasReview}">
       <ItemsControl.ItemsPanel>
         <ItemsPanelTemplate>
           <WrapPanel Orientation="Horizontal" />

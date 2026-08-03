@@ -2,6 +2,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:dock="using:Dock.Avalonia.Controls"
         xmlns:local="using:Stampeded"
+        xmlns:docs="using:Stampeded.Documents"
         x:Class="Stampeded.MainWindow"
         x:DataType="local:MainViewModel"
         Title="{Binding WindowTitle}"
@@ -105,6 +106,9 @@
         <TextBlock Text="{Binding Busy.Text}" Opacity="0.8" />
       </StackPanel>
     </Border>
-    <dock:DockControl Layout="{Binding Layout}" />
+    <Panel>
+      <dock:DockControl Layout="{Binding Layout}" IsVisible="{Binding ShowDock}" />
+      <docs:WizardView DataContext="{Binding Wizard}" IsVisible="{Binding !$parent[Window].((local:MainViewModel)DataContext).ShowDock}" />
+    </Panel>
   </DockPanel>
 </Window>

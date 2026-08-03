@@ -94,8 +94,7 @@ public class App : Application
 		if (Workspace is not { } workspace)
 			return;
 		await workspace.OpenPrAsync(pr, guided: true);
-		var wizard = workspace.Documents?.VisibleDockables?.OfType<Documents.WizardViewModel>().FirstOrDefault();
-		if (wizard is not null)
+		if (workspace.Wizard is { } wizard)
 			Avalonia.Threading.Dispatcher.UIThread.Post(wizard.BeginGuidedPreparation);
 	}
 

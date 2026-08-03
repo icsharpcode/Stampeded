@@ -36,8 +36,7 @@ static class ScreenshotWatcher
 				foreach (var step in lines.Where(l => l.StartsWith("step:", StringComparison.Ordinal)))
 				{
 					string id = step["step:".Length..].Trim();
-					var wizard = App.Workspace?.Documents?.VisibleDockables?
-						.OfType<Documents.WizardViewModel>().FirstOrDefault();
+					var wizard = App.Workspace?.Wizard;
 					var wizardStep = wizard?.Steps.FirstOrDefault(s => s.Id == id);
 					if (wizard is not null && wizardStep is not null)
 						wizard.SelectStepCommand(wizardStep);

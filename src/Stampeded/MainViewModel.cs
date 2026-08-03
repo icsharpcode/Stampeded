@@ -22,6 +22,9 @@ public partial class MainViewModel : ObservableObject
 	[ObservableProperty]
 	Documents.WizardViewModel? wizard;
 
+	[ObservableProperty]
+	bool showDock;
+
 	public MainViewModel()
 	{
 		var workspace = new ReviewWorkspace(Program.RepoPath);
@@ -32,6 +35,7 @@ public partial class MainViewModel : ObservableObject
 		factory.InitLayout(Layout);
 		workspace.Factory = factory;
 		workspace.Documents = factory.Documents;
+		workspace.ViewModeChanged += dock => ShowDock = dock;
 		workspace.OpenWizard();
 		Wizard = workspace.Wizard;
 		workspace.ReviewChanged += UpdateTitle;
