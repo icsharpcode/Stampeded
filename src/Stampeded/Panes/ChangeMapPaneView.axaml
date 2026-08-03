@@ -1,0 +1,18 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:panes="using:Stampeded.Panes"
+             x:Class="Stampeded.Panes.ChangeMapPaneView"
+             x:DataType="panes:ChangeMapPaneViewModel">
+  <DockPanel>
+    <TextBlock DockPanel.Dock="Bottom" Margin="6,4" Opacity="0.7" TextWrapping="Wrap"
+               Text="{Binding State.Status}" />
+    <ListBox x:Name="List" ItemsSource="{Binding Rows}" SelectionChanged="OnSelectionChanged"
+             FontFamily="monospace" FontSize="12">
+      <ListBox.ItemTemplate>
+        <DataTemplate x:DataType="panes:ChangeMapRow">
+          <TextBlock Text="{Binding Text}" TextTrimming="CharacterEllipsis" />
+        </DataTemplate>
+      </ListBox.ItemTemplate>
+    </ListBox>
+  </DockPanel>
+</UserControl>

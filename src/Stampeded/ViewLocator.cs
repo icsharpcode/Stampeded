@@ -19,6 +19,7 @@ public class ViewLocator : IDataTemplate
 		[typeof(PrListPaneViewModel)] = () => new Panes.PrListPaneView(),
 		[typeof(PrFilesPaneViewModel)] = () => new Panes.PrFilesPaneView(),
 		[typeof(ReferencesPaneViewModel)] = () => new Panes.ReferencesPaneView(),
+		[typeof(ChangeMapPaneViewModel)] = () => new Panes.ChangeMapPaneView(),
 		[typeof(ChecksPaneViewModel)] = () => new Panes.ChecksPaneView(),
 		[typeof(TestsPaneViewModel)] = () => new Panes.TestsPaneView(),
 		[typeof(CommentsPaneViewModel)] = () => new Panes.CommentsPaneView(),

@@ -30,6 +30,12 @@ public sealed class FileEntry(FileDiff file, bool viewed) : ObservableObject
 		get => isViewed;
 		set => SetProperty(ref isViewed, value);
 	}
+
+	string coverageBadge = "";
+	public string CoverageBadge {
+		get => coverageBadge;
+		set => SetProperty(ref coverageBadge, value);
+	}
 }
 
 /// <summary>
@@ -40,6 +46,15 @@ public class PrFilesPaneViewModel : Tool
 	readonly ReviewWorkspace workspace;
 	bool suppressViewedPersist;
 
+	bool testsFirst;
+	public bool TestsFirst {
+		get => testsFirst;
+		set {
+			testsFirst = value;
+			Rebuild();
+		}
+	}
+
 	public ObservableCollection<FileEntry> Files { get; } = [];
 
 	public PrFilesPaneViewModel(ReviewWorkspace workspace)
@@ -47,13 +62,14 @@ public class PrFilesPaneViewModel : Tool
 		this.workspace = workspace;
 		workspace.ReviewChanged += Rebuild;
 		workspace.ViewedChanged += OnViewedChanged;
+		workspace.CoverageChanged += RefreshCoverageBadges;
 	}
 
 	void Rebuild()
 	{
 		Files.Clear();
 		var ordered = workspace.Files
-			.OrderBy(f => GuidePaneViewModel.IsTestPath(f.Path) ? 1 : 0)
+			.OrderBy(f => GuidePaneViewModel.IsTestPath(f.Path) == testsFirst ? 0 : 1)
 			.ThenBy(f => f.Path, StringComparer.Ordinal);
 		foreach (var file in ordered)
 		{
@@ -78,6 +94,15 @@ public class PrFilesPaneViewModel : Tool
 		suppressViewedPersist = true;
 		entry.IsViewed = viewed;
 		suppressViewedPersist = false;
+	}
+
+	void RefreshCoverageBadges()
+	{
+		foreach (var entry in Files)
+		{
+			var (uncovered, measured) = workspace.UncoveredAddedForFile(entry.File.Path);
+			entry.CoverageBadge = measured == 0 ? "" : uncovered > 0 ? $"{uncovered}!" : "cov";
+		}
 	}
 
 	public void Open(FileEntry entry)

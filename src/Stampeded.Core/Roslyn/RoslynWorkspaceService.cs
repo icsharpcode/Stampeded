@@ -26,6 +26,8 @@ public sealed record ReferenceHit(string FilePath, int Line, TextSpan Span, stri
 
 public sealed record SemanticToken(int Line, int Column, int Length, string Classification);
 
+public sealed record ChangedMember(string Display, string Kind, int FirstLine);
+
 /// <summary>
 /// Source semantics over one checked-out worktree: an MSBuildWorkspace when the solution
 /// loads (NuGet restore is run first so the design-time build sees its references), an
@@ -381,6 +383,57 @@ public sealed class RoslynWorkspaceService : IDisposable
 		ClassificationTypeNames.EventName or ClassificationTypeNames.ConstantName or
 		ClassificationTypeNames.EnumMemberName or ClassificationTypeNames.LocalName or
 		ClassificationTypeNames.ParameterName or ClassificationTypeNames.NamespaceName;
+
+	/// <summary>The distinct members (methods/properties/types/...) containing the given
+	/// 1-based lines of a file, for the symbol-level change map.</summary>
+	public async Task<IReadOnlyList<ChangedMember>> MapLinesToMembersAsync(
+		string repoRelativePath, IReadOnlyCollection<int> lines, CancellationToken ct)
+	{
+		var document = GetDocument(ToAbsolutePath(repoRelativePath));
+		if (document is null)
+			return [];
+		var semanticModel = await document.GetSemanticModelAsync(ct);
+		var text = await document.GetTextAsync(ct);
+		if (semanticModel is null)
+			return [];
+		var members = new Dictionary<string, ChangedMember>();
+		foreach (int line in lines)
+		{
+			if (line < 1 || line > text.Lines.Count)
+				continue;
+			var textLine = text.Lines[line - 1];
+			string content = textLine.ToString();
+			int indent = content.Length - content.TrimStart().Length;
+			if (content.Trim().Length == 0)
+				continue;
+			int position = textLine.Start + indent;
+			var symbol = semanticModel.GetEnclosingSymbol(position, ct);
+			// Walk up to the member users think in: method/property/field/event/ctor,
+			// falling back to the containing type for lines outside any member.
+			ISymbol? member = symbol;
+			while (member is not null
+				and not IMethodSymbol and not IPropertySymbol and not IFieldSymbol
+				and not IEventSymbol and not INamedTypeSymbol)
+			{
+				member = member.ContainingSymbol;
+			}
+			if (member is IMethodSymbol { AssociatedSymbol: { } associated })
+				member = associated; // accessors report as their property/event
+			if (member is null || member is INamespaceSymbol)
+				continue;
+			string display = member.ToDisplayString(SymbolDisplayFormat.CSharpShortErrorMessageFormat);
+			if (members.TryGetValue(display, out var existing))
+			{
+				if (line < existing.FirstLine)
+					members[display] = existing with { FirstLine = line };
+			}
+			else
+			{
+				members[display] = new ChangedMember(display, member.Kind.ToString(), line);
+			}
+		}
+		return members.Values.OrderBy(m => m.FirstLine).ToList();
+	}
 
 	/// <summary>Absolute text position for a 1-based (line, column) in a worktree file.</summary>
 	public async Task<int?> GetPositionAsync(string repoRelativePath, int line, int column, CancellationToken ct)

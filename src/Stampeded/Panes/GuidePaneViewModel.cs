@@ -82,6 +82,7 @@ public class GuidePaneViewModel : Tool
 		workspace.CommentsChanged += Recompute;
 		workspace.CoverageChanged += Recompute;
 		workspace.ChecksLoaded += Recompute;
+		workspace.ChangeMapChanged += Recompute;
 		workspace.ApprovalGate = Gate;
 	}
 
@@ -109,7 +110,9 @@ public class GuidePaneViewModel : Tool
 						.Where(f => !IsTestPath(f.Path))
 						.OrderByDescending(f => f.Hunks.Sum(h => h.Lines.Count))
 						.FirstOrDefault();
-					stage.AutoFact = main is null ? "" : $"Largest non-test change: {main.Path}";
+					stage.AutoFact = workspace.ChangeMap.Count > 0
+						? $"{workspace.ChangeMap.Count} changed member(s) - start from the Map pane."
+						: main is null ? "" : $"Largest non-test change: {main.Path}";
 					break;
 				case "linepass":
 					stage.AutoConditionMet = total > 0 && viewed == total;

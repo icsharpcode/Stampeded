@@ -55,6 +55,55 @@ public sealed class ReviewWorkspace(string repoPath)
 	/// <summary>Set by the guide pane: whether approval should be allowed right now.</summary>
 	public Func<(bool Ok, string Detail)>? ApprovalGate { get; set; }
 
+	public (int Uncovered, int Measured) UncoveredAddedForFile(string path)
+	{
+		if (Coverage is null || !Coverage.TryGetValue(path, out var hits)
+			|| !addedLinesByFile.TryGetValue(path, out var added))
+			return (0, 0);
+		int uncovered = 0, measured = 0;
+		foreach (var line in added)
+		{
+			if (!hits.TryGetValue(line, out int h))
+				continue;
+			measured++;
+			if (h == 0)
+				uncovered++;
+		}
+		return (uncovered, measured);
+	}
+
+	public bool IsUncoveredAdded(string path, int newLine)
+		=> Coverage is not null
+			&& addedLinesByFile.TryGetValue(path, out var added) && added.Contains(newLine)
+			&& Coverage.TryGetValue(path, out var hits) && hits.TryGetValue(newLine, out int h) && h == 0;
+
+	/// <summary>Test classes referencing the change map's members, for a focused test
+	/// filter ("run the tests that matter for this change").</summary>
+	public async Task<IReadOnlyList<string>> SuggestImpactedTestClassesAsync()
+	{
+		if (Semantics is not { State: SemanticState.Ready or SemanticState.SyntaxOnly } sem)
+			return [];
+		var classes = new HashSet<string>();
+		foreach (var entry in ChangeMap.Where(e => !e.OldSide).Take(30))
+		{
+			var symbol = await SymbolAtAsync(oldSide: false, entry.RelPath, entry.Line, 1)
+				?? await SymbolAtAsync(oldSide: false, entry.RelPath, entry.Line, 20);
+			if (symbol is null)
+				continue;
+			var hits = await sem.FindReferencesAsync(symbol, CancellationToken.None);
+			foreach (var hit in hits)
+			{
+				string? rel = sem.ToRelativePath(hit.FilePath);
+				if (rel is null || !Panes.GuidePaneViewModel.IsTestPath(rel))
+					continue;
+				classes.Add(Path.GetFileNameWithoutExtension(hit.FilePath));
+				if (classes.Count >= 8)
+					return classes.ToList();
+			}
+		}
+		return classes.ToList();
+	}
+
 	/// <summary>(uncovered, measured) added lines across the diff, from the last coverage run.</summary>
 	public (int Uncovered, int Measured) UncoveredAddedLines()
 	{
@@ -97,6 +146,7 @@ public sealed class ReviewWorkspace(string repoPath)
 
 	CancellationTokenSource? sessionCts;
 	Dictionary<string, HashSet<int>> addedLinesByFile = [];
+	Dictionary<string, HashSet<int>> removedLinesByFile = [];
 	readonly NavigationHistory<NavEntry> history = new();
 
 	/// <summary>Opens a review of a local base..head range (no PR: checks, posted comments
@@ -185,26 +235,36 @@ public sealed class ReviewWorkspace(string repoPath)
 			BaseWorktreePath = await Worktrees.GetOrCreateAsync(baseSha, ct);
 			await Task.Run(() => baseSemantics.LoadAsync(BaseWorktreePath, ct), ct);
 		}
+		using (Busy.Begin("Computing change map"))
+			await ComputeChangeMapAsync();
 	}
 
 	void IndexAddedLines(IReadOnlyList<FileDiff> files)
 	{
 		addedLinesByFile = [];
+		removedLinesByFile = [];
 		foreach (var file in files)
 		{
-			var lines = new HashSet<int>();
+			var added = new HashSet<int>();
+			var removed = new HashSet<int>();
 			foreach (var hunk in file.Hunks)
 			{
 				int newLine = hunk.NewStart;
+				int oldLine = hunk.OldStart;
 				foreach (var line in hunk.Lines)
 				{
 					if (line.Kind == PatchLineKind.Added)
-						lines.Add(newLine);
+						added.Add(newLine);
+					if (line.Kind == PatchLineKind.Removed)
+						removed.Add(oldLine);
 					if (line.Kind != PatchLineKind.Removed)
 						newLine++;
+					if (line.Kind != PatchLineKind.Added)
+						oldLine++;
 				}
 			}
-			addedLinesByFile[file.Path] = lines;
+			addedLinesByFile[file.Path] = added;
+			removedLinesByFile[file.OldPath] = removed;
 		}
 	}
 
@@ -568,6 +628,59 @@ public sealed class ReviewWorkspace(string repoPath)
 			return vm;
 		});
 		source?.RequestCaret(entry.DocLine);
+	}
+
+	#endregion
+
+	#region Change map
+
+	public sealed record ChangeMapEntry(string RelPath, string Project, string Kind, string Display, int Line, bool OldSide);
+
+	public IReadOnlyList<ChangeMapEntry> ChangeMap { get; private set; } = [];
+	public event Action? ChangeMapChanged;
+	bool changeMapComputed;
+
+	/// <summary>Symbol-level inventory of the diff: which members were added/modified
+	/// (head side) or removed (base side). Computed once per review when the respective
+	/// semantic workspace is ready.</summary>
+	public async Task ComputeChangeMapAsync()
+	{
+		if (changeMapComputed || Semantics is not { State: SemanticState.Ready or SemanticState.SyntaxOnly } head)
+			return;
+		changeMapComputed = true;
+		var entries = new List<ChangeMapEntry>();
+		foreach (var file in Files)
+		{
+			if (!file.Path.EndsWith(".cs", StringComparison.OrdinalIgnoreCase))
+				continue;
+			string project = file.Path.Split('/')[0];
+			var headMembers = addedLinesByFile.TryGetValue(file.Path, out var added) && added.Count > 0
+				? await head.MapLinesToMembersAsync(file.Path, added, CancellationToken.None)
+				: [];
+			foreach (var member in headMembers)
+				entries.Add(new ChangeMapEntry(file.Path, project, "M", member.Display, member.FirstLine, false));
+			if (BaseSemantics is { State: SemanticState.Ready or SemanticState.SyntaxOnly } baseSem
+				&& removedLinesByFile.TryGetValue(file.OldPath, out var removed) && removed.Count > 0)
+			{
+				var baseMembers = await baseSem.MapLinesToMembersAsync(file.OldPath, removed, CancellationToken.None);
+				var headNames = headMembers.Select(m => m.Display).ToHashSet();
+				foreach (var member in baseMembers)
+				{
+					if (!headNames.Contains(member.Display))
+						entries.Add(new ChangeMapEntry(file.OldPath, project, "R", member.Display, member.FirstLine, true));
+				}
+			}
+		}
+		ChangeMap = entries;
+		ChangeMapChanged?.Invoke();
+		CliLog.Write("semantics", $"change map: {entries.Count} member(s)");
+	}
+
+	void ResetChangeMap()
+	{
+		changeMapComputed = false;
+		ChangeMap = [];
+		ChangeMapChanged?.Invoke();
 	}
 
 	#endregion
