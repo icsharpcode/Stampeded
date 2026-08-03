@@ -42,6 +42,7 @@ public class TestsPaneViewModel : Tool
 	readonly DispatcherTimer flushTimer = new() { Interval = TimeSpan.FromMilliseconds(300) };
 	CancellationTokenSource? runCts;
 	string? runLogFile;
+	bool withCoverage;
 
 	public ObservableCollection<TestRow> Failures { get; } = [];
 	public TestsState State { get; } = new();
@@ -90,6 +91,12 @@ public class TestsPaneViewModel : Tool
 		return $"test --solution {name} --report-trx";
 	}
 
+	public void RunWithCoverage()
+	{
+		withCoverage = true;
+		Run();
+	}
+
 	public void Run()
 	{
 		if (State.Running)
@@ -132,13 +139,28 @@ public class TestsPaneViewModel : Tool
 			}
 			State.Status = $"Running: dotnet {State.Args}  (full log: {runLogFile})";
 			var service = new TestService(worktree);
-			var (exitCode, results) = await service.RunAsync(State.Args, AppendOutput, ct);
+			string? coverageFile = withCoverage
+				? Path.ChangeExtension(runLogFile!, ".cobertura.xml")
+				: null;
+			withCoverage = false;
+			var (exitCode, results) = await service.RunAsync(State.Args, AppendOutput, ct, coverageFile);
+			string coverageNote = "";
+			if (coverageFile is not null && File.Exists(coverageFile))
+			{
+				var coverage = Core.Testing.CoberturaParser.Parse(File.ReadAllText(coverageFile), worktree);
+				workspace.SetCoverage(coverage);
+				coverageNote = $"  Coverage: {coverage.Count} file(s) overlaid.";
+			}
+			else if (coverageFile is not null)
+			{
+				coverageNote = "  Coverage: no report produced (is dotnet-coverage installed? dotnet tool install -g dotnet-coverage).";
+			}
 			var failed = results.Where(r => r.Outcome == TestOutcome.Failed).ToList();
 			foreach (var failure in failed)
 				Failures.Add(new TestRow(failure));
 			int passed = results.Count(r => r.Outcome == TestOutcome.Passed);
 			int skipped = results.Count(r => r.Outcome == TestOutcome.Skipped);
-			string logHint = runLogFile is null ? "" : $"  Full log: {runLogFile}";
+			string logHint = (runLogFile is null ? "" : $"  Full log: {runLogFile}") + coverageNote;
 			State.Status = (results.Count == 0
 				? $"Run finished (exit {exitCode}) - no .trx results found."
 				: $"{passed} passed, {failed.Count} failed, {skipped} skipped. Double-click a failure to open its frame.") + logHint;

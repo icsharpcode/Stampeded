@@ -39,12 +39,22 @@ public sealed class ReviewWorkspace(string repoPath)
 	public IReadOnlyList<FileDiff> Files { get; private set; } = [];
 	public RoslynWorkspaceService? Semantics { get; private set; }
 	public RoslynWorkspaceService? BaseSemantics { get; private set; }
+
+	/// <summary>Per worktree-relative file: line -> hit count, from the last coverage run.</summary>
+	public IReadOnlyDictionary<string, IReadOnlyDictionary<int, int>>? Coverage { get; private set; }
+
+	public void SetCoverage(IReadOnlyDictionary<string, IReadOnlyDictionary<int, int>>? coverage)
+	{
+		Coverage = coverage;
+		CoverageChanged?.Invoke();
+	}
 	public string? WorktreePath { get; private set; }
 	public string? BaseWorktreePath { get; private set; }
 
 	public event Action? ReviewChanged;
 	public event Action<string, bool>? ViewedChanged;
 	public event Action? SemanticsChanged;
+	public event Action? CoverageChanged;
 	public event Action<string, IReadOnlyList<ReferenceItem>>? ReferencesAvailable;
 
 	CancellationTokenSource? sessionCts;

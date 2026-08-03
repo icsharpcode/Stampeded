@@ -29,6 +29,8 @@ public partial class DiffDocumentView : UserControl
 	static readonly Color DefinitionOccurrenceColor = Color.Parse("#7A86C691");
 
 	readonly DiffLineNumberMargin margin = new();
+	readonly CoverageMargin coverageMargin = new();
+	bool coverageMarginVisible;
 	readonly DispatcherTimer hoverTimer = new() { Interval = TimeSpan.FromMilliseconds(400) };
 	readonly ReferenceElementGenerator referenceGenerator = new(_ => true);
 	readonly TextMarkerService markers;
@@ -73,9 +75,13 @@ public partial class DiffDocumentView : UserControl
 		base.OnAttachedToVisualTree(e);
 		ActiveView = this;
 		if (App.Workspace is { } ws)
+		{
 			ws.SemanticsChanged += OnSemanticsChanged;
+			ws.CoverageChanged += OnCoverageChanged;
+		}
 		Themes.ThemeManager.Current.ThemeChanged += OnThemeChangedForSemantics;
 		QueueSemanticsRefresh();
+		OnCoverageChanged();
 	}
 
 	protected override void OnDetachedFromVisualTree(Avalonia.VisualTreeAttachmentEventArgs e)
@@ -83,7 +89,10 @@ public partial class DiffDocumentView : UserControl
 		if (ActiveView == this)
 			ActiveView = null;
 		if (App.Workspace is { } ws)
+		{
 			ws.SemanticsChanged -= OnSemanticsChanged;
+			ws.CoverageChanged -= OnCoverageChanged;
+		}
 		Themes.ThemeManager.Current.ThemeChanged -= OnThemeChangedForSemantics;
 		base.OnDetachedFromVisualTree(e);
 	}
@@ -132,6 +141,24 @@ public partial class DiffDocumentView : UserControl
 	#endregion
 
 	void OnSemanticsChanged() => Dispatcher.UIThread.Post(QueueSemanticsRefresh);
+
+	void OnCoverageChanged()
+	{
+		Dispatcher.UIThread.Post(() => {
+			var hits = viewModel is not null
+				? App.Workspace?.Coverage?.GetValueOrDefault(viewModel.File.Path)
+				: null;
+			coverageMargin.Tags = model?.Tags;
+			coverageMargin.HitsByNewLine = hits;
+			bool wanted = hits is not null;
+			if (wanted && !coverageMarginVisible)
+				Editor.TextArea.LeftMargins.Insert(0, coverageMargin);
+			else if (!wanted && coverageMarginVisible)
+				Editor.TextArea.LeftMargins.Remove(coverageMargin);
+			coverageMarginVisible = wanted;
+			coverageMargin.InvalidateVisual();
+		});
+	}
 
 	void OnThemeChangedForSemantics(object? sender, EventArgs e) => QueueSemanticsRefresh();
 

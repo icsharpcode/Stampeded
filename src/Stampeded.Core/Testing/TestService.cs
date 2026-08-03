@@ -9,13 +9,20 @@ namespace Stampeded.Core.Testing;
 public sealed class TestService(string worktreePath)
 {
 	public async Task<(int ExitCode, IReadOnlyList<TestResult> Results)> RunAsync(
-		string argsLine, Action<string> onOutputLine, CancellationToken ct)
+		string argsLine, Action<string> onOutputLine, CancellationToken ct, string? coverageOutput = null)
 	{
 		var started = DateTime.UtcNow.AddSeconds(-5);
-		var command = Cli.Wrap("dotnet")
-			// ponytail: whitespace arg splitting, no quote handling; the args box is a
-			// developer-facing escape hatch, upgrade if quoted paths ever matter.
-			.WithArguments(argsLine.Split(' ', StringSplitOptions.RemoveEmptyEntries))
+		// ponytail: whitespace arg splitting, no quote handling; the args box is a
+		// developer-facing escape hatch, upgrade if quoted paths ever matter.
+		var dotnetArgs = argsLine.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+		// With coverage the whole test run is wrapped by dotnet-coverage (Microsoft's
+		// dynamic engine): no project changes needed, cobertura comes out as a file.
+		(string exe, string[] args) = coverageOutput is null
+			? ("dotnet", dotnetArgs)
+			: ("dotnet-coverage",
+				["collect", "--output", coverageOutput, "--output-format", "cobertura", "--", "dotnet", .. dotnetArgs]);
+		var command = Cli.Wrap(exe)
+			.WithArguments(args)
 			.WithWorkingDirectory(worktreePath)
 			.WithEnvironmentVariables(env => {
 				env.Set("OPENSSL_ENABLE_SHA1_SIGNATURES", "1");

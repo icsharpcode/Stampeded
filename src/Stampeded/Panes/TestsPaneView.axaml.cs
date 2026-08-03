@@ -50,6 +50,12 @@ public partial class TestsPaneView : UserControl
 			vm.Run();
 	}
 
+	void OnRunCoverageClicked(object? sender, RoutedEventArgs e)
+	{
+		if (DataContext is TestsPaneViewModel vm)
+			vm.RunWithCoverage();
+	}
+
 	void OnDoubleTapped(object? sender, TappedEventArgs e)
 	{
 		if (DataContext is TestsPaneViewModel vm && List.SelectedItem is TestRow row)
