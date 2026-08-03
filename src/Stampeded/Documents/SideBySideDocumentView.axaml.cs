@@ -1,6 +1,7 @@
 using Avalonia.Controls;
+using Avalonia.Threading;
+using Avalonia.VisualTree;
 
-using AvaloniaEdit;
 using AvaloniaEdit.Search;
 
 using Stampeded.Core.Diff;
@@ -20,6 +21,8 @@ public partial class SideBySideDocumentView : UserControl
 	IReadOnlyList<DiffLineTag>? leftTags;
 	IReadOnlyList<DiffLineTag>? rightTags;
 	bool syncing;
+	bool scrollWired;
+	int wireAttempts;
 
 	public SideBySideDocumentView()
 	{
@@ -30,20 +33,41 @@ public partial class SideBySideDocumentView : UserControl
 		Right.TextArea.TextView.BackgroundRenderers.Add(new DiffLineBackgroundRenderer(() => rightTags));
 		Left.TextArea.LeftMargins.Insert(0, leftMargin);
 		Right.TextArea.LeftMargins.Insert(0, rightMargin);
-		Left.TextArea.TextView.ScrollOffsetChanged += (_, _) => Sync(Left, Right);
-		Right.TextArea.TextView.ScrollOffsetChanged += (_, _) => Sync(Right, Left);
 	}
 
-	void Sync(TextEditor source, TextEditor target)
+	protected override void OnAttachedToVisualTree(Avalonia.VisualTreeAttachmentEventArgs e)
 	{
-		if (syncing)
+		base.OnAttachedToVisualTree(e);
+		Dispatcher.UIThread.Post(WireScrollSync, DispatcherPriority.Loaded);
+	}
+
+	// The editors' ScrollViewers only exist once their templates are applied; sync their
+	// Offset properties directly - equal line counts on both sides make a plain copy exact.
+	void WireScrollSync()
+	{
+		if (scrollWired)
+			return;
+		var leftScroll = Left.GetVisualDescendants().OfType<ScrollViewer>().FirstOrDefault();
+		var rightScroll = Right.GetVisualDescendants().OfType<ScrollViewer>().FirstOrDefault();
+		if (leftScroll is null || rightScroll is null)
+		{
+			if (wireAttempts++ < 20)
+				Dispatcher.UIThread.Post(WireScrollSync, DispatcherPriority.Background);
+			return;
+		}
+		scrollWired = true;
+		leftScroll.ScrollChanged += (_, _) => Sync(leftScroll, rightScroll);
+		rightScroll.ScrollChanged += (_, _) => Sync(rightScroll, leftScroll);
+	}
+
+	void Sync(ScrollViewer source, ScrollViewer target)
+	{
+		if (syncing || target.Offset == source.Offset)
 			return;
 		syncing = true;
 		try
 		{
-			var offset = source.TextArea.TextView.ScrollOffset;
-			target.ScrollToVerticalOffset(offset.Y);
-			target.ScrollToHorizontalOffset(offset.X);
+			target.Offset = source.Offset;
 		}
 		finally
 		{
