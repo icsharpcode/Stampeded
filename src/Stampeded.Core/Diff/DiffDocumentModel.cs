@@ -87,7 +87,9 @@ public sealed class DiffDocumentModel
 		var insertAfter = new SortedDictionary<int, List<string>>();
 		foreach (var anchor in anchors)
 		{
-			int? docLine = anchor.OldSide ? DocLineFromOldLine(anchor.BlobLine) : DocLineFromNewLine(anchor.BlobLine);
+			// BlobLine 0 = no surviving location (outdated): pinned before the first line.
+			int? docLine = anchor.BlobLine == 0 ? 0
+				: anchor.OldSide ? DocLineFromOldLine(anchor.BlobLine) : DocLineFromNewLine(anchor.BlobLine);
 			if (docLine is not { } dl)
 				continue;
 			if (!insertAfter.TryGetValue(dl, out var keys))
@@ -102,6 +104,15 @@ public sealed class DiffDocumentModel
 		var newTags = new List<DiffLineTag>(Tags.Count + anchors.Count);
 		// 1-based doc line -> number of lines inserted at or before it, for hunk shifting.
 		var shiftAt = new int[Tags.Count + 2];
+		if (insertAfter.TryGetValue(0, out var topKeys))
+		{
+			foreach (var key in topKeys)
+			{
+				newLines.Add(ThreadMarkerPrefix + key + ThreadMarkerSuffix);
+				newTags.Add(new DiffLineTag(DiffLineKind.Comment, 0, 0, null));
+			}
+			shiftAt[0] = topKeys.Count;
+		}
 		for (int i = 0; i < Tags.Count; i++)
 		{
 			newLines.Add(sourceLines[i]);
@@ -120,6 +131,7 @@ public sealed class DiffDocumentModel
 		for (int i = Tags.Count; i < sourceLines.Length; i++)
 			newLines.Add(sourceLines[i]);
 		var cumulative = new int[shiftAt.Length];
+		cumulative[0] = shiftAt[0];
 		for (int i = 1; i < shiftAt.Length; i++)
 			cumulative[i] = cumulative[i - 1] + shiftAt[i];
 		int Shift(int docLine) => docLine + cumulative[Math.Min(docLine, cumulative.Length - 1)];

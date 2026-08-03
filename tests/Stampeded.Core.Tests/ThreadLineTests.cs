@@ -62,3 +62,22 @@ public class ThreadLineTests
 		Assert.That(model.WithThreadLines([new ThreadAnchor(false, 999, "x")]), Is.SameAs(model));
 	}
 }
+
+public class OutdatedThreadTests
+{
+	[Test]
+	public void BlobLineZeroPinsThreadAtTopOfDocument()
+	{
+		var model = Stampeded.Core.Diff.DiffDocumentBuilder.Build("a\nb\n", "a\nb\nc\n");
+		var withThreads = model.WithThreadLines([
+			new Stampeded.Core.Diff.ThreadAnchor(false, 0, "outdated-1"),
+			new Stampeded.Core.Diff.ThreadAnchor(false, 3, "n3"),
+		]);
+		var lines = withThreads.Text.Split('\n');
+		Assert.That(lines[0], Is.EqualTo("@@thread:outdated-1@@"));
+		Assert.That(withThreads.Tags[0].Kind, Is.EqualTo(Stampeded.Core.Diff.DiffLineKind.Comment));
+		// The line-3 anchor shifts by one for the top insertion.
+		Assert.That(withThreads.DocLineFromNewLine(3), Is.EqualTo(model.DocLineFromNewLine(3) + 1));
+		Assert.That(lines[withThreads.DocLineFromNewLine(3)!.Value], Is.EqualTo("@@thread:n3@@"));
+	}
+}
