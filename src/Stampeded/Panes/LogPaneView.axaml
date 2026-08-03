@@ -6,6 +6,14 @@
   <DockPanel>
     <Button DockPanel.Dock="Top" HorizontalAlignment="Right" Margin="4,2" Content="Clear"
             Click="OnClear" />
-    <ListBox x:Name="List" ItemsSource="{Binding Lines}" FontFamily="monospace" FontSize="11" />
+    <ListBox x:Name="List" ItemsSource="{Binding Lines}" SelectionMode="Multiple"
+             FontFamily="monospace" FontSize="11" KeyDown="OnKeyDown">
+      <ListBox.ContextMenu>
+        <ContextMenu>
+          <MenuItem Header="Copy Selected" InputGesture="Ctrl+C" Click="OnCopySelected" />
+          <MenuItem Header="Copy All" Click="OnCopyAll" />
+        </ContextMenu>
+      </ListBox.ContextMenu>
+    </ListBox>
   </DockPanel>
 </UserControl>
