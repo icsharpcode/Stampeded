@@ -357,6 +357,8 @@ public sealed class ReviewWorkspace(string repoPath)
 
 	public event Action<string>? StatusMessage;
 
+	public void PostStatus(string message) => StatusMessage?.Invoke(message);
+
 	#region Re-review (head moved since the last pass)
 
 	/// <summary>Head of the previous pass, when this open superseded one; null on a first
@@ -697,6 +699,15 @@ public sealed class ReviewWorkspace(string repoPath)
 		{
 			StatusMessage?.Invoke($"Rebase failed: {ex.Message}");
 		}
+	}
+
+	/// <summary>Stops background work and releases the Roslyn workspaces; called when the
+	/// app switches to another repository and this instance is abandoned.</summary>
+	public void Shutdown()
+	{
+		sessionCts?.Cancel();
+		Semantics?.Dispose();
+		BaseSemantics?.Dispose();
 	}
 
 	/// <summary>Opens a PR in the browser via gh.</summary>

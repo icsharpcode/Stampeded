@@ -12,6 +12,34 @@ public partial class MainWindow : Window
 		InitializeComponent();
 		DataContext = new MainViewModel();
 		ScreenshotWatcher.Attach(this);
+		RecentMenu.AddHandler(MenuItem.ClickEvent, OnRecentRepoClick);
+	}
+
+	void OnRecentRepoClick(object? sender, RoutedEventArgs e)
+	{
+		if (e.Source is MenuItem { Header: string path } item && item != RecentMenu)
+			App.OpenRepositoryAsync(path).HandleExceptions();
+	}
+
+	void OnOpenRepository(object? s, RoutedEventArgs e) => PickRepositoryAsync().HandleExceptions();
+
+	async Task PickRepositoryAsync()
+	{
+		var picks = await StorageProvider.OpenFolderPickerAsync(new Avalonia.Platform.Storage.FolderPickerOpenOptions {
+			Title = "Open git repository",
+			AllowMultiple = false,
+		});
+		if (picks.Count == 1)
+			await App.OpenRepositoryAsync(picks[0].Path.LocalPath);
+	}
+
+	void OnOpenFromUrl(object? s, RoutedEventArgs e) => PromptUrlAsync().HandleExceptions();
+
+	async Task PromptUrlAsync()
+	{
+		string? url = await new UrlPromptWindow().ShowDialog<string?>(this);
+		if (!string.IsNullOrWhiteSpace(url))
+			await App.OpenFromUrlAsync(url);
 	}
 
 	static DiffDocumentView? View => DiffDocumentView.ActiveView;

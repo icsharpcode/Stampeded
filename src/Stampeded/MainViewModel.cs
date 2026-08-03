@@ -1,14 +1,23 @@
+using System.Collections.ObjectModel;
+
+using CommunityToolkit.Mvvm.ComponentModel;
+
 using Dock.Model.Controls;
 
 using Stampeded.Docking;
 
 namespace Stampeded;
 
-public class MainViewModel
+public partial class MainViewModel : ObservableObject
 {
 	public IRootDock Layout { get; }
 
 	public BusyTracker Busy { get; }
+
+	public ObservableCollection<string> Recent { get; } = new(RecentRepos.Load());
+
+	[ObservableProperty]
+	string windowTitle = "Stampeded!";
 
 	public MainViewModel()
 	{
@@ -20,5 +29,16 @@ public class MainViewModel
 		factory.InitLayout(Layout);
 		workspace.Factory = factory;
 		workspace.Documents = factory.Documents;
+		workspace.ReviewChanged += UpdateTitle;
+		UpdateTitle();
+		RecentRepos.Record(Program.RepoPath);
+	}
+
+	void UpdateTitle()
+	{
+		string repo = $"{Path.GetFileName(Program.RepoPath)}  ({Program.RepoPath})";
+		WindowTitle = App.Workspace?.CurrentPr is { } pr
+			? $"Stampeded!  -  {repo}  -  PR #{pr.Number}"
+			: $"Stampeded!  -  {repo}";
 	}
 }

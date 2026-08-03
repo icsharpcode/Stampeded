@@ -4,8 +4,9 @@ namespace Stampeded;
 
 internal static class Program
 {
-	/// <summary>The repository under review: first non-option argument, else the CWD.</summary>
-	public static string RepoPath { get; private set; } = Environment.CurrentDirectory;
+	/// <summary>The repository under review: first non-option argument, else the CWD;
+	/// changed at runtime by "Open Repository".</summary>
+	public static string RepoPath { get; set; } = Environment.CurrentDirectory;
 
 	/// <summary>PR to open right after startup (--pr N), for scripted/diagnostic runs.</summary>
 	public static int? AutoOpenPr { get; private set; }

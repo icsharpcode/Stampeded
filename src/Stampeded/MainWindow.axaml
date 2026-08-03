@@ -4,7 +4,7 @@
         xmlns:local="using:Stampeded"
         x:Class="Stampeded.MainWindow"
         x:DataType="local:MainViewModel"
-        Title="Stampeded!"
+        Title="{Binding WindowTitle}"
         Width="1200" Height="800">
   <Window.DataTemplates>
     <local:ViewLocator />
@@ -40,6 +40,10 @@
         <MenuItem Header="Log Pane" Tag="Log" Click="OnShowPane" />
       </MenuItem>
       <MenuItem Header="Re_pository">
+        <MenuItem Header="Open Repository..." Click="OnOpenRepository" />
+        <MenuItem Header="Open from URL..." Click="OnOpenFromUrl" />
+        <MenuItem Header="Recent Repositories" x:Name="RecentMenu" ItemsSource="{Binding Recent}" />
+        <Separator />
         <MenuItem Header="Open PR on GitHub" Click="OnOpenOnGitHub" />
         <MenuItem Header="Rebase PR onto Target Branch" Click="OnRebasePr" />
         <MenuItem Header="Show Interdiff Since Last Pass" Click="OnInterdiff" />
