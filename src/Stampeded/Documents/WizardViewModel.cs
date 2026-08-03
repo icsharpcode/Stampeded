@@ -36,6 +36,17 @@ public sealed partial class WizardStep(string id, string title, string guidance,
 	bool isCurrent;
 }
 
+public sealed partial class PrepareItem(string label) : ObservableObject
+{
+	public string Label { get; } = label;
+
+	[ObservableProperty]
+	string status = "waiting";
+
+	[ObservableProperty]
+	bool done;
+}
+
 public sealed record TriageRowDisplay(string Marker, string Path, string AddedText, string RemovedText, string MinutesText, string Churn);
 
 public sealed partial class WizardState : ObservableObject
@@ -68,6 +79,7 @@ public class WizardViewModel : Document
 	public ObservableCollection<WizardStep> Steps { get; } = [];
 	public ObservableCollection<ReviewWorkspace.SweepItem> SweepItems { get; } = [];
 	public ObservableCollection<TriageRowDisplay> TriageRows { get; } = [];
+	public ObservableCollection<PrepareItem> PrepareItems { get; } = [];
 	public WizardState State { get; } = new();
 
 	// Start-page data.
@@ -81,6 +93,7 @@ public class WizardViewModel : Document
 	public PrFilesPaneViewModel FilesList { get; }
 
 	public WizardStep SelectStep { get; }
+	public WizardStep PrepareStep { get; }
 	public WizardStep TriageStep { get; }
 	public WizardStep OrientStep { get; }
 	public WizardStep SurveyStep { get; }
@@ -102,6 +115,20 @@ public class WizardViewModel : Document
 
 		Steps.Add(SelectStep = new WizardStep("select", "Start",
 			"Pick what to review: a pull request, a local branch, or another repository. 'Open Guided' walks the phases; 'Open Plain' just opens the review.", false));
+		Steps.Add(PrepareStep = new WizardStep("prepare", "Prep",
+			"The workspace is being prepared: worktrees, semantics for both sides, CI state, hot-spot data. The review starts when the signals the phases rely on are in - or continue now and let the rest catch up.", false));
+		foreach (var label in new[] {
+			"Diff and review state",
+			"Semantics (head)",
+			"Semantics (base, for removed code)",
+			"Change map (symbol-level diff)",
+			"CI checks",
+			"Churn / hot spots",
+			"Posted review comments",
+		})
+		{
+			PrepareItems.Add(new PrepareItem(label));
+		}
 		Steps.Add(TriageStep = new WizardStep("triage", "1 Triage",
 			"Should you review this, now, at all? Read the cost estimate. Bouncing an unreviewable PR is a legitimate outcome - the button drafts the comment.", true));
 		Steps.Add(OrientStep = new WizardStep("orient", "2 Orient",
@@ -145,6 +172,8 @@ public class WizardViewModel : Document
 		workspace.ChangeMapChanged += Recompute;
 		workspace.DepthChanged += Recompute;
 		workspace.ChurnChanged += () => Dispatcher.UIThread.Post(RebuildTriageRows);
+		workspace.ChurnChanged += () => Dispatcher.UIThread.Post(Recompute);
+		workspace.SemanticsChanged += () => Dispatcher.UIThread.Post(Recompute);
 		workspace.ApprovalGate = Gate;
 		sessionTimer.Tick += (_, _) => Recompute();
 		SelectCurrent(SelectStep);
@@ -221,18 +250,34 @@ public class WizardViewModel : Document
 
 	// Start-page actions.
 
+	bool autoAdvanceAfterPrepare;
+
 	public void OpenPr(PrSummary pr, bool guided)
 	{
 		workspace.OpenPrAsync(pr.Number, guided).HandleExceptions();
 		if (guided)
-			SelectStepCommand(TriageStep);
+			BeginGuidedPreparation();
 	}
 
 	public void OpenBranch(BranchInfo branch, bool guided)
 	{
 		workspace.OpenLocalRangeAsync(defaultBase, branch.Name, guided).HandleExceptions();
 		if (guided)
-			SelectStepCommand(TriageStep);
+			BeginGuidedPreparation();
+	}
+
+	/// <summary>Guided open: show the preparation checklist and advance to Triage once the
+	/// signals the phases rely on are loaded.</summary>
+	public void BeginGuidedPreparation()
+	{
+		autoAdvanceAfterPrepare = true;
+		SelectStepCommand(PrepareStep);
+	}
+
+	public void ContinueFromPrepare()
+	{
+		autoAdvanceAfterPrepare = false;
+		SelectStepCommand(TriageStep);
 	}
 
 	public void OpenRecent(string path) => App.OpenRepositoryAsync(path).HandleExceptions();
@@ -283,8 +328,52 @@ public class WizardViewModel : Document
 		loadingChecks = false;
 	}
 
+	static (string Status, bool Done) SemanticStatus(Core.Roslyn.RoslynWorkspaceService? sem)
+		=> sem?.State switch {
+			Core.Roslyn.SemanticState.Restoring => ("restoring packages...", false),
+			Core.Roslyn.SemanticState.Loading => ("loading solution...", false),
+			Core.Roslyn.SemanticState.Ready => ("ready", true),
+			Core.Roslyn.SemanticState.SyntaxOnly => ("syntax-only fallback", true),
+			Core.Roslyn.SemanticState.Failed => ("FAILED (see load log)", true),
+			_ => ("waiting", false),
+		};
+
+	void UpdatePrepareItems()
+	{
+		bool reviewOpen = workspace.HeadSha is not null;
+		Set(0, reviewOpen ? ($"{workspace.Files.Count} changed file(s)", true) : ("waiting", false));
+		Set(1, SemanticStatus(workspace.Semantics));
+		Set(2, SemanticStatus(workspace.BaseSemantics));
+		Set(3, workspace.ChangeMap.Count > 0
+			? ($"{workspace.ChangeMap.Count} member(s)", true)
+			: ("waiting for semantics...", false));
+		Set(4, workspace.Checks is { } checks ? ($"{checks.Count} check(s)", true) : ("loading...", false));
+		Set(5, workspace.ChurnByFile is not null ? ("done", true) : ("computing...", false));
+		Set(6, !reviewOpen ? ("waiting", false)
+			: workspace.CommentsLoaded ? ($"{workspace.PostedComments.Count} comment(s)", true)
+			: ("loading...", false));
+
+		// The phases' load-bearing inputs: both semantic sides terminal, CI and churn in.
+		// The map and comments trail behind harmlessly (and may legitimately stay empty).
+		bool ready = reviewOpen && PrepareItems[1].Done && PrepareItems[2].Done
+			&& PrepareItems[4].Done && PrepareItems[5].Done;
+		PrepareStep.AutoConditionMet = ready && PrepareItems[3].Done && PrepareItems[6].Done;
+		if (ready && autoAdvanceAfterPrepare && PrepareStep.IsCurrent)
+		{
+			autoAdvanceAfterPrepare = false;
+			SelectStepCommand(TriageStep);
+		}
+
+		void Set(int index, (string Status, bool Done) value)
+		{
+			PrepareItems[index].Status = value.Status;
+			PrepareItems[index].Done = value.Done;
+		}
+	}
+
 	void Recompute()
 	{
+		UpdatePrepareItems();
 		int total = workspace.Files.Count;
 		foreach (var step in Steps)
 		{
@@ -359,15 +448,15 @@ public class WizardViewModel : Document
 			}
 			step.IsSatisfied = step.AutoConditionMet && (!step.RequiresCheck || step.IsChecked);
 		}
-		int gated = Steps.Count - 1;
-		State.Progress = $"{Steps.Count(s => s != SelectStep && s.IsSatisfied)} of {gated} phases complete{(State.OverrideGate ? "  (gate overridden)" : "")}";
+		int gated = Steps.Count - 2;
+		State.Progress = $"{Steps.Count(s => s != SelectStep && s != PrepareStep && s.IsSatisfied)} of {gated} phases complete{(State.OverrideGate ? "  (gate overridden)" : "")}";
 	}
 
 	(bool Ok, string Detail) Gate()
 	{
 		if (State.OverrideGate)
 			return (true, "");
-		var unmet = Steps.Where(s => s != SelectStep && !s.IsSatisfied).Select(s => s.Title).ToList();
+		var unmet = Steps.Where(s => s != SelectStep && s != PrepareStep && !s.IsSatisfied).Select(s => s.Title).ToList();
 		return unmet.Count == 0
 			? (true, "")
 			: (false, string.Join("; ", unmet));

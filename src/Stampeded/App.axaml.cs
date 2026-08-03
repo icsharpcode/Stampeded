@@ -96,7 +96,7 @@ public class App : Application
 		await workspace.OpenPrAsync(pr, guided: true);
 		var wizard = workspace.Documents?.VisibleDockables?.OfType<Documents.WizardViewModel>().FirstOrDefault();
 		if (wizard is not null)
-			Avalonia.Threading.Dispatcher.UIThread.Post(() => wizard.SelectStepCommand(wizard.TriageStep));
+			Avalonia.Threading.Dispatcher.UIThread.Post(wizard.BeginGuidedPreparation);
 	}
 
 	public override void OnFrameworkInitializationCompleted()

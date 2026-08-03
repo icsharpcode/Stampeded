@@ -176,6 +176,7 @@ public sealed class ReviewWorkspace(string repoPath)
 		history.Clear();
 		CloseOpenDiffs();
 		PostedComments = [];
+		CommentsLoaded = true;
 		ReviewChanged?.Invoke();
 		OpenUnviewedFilesAsync()
 			.ContinueWith(_ => Avalonia.Threading.Dispatcher.UIThread.Post(() => { if (guided) OpenWizard(); }))
@@ -1061,6 +1062,10 @@ public sealed class ReviewWorkspace(string repoPath)
 
 	public IReadOnlyList<DraftComment> Drafts { get; private set; } = [];
 	public IReadOnlyList<PostedCommentView> PostedComments { get; private set; } = [];
+
+	/// <summary>True once the posted-comments fetch for the current review finished
+	/// (successfully or not) - distinguishes "none" from "still loading".</summary>
+	public bool CommentsLoaded { get; private set; }
 	public CommentTarget? PendingCommentTarget { get; private set; }
 
 	public event Action? CommentsChanged;
@@ -1140,6 +1145,7 @@ public sealed class ReviewWorkspace(string repoPath)
 
 	async Task LoadPostedCommentsAsync(int number, CancellationToken ct)
 	{
+		CommentsLoaded = false;
 		try
 		{
 			var raw = await GitHub.GetReviewCommentsAsync(number, ct);
@@ -1157,6 +1163,7 @@ public sealed class ReviewWorkspace(string repoPath)
 		{
 			PostedComments = [];
 		}
+		CommentsLoaded = true;
 		CommentsChanged?.Invoke();
 	}
 
