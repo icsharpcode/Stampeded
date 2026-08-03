@@ -55,7 +55,7 @@ public sealed partial class WizardState : ObservableObject
 	string prColumnHeader = "Pull Requests";
 
 	[ObservableProperty]
-	string branchColumnHeader = "Branches (vs default base)";
+	string branchColumnHeader = "Branches";
 
 	[ObservableProperty]
 	string progress = "";
@@ -201,7 +201,7 @@ public class WizardViewModel : Document
 		{
 			// Not a repo or no origin; the start page simply shows no branches.
 		}
-		State.BranchColumnHeader = $"Branches ({Branches.Count}, vs default base)";
+		State.BranchColumnHeader = $"Branches ({Branches.Count})";
 	}
 
 	void SelectCurrent(WizardStep step)

@@ -153,8 +153,6 @@
             <Button Content="Open Plain" Click="OnPrOpenPlain" />
             <Button Content="Refresh" Click="OnPrRefresh" />
           </StackPanel>
-          <TextBlock DockPanel.Dock="Bottom" Opacity="0.7" FontSize="11" TextWrapping="Wrap"
-                     Margin="0,4,0,0" Text="{Binding PrList.State.Status}" />
           <ListBox x:Name="PrListBox" ItemsSource="{Binding PrList.Items}" DoubleTapped="OnPrDoubleTapped">
             <ListBox.Styles>
               <Style Selector="StackPanel.draftpr">
