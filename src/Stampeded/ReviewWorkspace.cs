@@ -637,6 +637,22 @@ public sealed class ReviewWorkspace(string repoPath)
 	public Task OpenOnGitHubAsync(int number)
 		=> ExternalTool.RunAsync("gh", ["pr", "view", number.ToString(), "--web"], RepoPath);
 
+	/// <summary>Two arbitrary texts side by side (e.g. base-vs-head test run outputs).</summary>
+	public void OpenSideBySideText(string id, string title, string leftText, string rightText)
+	{
+		// Content is per-run: replace any previous document under this id instead of
+		// reactivating it with stale text.
+		if (Factory is not null && Documents?.VisibleDockables?.OfType<SideBySideDocumentViewModel>()
+				.FirstOrDefault(d => d.Id == id) is { } stale)
+		{
+			Factory.CloseDockable(stale);
+		}
+		var stub = new FileDiff(title, title, FileChangeKind.Modified, false, []);
+		ShowDocument(id, () => new SideBySideDocumentViewModel(stub, DiffDocumentBuilder.BuildPair(leftText, rightText)) {
+			Title = title,
+		});
+	}
+
 	/// <summary>Opens (or activates) a plain text document tab (CI logs, reports, ...).</summary>
 	public void OpenTextDocument(string id, string title, string text)
 	{

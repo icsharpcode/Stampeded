@@ -26,9 +26,9 @@ public sealed partial class TestsState : ObservableObject
 	bool running;
 }
 
-public sealed record TestRow(TestResult Result)
+public sealed record TestRow(TestResult Result, string? Marker = null)
 {
-	public string Display => $"{(Result.Outcome == TestOutcome.Failed ? "[X]" : "[ok]")} {Result.TestName}";
+	public string Display => $"{Marker ?? (Result.Outcome == TestOutcome.Failed ? "[X]" : "[ok]")} {Result.TestName}";
 }
 
 /// <summary>
@@ -118,6 +118,85 @@ public class TestsPaneViewModel : Tool
 	{
 		withCoverage = true;
 		Run();
+	}
+
+	/// <summary>Runs the same test command at base and head and compares VERDICTS: did this
+	/// change introduce a failure, or was it already broken at base? Sequential runs (two
+	/// concurrent builds would fight over CPU and the NuGet cache).</summary>
+	public void RunAB()
+	{
+		if (State.Running)
+		{
+			runCts?.Cancel();
+			return;
+		}
+		if (workspace.WorktreePath is not { } head || !Directory.Exists(head)
+			|| workspace.BaseWorktreePath is not { } baseWt || !Directory.Exists(baseWt))
+		{
+			State.Status = "A/B needs both worktrees - open a pull request and let semantics load first.";
+			return;
+		}
+		var cts = runCts = new CancellationTokenSource();
+		string logDir = Path.Combine(
+			Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "stampeded", "logs");
+		Directory.CreateDirectory(logDir);
+		runLogFile = Path.Combine(logDir, $"test-ab-{DateTime.Now:yyyyMMdd-HHmmss}.log");
+		State.Running = true;
+		State.Output = "";
+		outputBuffer.Clear();
+		Failures.Clear();
+		flushTimer.Start();
+		RunABCoreAsync(baseWt, head, cts.Token).HandleExceptions();
+	}
+
+	async Task RunABCoreAsync(string baseWorktree, string headWorktree, CancellationToken ct)
+	{
+		using var busy = workspace.Busy.Begin("A/B test run (base, then head)");
+		try
+		{
+			while (workspace.Semantics is { State: Core.Roslyn.SemanticState.Restoring or Core.Roslyn.SemanticState.Loading }
+				|| workspace.BaseSemantics is { State: Core.Roslyn.SemanticState.Restoring or Core.Roslyn.SemanticState.Loading })
+			{
+				State.Status = "Waiting for the semantic workspace load to finish before building tests...";
+				await Task.Delay(1000, ct);
+			}
+			var baseOut = new StringBuilder();
+			var headOut = new StringBuilder();
+
+			State.Status = $"A/B 1/2: base run ({workspace.BaseSha?[..9]})...";
+			AppendOutput($"==== base @ {workspace.BaseSha} ====");
+			var (_, baseResults) = await new TestService(baseWorktree)
+				.RunAsync(State.Args, line => { lock (baseOut) baseOut.AppendLine(line); AppendOutput(line); }, ct);
+
+			State.Status = $"A/B 2/2: head run ({workspace.HeadSha?[..9]})...";
+			AppendOutput($"==== head @ {workspace.HeadSha} ====");
+			var (_, headResults) = await new TestService(headWorktree)
+				.RunAsync(State.Args, line => { lock (headOut) headOut.AppendLine(line); AppendOutput(line); }, ct);
+
+			var comparison = TestRunComparison.Compare(baseResults, headResults);
+			foreach (var result in comparison.NewlyFailing)
+				Failures.Add(new TestRow(result, "[NEW-FAIL]"));
+			foreach (var result in comparison.StillFailing)
+				Failures.Add(new TestRow(result, "[still]"));
+			foreach (var result in comparison.Fixed)
+				Failures.Add(new TestRow(result, "[fixed]"));
+			State.Status =
+				$"A/B: base {comparison.BasePassed} pass / {comparison.BaseFailed} fail; " +
+				$"head {comparison.HeadPassed} pass / {comparison.HeadFailed} fail - " +
+				$"{comparison.NewlyFailing.Count} newly failing, {comparison.Fixed.Count} fixed, " +
+				$"{comparison.StillFailing.Count} already broken at base.  Full log: {runLogFile}";
+			workspace.OpenSideBySideText("abtests", "Test output: base | head", baseOut.ToString(), headOut.ToString());
+		}
+		catch (OperationCanceledException)
+		{
+			State.Status = "A/B run cancelled.";
+		}
+		finally
+		{
+			State.Running = false;
+			flushTimer.Stop();
+			FlushOutput();
+		}
 	}
 
 	public void Run()
