@@ -52,6 +52,12 @@ public sealed record TriageRowDisplay(string Marker, string Path, string AddedTe
 public sealed partial class WizardState : ObservableObject
 {
 	[ObservableProperty]
+	string prColumnHeader = "Pull Requests";
+
+	[ObservableProperty]
+	string branchColumnHeader = "Branches (vs default base)";
+
+	[ObservableProperty]
 	string progress = "";
 
 	[ObservableProperty]
@@ -174,6 +180,8 @@ public class WizardViewModel : Document
 		workspace.SemanticsChanged += () => Dispatcher.UIThread.Post(Recompute);
 		workspace.ApprovalGate = Gate;
 		sessionTimer.Tick += (_, _) => Recompute();
+		PrList.Items.CollectionChanged += (_, _) =>
+			State.PrColumnHeader = $"Pull Requests ({PrList.Items.Count})";
 		SelectCurrent(SelectStep);
 		Recompute();
 		LoadStartPageAsync().HandleExceptions();
@@ -193,6 +201,7 @@ public class WizardViewModel : Document
 		{
 			// Not a repo or no origin; the start page simply shows no branches.
 		}
+		State.BranchColumnHeader = $"Branches ({Branches.Count}, vs default base)";
 	}
 
 	void SelectCurrent(WizardStep step)

@@ -147,7 +147,7 @@
                    FontSize="12" />
         </DockPanel>
         <DockPanel Grid.Column="2" Margin="6,0,0,0">
-          <TextBlock DockPanel.Dock="Top" Classes="colhead" Text="Pull Requests" />
+          <TextBlock DockPanel.Dock="Top" Classes="colhead" Text="{Binding State.PrColumnHeader}" />
           <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Spacing="6" Margin="0,4,0,0">
             <Button Content="Open Guided" Click="OnPrOpenGuided" FontWeight="SemiBold" />
             <Button Content="Open Plain" Click="OnPrOpenPlain" />
@@ -186,7 +186,7 @@
           </ListBox>
         </DockPanel>
         <DockPanel Grid.Column="4" Margin="6,0,0,0">
-          <TextBlock DockPanel.Dock="Top" Classes="colhead" Text="Branches (vs default base)" />
+          <TextBlock DockPanel.Dock="Top" Classes="colhead" Text="{Binding State.BranchColumnHeader}" />
           <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Spacing="6" Margin="0,4,0,0">
             <Button Content="Open Guided" Click="OnBranchOpenGuided" FontWeight="SemiBold" />
             <Button Content="Open Plain" Click="OnBranchOpenPlain" />
