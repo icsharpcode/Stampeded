@@ -10,6 +10,11 @@ internal static class Program
 	[STAThread]
 	public static void Main(string[] args)
 	{
+		// Process-wide so every child process inherits it - git, gh, dotnet restore/test
+		// AND the MSBuild build hosts MSBuildWorkspace spawns, which no per-invocation
+		// environment override reaches. Needed for legacy SHA-1 signatures with the
+		// local OpenSSL setup.
+		Environment.SetEnvironmentVariable("OPENSSL_ENABLE_SHA1_SIGNATURES", "1");
 		// Must run before any Roslyn workspace assembly loads, so MSBuild resolves from
 		// the installed SDK.
 		Microsoft.Build.Locator.MSBuildLocator.RegisterDefaults();

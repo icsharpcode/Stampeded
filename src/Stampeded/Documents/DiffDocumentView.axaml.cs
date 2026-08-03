@@ -47,6 +47,14 @@ public partial class DiffDocumentView : UserControl
 		markers = new TextMarkerService(Editor.TextArea.TextView);
 		Editor.TextArea.TextView.BackgroundRenderers.Add(markers);
 		Editor.TextArea.TextView.ElementGenerators.Add(referenceGenerator);
+		// Hand cursor only while Ctrl is held, matching the Ctrl+Click navigation gesture
+		// (a permanent hand over every identifier promises plain-click navigation we
+		// deliberately don't do - plain click places the caret / highlights occurrences).
+		referenceGenerator.QueryCursor = (element, segment, modifiers) =>
+			element.Cursor = new Cursor(
+				modifiers.HasFlag(KeyModifiers.Control) && segment.Kind == ReferenceMode.Link
+					? StandardCursorType.Hand
+					: StandardCursorType.Ibeam);
 		Editor.TextArea.LeftMargins.Insert(0, margin);
 		Editor.TextArea.AddHandler(KeyDownEvent, OnEditorKeyDown, RoutingStrategies.Tunnel);
 		Editor.TextArea.TextView.AddHandler(PointerReleasedEvent, OnTextViewPointerReleased, RoutingStrategies.Bubble, handledEventsToo: true);

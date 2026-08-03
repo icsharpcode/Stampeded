@@ -52,7 +52,9 @@ namespace Stampeded.Editor
 
 		public ReviewTextEditor()
 		{
-			FontFamily = new FontFamily("Consolas, Menlo, Monospace");
+			// The fontconfig generic family resolves to the system's monospace font on
+			// Linux; named fonts first for platforms without fontconfig aliases.
+			FontFamily = new FontFamily("Cascadia Code,Consolas,Menlo,DejaVu Sans Mono,monospace");
 			FontSize = 13;
 			// Selected text keeps its syntax colours (ports icsharpcode/ILSpy#2938):
 			// SelectionForeground stays unset, and the selection is a flat, translucent
