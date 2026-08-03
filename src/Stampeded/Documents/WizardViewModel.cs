@@ -386,10 +386,16 @@ public class WizardViewModel : Document
 		Set(0, reviewOpen ? ($"{workspace.Files.Count} changed file(s)", true) : ("waiting", false));
 		Set(1, SemanticStatus(workspace.Semantics));
 		Set(2, SemanticStatus(workspace.BaseSemantics));
-		Set(3, workspace.ChangeMap.Count > 0
+		// A computed-but-empty map is done (non-C# changes have no members); a FAILED
+		// semantic load means the map will never come - do not wait for it forever.
+		Set(3, workspace.ChangeMapComputed
 			? ($"{workspace.ChangeMap.Count} member(s)", true)
-			: ("waiting for semantics...", false));
-		Set(4, workspace.Checks is { } checks ? ($"{checks.Count} check(s)", true) : ("loading...", false));
+			: workspace.Semantics is { State: Core.Roslyn.SemanticState.Failed }
+				? ("unavailable (semantics failed)", true)
+				: ("waiting for semantics...", false));
+		Set(4, workspace.Checks is { } checks ? ($"{checks.Count} check(s)", true)
+			: workspace.CurrentPr is null && reviewOpen ? ("local review - none", true)
+			: ("loading...", false));
 		Set(5, workspace.ChurnByFile is not null ? ("done", true) : ("computing...", false));
 		Set(6, !reviewOpen ? ("waiting", false)
 			: workspace.CommentsLoaded ? ($"{workspace.PostedComments.Count} comment(s)", true)

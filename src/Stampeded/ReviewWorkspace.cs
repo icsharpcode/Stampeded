@@ -998,6 +998,10 @@ public sealed class ReviewWorkspace(string repoPath)
 	public event Action? ChangeMapChanged;
 	bool changeMapComputed;
 
+	/// <summary>True once the change map for this review has been computed - distinguishes
+	/// "legitimately empty" from "semantics not ready yet".</summary>
+	public bool ChangeMapComputed => changeMapComputed;
+
 	/// <summary>Symbol-level inventory of the diff: which members were added/modified
 	/// (head side) or removed (base side). Computed once per review when the respective
 	/// semantic workspace is ready.</summary>
