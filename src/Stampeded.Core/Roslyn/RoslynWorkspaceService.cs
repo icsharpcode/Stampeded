@@ -499,6 +499,24 @@ public sealed class RoslynWorkspaceService : IDisposable
 		return new SymbolLocation(path, location.SourceSpan, line);
 	}
 
+	/// <summary>File path of the PE reference defining <paramref name="symbol"/>, for
+	/// metadata symbols without source. Only already-realized compilations are consulted;
+	/// the compilation that produced the symbol necessarily is one.</summary>
+	public string? TryGetMetadataAssemblyPath(ISymbol symbol)
+	{
+		if (solution is null || symbol.ContainingAssembly is not { } assembly)
+			return null;
+		foreach (var project in solution.Projects)
+		{
+			if (project.TryGetCompilation(out var compilation)
+				&& compilation.GetMetadataReference(assembly) is PortableExecutableReference { FilePath: { } path })
+			{
+				return path;
+			}
+		}
+		return null;
+	}
+
 	public async Task<IReadOnlyList<ReferenceHit>> FindReferencesAsync(ISymbol symbol, CancellationToken ct)
 	{
 		if (solution is null)

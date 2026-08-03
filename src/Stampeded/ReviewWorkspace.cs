@@ -1,5 +1,6 @@
 using Dock.Model.Mvvm.Controls;
 
+using Stampeded.Core.Decompilation;
 using Stampeded.Core.Diff;
 using Stampeded.Core.Git;
 using Stampeded.Core.GitHub;
@@ -533,7 +534,7 @@ public sealed class ReviewWorkspace(string repoPath)
 		var location = sem!.GetDefinitionLocation(symbol);
 		if (location is null)
 		{
-			StatusMessage?.Invoke($"'{symbol.Name}' is defined in metadata ({symbol.ContainingAssembly?.Name}); decompiled navigation is not wired up yet.");
+			await OpenDecompiledDefinitionAsync(sem, symbol, origin);
 			return;
 		}
 		string? targetRel = sem.ToRelativePath(location.FilePath);
@@ -542,6 +543,48 @@ public sealed class ReviewWorkspace(string repoPath)
 		CliLog.Write("action", $"goto definition: {targetRel}:{location.Line}{(oldSide ? " (base)" : "")}");
 		RecordOrigin(origin);
 		await NavigateToFileLineAsync(targetRel, location.Line, oldSide, record: true);
+	}
+
+	/// <summary>Definition view for a symbol without source: decompile its top-level
+	/// containing type from the referenced assembly and jump to the member.</summary>
+	async Task OpenDecompiledDefinitionAsync(RoslynWorkspaceService sem, Microsoft.CodeAnalysis.ISymbol symbol, NavEntryOrigin origin)
+	{
+		var original = symbol.OriginalDefinition;
+		var topType = original as Microsoft.CodeAnalysis.INamedTypeSymbol ?? original.ContainingType;
+		while (topType?.ContainingType is { } outer)
+			topType = outer;
+		string? assemblyPath = topType is null ? null : sem.TryGetMetadataAssemblyPath(topType);
+		if (topType is null || assemblyPath is null)
+		{
+			StatusMessage?.Invoke($"'{symbol.Name}' has no source and its defining assembly could not be resolved.");
+			return;
+		}
+		string reflectionName = topType.ContainingNamespace is { IsGlobalNamespace: false } ns
+			? ns.ToDisplayString() + "." + topType.MetadataName
+			: topType.MetadataName;
+		using var busy = Busy.Begin($"Decompiling {topType.Name}");
+		try
+		{
+			int token = original.MetadataToken;
+			var result = await Task.Run(() => DecompilationService.DecompileType(assemblyPath, reflectionName, token));
+			string id = $"decomp:{reflectionName}";
+			var vm = ShowDocument(id, () => {
+				var doc = DiffDocumentViewModel.ForSource(topType.Name + ".cs", result.Text);
+				doc.Title = topType.Name + " [decompiled]";
+				return doc;
+			});
+			if (vm is null)
+				return;
+			CliLog.Write("action", $"decompiled {reflectionName} ({Path.GetFileName(assemblyPath)}) -> line {result.MemberLine}");
+			RecordOrigin(origin);
+			history.Record(new NavEntry(id, result.MemberLine));
+			vm.RequestCaret(result.MemberLine);
+		}
+		catch (Exception ex)
+		{
+			StatusMessage?.Invoke($"Decompiling {topType.Name} failed: {ex.Message}");
+			CliLog.Write("action", $"decompile {reflectionName} FAILED: {ex.Message}");
+		}
 	}
 
 	public async Task ShowReferencesAtAsync(string relPath, int line, int column, bool oldSide)
@@ -623,6 +666,21 @@ public sealed class ReviewWorkspace(string repoPath)
 
 	async Task NavigateToEntryAsync(NavEntry entry)
 	{
+		if (entry.DockableId.StartsWith("decomp:", StringComparison.Ordinal))
+		{
+			// Decompiled tabs are only revisited while still open; a closed one would
+			// need the assembly path again, which history does not carry.
+			var doc = Documents?.VisibleDockables?
+				.OfType<DiffDocumentViewModel>()
+				.FirstOrDefault(d => d.Id == entry.DockableId);
+			if (doc is not null && Factory is not null && Documents is not null)
+			{
+				Factory.SetActiveDockable(doc);
+				Factory.SetFocusedDockable(Documents, doc);
+				doc.RequestCaret(entry.DocLine);
+			}
+			return;
+		}
 		string relPath = entry.DockableId[(entry.DockableId.IndexOf(':') + 1)..];
 		if (entry.DockableId.StartsWith("diff:", StringComparison.Ordinal))
 		{

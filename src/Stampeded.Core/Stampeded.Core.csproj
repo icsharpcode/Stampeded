@@ -2,6 +2,7 @@
   <ItemGroup>
     <PackageReference Include="CliWrap" />
     <PackageReference Include="DiffLib" />
+    <PackageReference Include="ICSharpCode.Decompiler" />
     <PackageReference Include="Microsoft.Build.Locator" />
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Features" />
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Workspaces" />
