@@ -8,6 +8,7 @@
     <PackageReference Include="Avalonia.Themes.Simple" />
     <PackageReference Include="Avalonia.AvaloniaEdit" />
     <PackageReference Include="Dock.Avalonia" />
+    <PackageReference Include="Markdown.Avalonia" />
     <PackageReference Include="Dock.Avalonia.Themes.Simple" />
     <PackageReference Include="Dock.Model.Mvvm" />
     <PackageReference Include="CommunityToolkit.Mvvm" />

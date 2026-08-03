@@ -4,6 +4,7 @@
              xmlns:panes="using:Stampeded.Panes"
              xmlns:gh="using:Stampeded.Core.GitHub"
              xmlns:git="using:Stampeded.Core.Git"
+             xmlns:md="https://github.com/whistyun/Markdown.Avalonia"
              x:Class="Stampeded.Documents.WizardView"
              x:DataType="docs:WizardViewModel">
   <UserControl.Styles>
@@ -120,9 +121,7 @@
                                ToolTip.Tip="The Commits pane (bottom dock) has per-commit file diffs" />
         </Border>
         <Border BorderThickness="1" BorderBrush="#40808080" CornerRadius="3" Padding="8">
-          <ScrollViewer>
-            <SelectableTextBlock TextWrapping="Wrap" FontSize="13" Text="{Binding State.Description}" />
-          </ScrollViewer>
+          <md:MarkdownScrollViewer Markdown="{Binding State.Description}" />
         </Border>
       </DockPanel>
 
