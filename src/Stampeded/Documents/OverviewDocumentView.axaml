@@ -1,0 +1,151 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:docs="using:Stampeded.Documents"
+             xmlns:md="https://github.com/whistyun/Markdown.Avalonia"
+             x:Class="Stampeded.Documents.OverviewDocumentView"
+             x:DataType="docs:OverviewDocumentViewModel">
+  <UserControl.Styles>
+    <Style Selector="TextBlock.blockhead">
+      <Setter Property="FontSize" Value="11" />
+      <Setter Property="FontFamily" Value="monospace" />
+      <Setter Property="Opacity" Value="0.85" />
+    </Style>
+    <Style Selector="Border.block">
+      <Setter Property="Margin" Value="0,6,0,0" />
+      <Setter Property="Padding" Value="8,4" />
+      <Setter Property="CornerRadius" Value="3" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="BorderBrush" Value="#40808080" />
+    </Style>
+  </UserControl.Styles>
+  <ScrollViewer Padding="8">
+    <StackPanel>
+      <DockPanel>
+        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="6">
+          <Button Content="Bounce..." FontSize="11" Click="OnBounce"
+                  ToolTip.Tip="Draft a decline-with-reason review comment" />
+          <Button Content="Review record" FontSize="11" Click="OnRecord"
+                  ToolTip.Tip="Write the close-out artifact: reviewed at which depth, verified how, skipped what" />
+        </StackPanel>
+        <TextBlock FontWeight="SemiBold" FontSize="15" Text="{Binding State.Title}"
+                   TextTrimming="CharacterEllipsis" />
+      </DockPanel>
+      <TextBlock FontSize="11" FontStyle="Italic" Opacity="0.85" Margin="0,4,0,0" TextWrapping="Wrap"
+                 Text="{Binding State.Estimate}"
+                 IsVisible="{Binding State.Estimate, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+      <DockPanel Margin="0,2,0,0">
+        <TextBlock DockPanel.Dock="Left" FontSize="11" FontStyle="Italic" Opacity="0.85"
+                   VerticalAlignment="Center" Text="{Binding State.ChecksHeader}" />
+        <ItemsControl ItemsSource="{Binding CheckLines}" Margin="10,0,0,0">
+          <ItemsControl.ItemsPanel>
+            <ItemsPanelTemplate>
+              <WrapPanel Orientation="Horizontal" />
+            </ItemsPanelTemplate>
+          </ItemsControl.ItemsPanel>
+          <ItemsControl.ItemTemplate>
+            <DataTemplate x:DataType="docs:CheckLine">
+              <TextBlock FontSize="11" FontFamily="monospace" Foreground="#F85149" Margin="0,0,10,0">
+                <Run Text="{Binding Marker}" /> <Run Text="{Binding Name}" />
+              </TextBlock>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+      </DockPanel>
+      <TextBlock FontSize="11" FontStyle="Italic" Opacity="0.85" Text="{Binding State.CoverageLine}" />
+      <DockPanel Margin="0,2,0,0" IsVisible="{Binding LinkedIssues.Count}">
+        <TextBlock DockPanel.Dock="Left" FontSize="11" Opacity="0.85" VerticalAlignment="Center"
+                   Text="Linked issues:" />
+        <ItemsControl ItemsSource="{Binding LinkedIssues}" Margin="6,0,0,0">
+          <ItemsControl.ItemsPanel>
+            <ItemsPanelTemplate>
+              <WrapPanel Orientation="Horizontal" />
+            </ItemsPanelTemplate>
+          </ItemsControl.ItemsPanel>
+          <ItemsControl.ItemTemplate>
+            <DataTemplate x:DataType="docs:IssueRef">
+              <Button Content="{Binding Display}" FontSize="11" Padding="5,1" Margin="0,0,4,0"
+                      Click="OnIssueClick" ToolTip.Tip="Open on GitHub" />
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+      </DockPanel>
+
+      <Border Classes="block">
+        <md:MarkdownScrollViewer Markdown="{Binding State.Description}" MaxHeight="420" />
+      </Border>
+
+      <Border Classes="block" IsVisible="{Binding State.CommitsHeader, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+        <StackPanel>
+          <TextBlock Classes="blockhead" Text="{Binding State.CommitsHeader}" />
+          <ItemsControl ItemsSource="{Binding CommitLines}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="docs:CommitLine">
+                <StackPanel Orientation="Horizontal">
+                  <TextBlock FontSize="11" FontFamily="monospace" Opacity="0.7" Width="86" Text="{Binding ShortSha}" Margin="12,0,0,0" />
+                  <TextBlock FontSize="11" FontFamily="monospace" Width="50" TextAlignment="Right" Foreground="#2EA043" Text="{Binding Added}" />
+                  <TextBlock FontSize="11" FontFamily="monospace" Width="46" TextAlignment="Right" Foreground="#F85149" Text="{Binding Removed}" Margin="0,0,10,0" />
+                  <TextBlock FontSize="11" FontFamily="monospace" Opacity="0.85" Text="{Binding Subject}" TextTrimming="CharacterEllipsis" />
+                </StackPanel>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </StackPanel>
+      </Border>
+
+      <Border Classes="block" IsVisible="{Binding State.FilesHeader, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+        <StackPanel>
+          <TextBlock Classes="blockhead" Text="{Binding State.FilesHeader}" />
+          <ListBox x:Name="FilesList" ItemsSource="{Binding FileCosts}" DoubleTapped="OnFileDoubleTapped">
+            <ListBox.ItemTemplate>
+              <DataTemplate x:DataType="docs:FileCostRow">
+                <StackPanel Orientation="Horizontal">
+                  <TextBlock FontSize="11" FontFamily="monospace" Opacity="0.7" Width="44" Text="{Binding Marker}" />
+                  <TextBlock FontSize="11" FontFamily="monospace" Width="50" TextAlignment="Right" Foreground="#2EA043" Text="{Binding Added}" />
+                  <TextBlock FontSize="11" FontFamily="monospace" Width="46" TextAlignment="Right" Foreground="#F85149" Text="{Binding Removed}" />
+                  <TextBlock FontSize="11" FontFamily="monospace" Width="70" TextAlignment="Right" Opacity="0.9" Text="{Binding Minutes}" Margin="0,0,8,0" />
+                  <TextBlock FontSize="11" FontFamily="monospace" Width="56" Opacity="0.8" Text="{Binding Churn}" />
+                  <TextBlock FontSize="11" FontFamily="monospace" Opacity="0.85" Text="{Binding Path}" TextTrimming="CharacterEllipsis" />
+                </StackPanel>
+              </DataTemplate>
+            </ListBox.ItemTemplate>
+          </ListBox>
+        </StackPanel>
+      </Border>
+
+      <Border Classes="block">
+        <StackPanel>
+          <TextBlock Classes="blockhead" Text="{Binding State.MembersHeader}" />
+          <ListBox x:Name="ImplList" ItemsSource="{Binding ImplMembers}" DoubleTapped="OnImplDoubleTapped">
+            <ListBox.ItemTemplate>
+              <DataTemplate x:DataType="docs:MemberRow">
+                <TextBlock FontSize="11" FontFamily="monospace" Foreground="{Binding Foreground}"
+                           Text="{Binding Text}" TextTrimming="CharacterEllipsis" />
+              </DataTemplate>
+            </ListBox.ItemTemplate>
+          </ListBox>
+          <ListBox x:Name="TestList" ItemsSource="{Binding TestGroups}" DoubleTapped="OnTestDoubleTapped">
+            <ListBox.ItemTemplate>
+              <DataTemplate x:DataType="docs:MemberRow">
+                <TextBlock FontSize="11" FontFamily="monospace" Foreground="{Binding Foreground}"
+                           Text="{Binding Text}" TextTrimming="CharacterEllipsis" />
+              </DataTemplate>
+            </ListBox.ItemTemplate>
+          </ListBox>
+        </StackPanel>
+      </Border>
+
+      <Border Classes="block">
+        <StackPanel>
+          <TextBlock Classes="blockhead" Text="{Binding State.SweepHeader}" />
+          <ListBox x:Name="SweepList" ItemsSource="{Binding SweepItems}" DoubleTapped="OnSweepDoubleTapped">
+            <ListBox.ItemTemplate>
+              <DataTemplate>
+                <TextBlock FontSize="11" Text="{Binding Title}" TextWrapping="Wrap" />
+              </DataTemplate>
+            </ListBox.ItemTemplate>
+          </ListBox>
+        </StackPanel>
+      </Border>
+    </StackPanel>
+  </ScrollViewer>
+</UserControl>

@@ -89,13 +89,13 @@ public class App : Application
 		await OpenRepositoryAsync(target, prNumber);
 	}
 
-	static async Task OpenAutoPrAsync(int pr)
+	static Task OpenAutoPrAsync(int pr)
 	{
-		if (Workspace is not { } workspace)
-			return;
-		await workspace.OpenPrAsync(pr, guided: true);
-		if (workspace.Wizard is { } wizard)
-			Avalonia.Threading.Dispatcher.UIThread.Post(wizard.BeginGuidedPreparation);
+		if (Workspace?.StartPage is { } start)
+			start.OpenPrNumber(pr);
+		else
+			Workspace?.OpenPrAsync(pr).HandleExceptions();
+		return Task.CompletedTask;
 	}
 
 	public override void OnFrameworkInitializationCompleted()

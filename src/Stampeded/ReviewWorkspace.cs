@@ -152,7 +152,7 @@ public sealed class ReviewWorkspace(string repoPath)
 
 	/// <summary>Opens a review of a local base..head range (no PR: checks, posted comments
 	/// and review submission stay empty/disabled; everything else works identically).</summary>
-	public async Task OpenLocalRangeAsync(string baseRef, string headRef, bool guided = false)
+	public async Task OpenLocalRangeAsync(string baseRef, string headRef)
 	{
 		sessionCts?.Cancel();
 		var cts = sessionCts = new CancellationTokenSource();
@@ -179,12 +179,7 @@ public sealed class ReviewWorkspace(string repoPath)
 		CommentsLoaded = true;
 		ReviewChanged?.Invoke();
 		OpenUnviewedFilesAsync()
-			.ContinueWith(_ => Avalonia.Threading.Dispatcher.UIThread.Post(() => {
-				if (guided)
-					OpenWizard();
-				else
-					ShowDockMode();
-			}))
+			.ContinueWith(_ => Avalonia.Threading.Dispatcher.UIThread.Post(OpenOverview))
 			.HandleExceptions();
 		LoadSemanticsAsync(headSha, baseSha, ct).HandleExceptions();
 		ReattachDraftsAsync(ct).HandleExceptions();
@@ -194,7 +189,7 @@ public sealed class ReviewWorkspace(string repoPath)
 	async Task<string> ResolveAsync(string reference, CancellationToken ct)
 		=> (await Git.RevParseAsync(reference, ct)).Trim();
 
-	public async Task OpenPrAsync(int number, bool guided = false)
+	public async Task OpenPrAsync(int number)
 	{
 		sessionCts?.Cancel();
 		var cts = sessionCts = new CancellationTokenSource();
@@ -223,17 +218,7 @@ public sealed class ReviewWorkspace(string repoPath)
 		// Guided reviews keep the wizard in front (the description is inline there);
 		// plain opens lead with the overview tab.
 		OpenUnviewedFilesAsync()
-			.ContinueWith(_ => Avalonia.Threading.Dispatcher.UIThread.Post(() => {
-				if (guided)
-				{
-					OpenWizard();
-				}
-				else
-				{
-					OpenOverviewDocument();
-					ShowDockMode();
-				}
-			}))
+			.ContinueWith(_ => Avalonia.Threading.Dispatcher.UIThread.Post(OpenOverview))
 			.HandleExceptions();
 		LoadSemanticsAsync(headSha, baseSha, ct).HandleExceptions();
 		ReattachDraftsAsync(ct).HandleExceptions();
@@ -308,7 +293,13 @@ public sealed class ReviewWorkspace(string repoPath)
 	async Task OpenUnviewedFilesAsync()
 	{
 		DiffDocumentViewModel? first = null;
-		foreach (var file in Files)
+		// Likely review order: tests first (the executable spec), then implementation,
+		// deep-marked files ahead within each group.
+		var ordered = Files
+			.OrderBy(f => Core.Review.TestPaths.IsTestPath(f.Path) ? 0 : 1)
+			.ThenBy(f => GetDepth(f.Path) == "deep" ? 0 : 1)
+			.ThenBy(f => f.Path, StringComparer.Ordinal);
+		foreach (var file in ordered)
 		{
 			if (Store.IsViewed(file.Path))
 				continue;
@@ -356,28 +347,6 @@ public sealed class ReviewWorkspace(string repoPath)
 	}
 
 	public FileDiff? CurrentFile => (Documents?.ActiveDockable as DiffDocumentViewModel)?.File;
-
-	/// <summary>Intent-first: a summary tab (title, description, change shape) activated on
-	/// review start, so the review begins with understanding rather than with line 1.</summary>
-	public void OpenOverviewDocument()
-	{
-		if (CurrentPr is not { } pr)
-			return;
-		var text = new System.Text.StringBuilder();
-		text.AppendLine($"#{pr.Number} {pr.Title}");
-		text.AppendLine($"{pr.State}  |  {pr.BaseRefName} <- {pr.HeadRefName}");
-		text.AppendLine();
-		text.AppendLine(string.IsNullOrWhiteSpace(pr.Body) ? "(no description)" : pr.Body.ReplaceLineEndings("\n"));
-		text.AppendLine();
-		text.AppendLine($"---- {Files.Count} changed file(s) ----");
-		foreach (var file in Files)
-		{
-			int adds = file.Hunks.Sum(h => h.Lines.Count(l => l.Kind == PatchLineKind.Added));
-			int dels = file.Hunks.Sum(h => h.Lines.Count(l => l.Kind == PatchLineKind.Removed));
-			text.AppendLine($"  {file.Kind,-8} {file.Path}  (+{adds} -{dels})");
-		}
-		OpenTextDocument($"overview:{pr.Number}", $"PR #{pr.Number}", text.ToString());
-	}
 
 	public event Action<string>? StatusMessage;
 
@@ -736,41 +705,15 @@ public sealed class ReviewWorkspace(string repoPath)
 	public Task OpenOnGitHubAsync(int number)
 		=> ExternalTool.RunAsync("gh", ["pr", "view", number.ToString(), "--web"], RepoPath);
 
-	/// <summary>The wizard instance of this workspace; drives the phase pages and the strip.</summary>
-	public Documents.WizardViewModel? Wizard { get; private set; }
+	/// <summary>The start page document; owns the preparation overlay state.</summary>
+	public Documents.StartDocumentViewModel? StartPage { get; private set; }
 
-	/// <summary>False: a wizard phase page fills the window. True: the dock layout
-	/// (diff tabs, panes) does. The strip stays above both.</summary>
-	public event Action<bool>? ViewModeChanged;
+	public void OpenStart()
+		=> StartPage = ShowDocument("start", () => new Documents.StartDocumentViewModel(this));
 
-	/// <summary>Shows the wizard page of the current step (page mode).</summary>
-	public void OpenWizard()
-	{
-		Wizard ??= new Documents.WizardViewModel(this);
-		ViewModeChanged?.Invoke(false);
-	}
-
-	/// <summary>Shows the dock layout (working mode).</summary>
-	public void ShowDockMode() => ViewModeChanged?.Invoke(true);
-
-	/// <summary>Brings the Comments pane to the front (the close phase submits there).</summary>
-	public void ActivateCommentsPane()
-	{
-		if (CommentsPane is not null && Factory is not null)
-			Factory.SetActiveDockable(CommentsPane);
-	}
-
-	/// <summary>Brings the first open diff tab to the front (entering a working phase
-	/// hands the center back to the code).</summary>
-	public void ActivateFirstDiff()
-	{
-		if (Documents?.VisibleDockables?.OfType<DiffDocumentViewModel>().FirstOrDefault() is { } diff
-			&& Factory is not null)
-		{
-			Factory.SetActiveDockable(diff);
-			Factory.SetFocusedDockable(Documents, diff);
-		}
-	}
+	/// <summary>Opens (or refocuses) the review overview document.</summary>
+	public void OpenOverview()
+		=> ShowDocument("overview", () => new Documents.OverviewDocumentViewModel(this));
 
 	/// <summary>Two arbitrary texts side by side (e.g. base-vs-head test run outputs).</summary>
 	public void OpenSideBySideText(string id, string title, string leftText, string rightText)

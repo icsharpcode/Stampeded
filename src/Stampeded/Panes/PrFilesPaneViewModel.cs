@@ -66,7 +66,7 @@ public class PrFilesPaneViewModel : Tool
 	readonly ReviewWorkspace workspace;
 	bool suppressViewedPersist;
 
-	bool testsFirst;
+	bool testsFirst = true;
 	public bool TestsFirst {
 		get => testsFirst;
 		set {

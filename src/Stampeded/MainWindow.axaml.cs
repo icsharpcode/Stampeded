@@ -67,19 +67,11 @@ public partial class MainWindow : Window
 
 	void OnInterdiff(object? s, RoutedEventArgs e) => App.Workspace?.OpenInterdiffAsync().HandleExceptions();
 
-	void OnOpenWizard(object? s, RoutedEventArgs e) => App.Workspace?.OpenWizard();
+	void OnOpenStart(object? s, RoutedEventArgs e) => App.Workspace?.OpenStart();
 
-	void OnStripNext(object? s, RoutedEventArgs e) => App.Workspace?.Wizard?.NextStep();
+	void OnOpenOverview(object? s, RoutedEventArgs e) => App.Workspace?.OpenOverview();
 
-	void OnContinueFromPrepare(object? s, RoutedEventArgs e) => App.Workspace?.Wizard?.ContinueFromPrepare();
-
-	void OnStripSkip(object? s, RoutedEventArgs e) => App.Workspace?.Wizard?.SkipStep();
-
-	void OnStripStepClick(object? s, RoutedEventArgs e)
-	{
-		if (App.Workspace?.Wizard is { } wizard && (s as Button)?.DataContext is Documents.WizardStep step)
-			wizard.SelectStepCommand(step);
-	}
+	void OnContinueFromPrepare(object? s, RoutedEventArgs e) => App.Workspace?.StartPage?.ContinueNow();
 
 	void OnOpenOnGitHub(object? s, RoutedEventArgs e)
 	{

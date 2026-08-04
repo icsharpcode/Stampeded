@@ -24,7 +24,8 @@
         <MenuItem Header="Comment at Caret" InputGesture="C" Click="OnCommentAtCaret" />
       </MenuItem>
       <MenuItem Header="_View">
-        <MenuItem Header="Review Wizard" Click="OnOpenWizard" />
+        <MenuItem Header="Start Page" Click="OnOpenStart" />
+        <MenuItem Header="Review Overview" Click="OnOpenOverview" />
         <Separator />
         <MenuItem Header="Side-by-Side of Current File" Click="OnSideBySide" />
         <Separator />
@@ -60,49 +61,6 @@
         <MenuItem Header="Forward" InputGesture="Alt+Right" Click="OnForward" />
       </MenuItem>
     </Menu>
-    <Border DockPanel.Dock="Top" Padding="6,2" BorderThickness="0,0,0,1" BorderBrush="#30808080"
-            DataContext="{Binding Wizard}" IsVisible="{Binding State.HasReview, FallbackValue=False}">
-      <DockPanel>
-        <ItemsControl DockPanel.Dock="Left" ItemsSource="{Binding Steps}" VerticalAlignment="Center">
-          <ItemsControl.Styles>
-            <Style Selector="Button.strip">
-              <Setter Property="FontSize" Value="11" />
-              <Setter Property="Padding" Value="6,1" />
-              <Setter Property="Margin" Value="1,0" />
-              <Setter Property="Background" Value="Transparent" />
-            </Style>
-            <Style Selector="Button.strip.done">
-              <Setter Property="Foreground" Value="#2EA043" />
-            </Style>
-            <Style Selector="Button.strip.current">
-              <Setter Property="FontWeight" Value="Bold" />
-              <Setter Property="BorderBrush" Value="#3794FF" />
-              <Setter Property="BorderThickness" Value="0,0,0,2" />
-            </Style>
-          </ItemsControl.Styles>
-          <ItemsControl.ItemsPanel>
-            <ItemsPanelTemplate>
-              <StackPanel Orientation="Horizontal" />
-            </ItemsPanelTemplate>
-          </ItemsControl.ItemsPanel>
-          <ItemsControl.ItemTemplate>
-            <DataTemplate>
-              <Button Classes="strip" Classes.current="{Binding IsCurrent}" Classes.done="{Binding IsSatisfied}"
-                      Content="{Binding Title}" Click="OnStripStepClick" />
-            </DataTemplate>
-          </ItemsControl.ItemTemplate>
-        </ItemsControl>
-        <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" Spacing="4" Margin="10,0,0,0"
-                    IsVisible="{Binding $parent[Window].((local:MainViewModel)DataContext).ShowDock}">
-          <Button Content="Next" FontSize="11" Padding="7,1" Click="OnStripNext" FontWeight="SemiBold"
-                  ToolTip.Tip="Mark this phase done and advance" />
-          <Button Content="Skip" FontSize="11" Padding="7,1" Click="OnStripSkip"
-                  ToolTip.Tip="Advance without marking the phase done" />
-        </StackPanel>
-        <TextBlock Margin="10,0" FontSize="11" Opacity="0.75" VerticalAlignment="Center"
-                   TextTrimming="CharacterEllipsis" Text="{Binding State.CurrentFact}" />
-      </DockPanel>
-    </Border>
     <Border DockPanel.Dock="Bottom" Padding="8,3" IsVisible="{Binding Busy.IsBusy}">
       <StackPanel Orientation="Horizontal" Spacing="8">
         <TextBlock Text="{Binding Busy.SpinnerFrame}" FontFamily="monospace" />
@@ -110,16 +68,15 @@
       </StackPanel>
     </Border>
     <Panel>
-      <dock:DockControl Layout="{Binding Layout}" IsVisible="{Binding ShowDock}" />
-      <docs:WizardView DataContext="{Binding Wizard}" IsVisible="{Binding !$parent[Window].((local:MainViewModel)DataContext).ShowDock}" />
-      <!-- Workspace preparation: a modal overlay, not a review phase. -->
-      <Border Background="#90000000" IsVisible="{Binding Wizard.State.IsPreparing, FallbackValue=False}">
+      <dock:DockControl Layout="{Binding Layout}" />
+      <!-- Workspace preparation: a modal overlay while a review opens. -->
+      <Border Background="#90000000" IsVisible="{Binding StartPage.State.IsPreparing, FallbackValue=False}">
         <Border Background="{DynamicResource ThemeBackgroundBrush}" CornerRadius="6" Padding="18,14"
                 MaxWidth="560" HorizontalAlignment="Center" VerticalAlignment="Center"
                 BorderBrush="#3794FF" BorderThickness="1">
           <StackPanel Spacing="6">
             <TextBlock FontWeight="SemiBold" FontSize="14" Text="Preparing the review workspace" />
-            <ItemsControl ItemsSource="{Binding Wizard.PrepareItems}">
+            <ItemsControl ItemsSource="{Binding StartPage.PrepareItems}">
               <ItemsControl.ItemTemplate>
                 <DataTemplate x:DataType="docs:PrepareItem">
                   <DockPanel Margin="2,3">

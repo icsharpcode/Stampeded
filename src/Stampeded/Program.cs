@@ -36,6 +36,19 @@ internal static class Program
 		return AppBuilder.Configure<App>()
 			.UsePlatformDetect()
 			.With(new X11PlatformOptions { OverlayPopups = true })
+			// Third-party styles (e.g. Markdown.Avalonia's code spans) name Windows
+			// fonts outright; an unresolvable family name aborts the layout pass, so
+			// map the usual suspects to the fontconfig monospace alias.
+			.With(new Avalonia.Media.FontManagerOptions {
+				FontFamilyMappings = new Dictionary<string, Avalonia.Media.FontFamily> {
+					["Consolas"] = new("monospace"),
+					["Menlo"] = new("monospace"),
+					["Monaco"] = new("monospace"),
+					["Courier New"] = new("monospace"),
+					["Cascadia Code"] = new("monospace"),
+					["Segoe UI"] = new("sans-serif"),
+				},
+			})
 			.LogToTrace();
 	}
 }

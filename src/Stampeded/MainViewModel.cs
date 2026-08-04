@@ -20,10 +20,7 @@ public partial class MainViewModel : ObservableObject
 	string windowTitle = "Stampeded!";
 
 	[ObservableProperty]
-	Documents.WizardViewModel? wizard;
-
-	[ObservableProperty]
-	bool showDock;
+	Documents.StartDocumentViewModel? startPage;
 
 	public MainViewModel()
 	{
@@ -35,9 +32,8 @@ public partial class MainViewModel : ObservableObject
 		factory.InitLayout(Layout);
 		workspace.Factory = factory;
 		workspace.Documents = factory.Documents;
-		workspace.ViewModeChanged += dock => ShowDock = dock;
-		workspace.OpenWizard();
-		Wizard = workspace.Wizard;
+		workspace.OpenStart();
+		StartPage = workspace.StartPage;
 		workspace.ReviewChanged += UpdateTitle;
 		UpdateTitle();
 		RecentRepos.Record(Program.RepoPath);
