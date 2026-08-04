@@ -74,6 +74,9 @@ public sealed partial class WizardState : ObservableObject
 	string currentFact = "";
 
 	[ObservableProperty]
+	bool isPreparing;
+
+	[ObservableProperty]
 	bool hasReview;
 
 	[ObservableProperty]
@@ -125,7 +128,6 @@ public class WizardViewModel : Document
 	public PrFilesPaneViewModel FilesList { get; }
 
 	public WizardStep SelectStep { get; }
-	public WizardStep PrepareStep { get; }
 
 	public WizardStep TriageStep { get; }
 	public WizardStep SurveyStep { get; }
@@ -145,8 +147,6 @@ public class WizardViewModel : Document
 
 		Steps.Add(SelectStep = new WizardStep("select", "Start",
 			"Pick what to review: a pull request, a local branch, or another repository. 'Open Guided' walks the phases; 'Open Plain' just opens the review.", false));
-		Steps.Add(PrepareStep = new WizardStep("prepare", "Prep",
-			"The workspace is being prepared: worktrees, semantics for both sides, CI state, hot-spot data. The review starts when the signals the phases rely on are in - or continue now and let the rest catch up.", false));
 		foreach (var label in new[] {
 			"Diff and review state",
 			"Semantics (head)",
@@ -390,18 +390,22 @@ public class WizardViewModel : Document
 			BeginGuidedPreparation();
 	}
 
-	/// <summary>Guided open: show the preparation checklist and advance to Triage once the
-	/// signals the phases rely on are loaded.</summary>
+	/// <summary>Guided open: the preparation checklist overlays the window and Assess
+	/// opens once the signals the phases rely on are loaded.</summary>
 	public void BeginGuidedPreparation()
 	{
 		autoAdvanceAfterPrepare = true;
-		SelectStepCommand(PrepareStep);
+		State.IsPreparing = true;
+		workspace.OpenWizard();
+		Recompute();
 	}
 
 	public void ContinueFromPrepare()
 	{
 		autoAdvanceAfterPrepare = false;
-		SelectStepCommand(TriageStep);
+		State.IsPreparing = false;
+		if (State.HasReview)
+			SelectStepCommand(TriageStep);
 	}
 
 	public void OpenRecent(string path) => App.OpenRepositoryAsync(path).HandleExceptions();
@@ -539,10 +543,10 @@ public class WizardViewModel : Document
 		// The map and comments trail behind harmlessly (and may legitimately stay empty).
 		bool ready = reviewOpen && PrepareItems[1].Done && PrepareItems[2].Done
 			&& PrepareItems[4].Done && PrepareItems[5].Done;
-		PrepareStep.AutoConditionMet = ready && PrepareItems[3].Done && PrepareItems[6].Done;
-		if (ready && autoAdvanceAfterPrepare && PrepareStep.IsCurrent)
+		if (ready && autoAdvanceAfterPrepare && State.IsPreparing)
 		{
 			autoAdvanceAfterPrepare = false;
+			State.IsPreparing = false;
 			SelectStepCommand(TriageStep);
 		}
 
@@ -642,8 +646,8 @@ public class WizardViewModel : Document
 			}
 			step.IsSatisfied = step.AutoConditionMet && (!step.RequiresCheck || step.IsChecked);
 		}
-		int gated = Steps.Count - 2;
-		State.Progress = $"{Steps.Count(s => s != SelectStep && s != PrepareStep && s.IsSatisfied)} of {gated} phases complete{(State.OverrideGate ? "  (gate overridden)" : "")}";
+		int gated = Steps.Count - 1;
+		State.Progress = $"{Steps.Count(s => s != SelectStep && s.IsSatisfied)} of {gated} phases complete{(State.OverrideGate ? "  (gate overridden)" : "")}";
 		State.HasReview = workspace.HeadSha is not null;
 		string fact = Current.Facts.ReplaceLineEndings("\n").Split('\n')[0];
 		State.CurrentFact = fact.Length > 160 ? fact[..160] + "..." : fact;
@@ -653,7 +657,7 @@ public class WizardViewModel : Document
 	{
 		if (State.OverrideGate)
 			return (true, "");
-		var unmet = Steps.Where(s => s != SelectStep && s != PrepareStep && !s.IsSatisfied).Select(s => s.Title).ToList();
+		var unmet = Steps.Where(s => s != SelectStep && !s.IsSatisfied).Select(s => s.Title).ToList();
 		return unmet.Count == 0
 			? (true, "")
 			: (false, string.Join("; ", unmet));

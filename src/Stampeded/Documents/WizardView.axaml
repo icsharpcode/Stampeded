@@ -84,27 +84,6 @@
       </ItemsControl>
 
       <Panel>
-      <!-- Prep: live workspace-preparation checklist. -->
-      <StackPanel IsVisible="{Binding PrepareStep.IsCurrent}" Spacing="4" MaxWidth="560"
-                  HorizontalAlignment="Left">
-        <ItemsControl ItemsSource="{Binding PrepareItems}">
-          <ItemsControl.ItemTemplate>
-            <DataTemplate x:DataType="docs:PrepareItem">
-              <DockPanel Margin="2,3">
-                <Panel DockPanel.Dock="Left" Width="22">
-                  <TextBlock Text="✓" FontWeight="Bold" Foreground="#2EA043" IsVisible="{Binding Done}" />
-                  <TextBlock Text="..." Opacity="0.6" IsVisible="{Binding !Done}" />
-                </Panel>
-                <TextBlock DockPanel.Dock="Right" Opacity="0.7" FontSize="12" Text="{Binding Status}" />
-                <TextBlock Text="{Binding Label}" FontSize="13" />
-              </DockPanel>
-            </DataTemplate>
-          </ItemsControl.ItemTemplate>
-        </ItemsControl>
-        <Button Content="Continue now" Click="OnContinueFromPrepare" Margin="22,6,0,0"
-                ToolTip.Tip="Go to Triage without waiting; loading continues in the background" />
-      </StackPanel>
-
       <!-- Assess: intent (description), then commits and per-file cost as compact blocks. -->
       <DockPanel IsVisible="{Binding TriageStep.IsCurrent}">
         <Border DockPanel.Dock="Bottom" Margin="0,6,0,0" Padding="8,4" CornerRadius="3"

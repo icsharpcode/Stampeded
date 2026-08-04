@@ -71,6 +71,8 @@ public partial class MainWindow : Window
 
 	void OnStripNext(object? s, RoutedEventArgs e) => App.Workspace?.Wizard?.NextStep();
 
+	void OnContinueFromPrepare(object? s, RoutedEventArgs e) => App.Workspace?.Wizard?.ContinueFromPrepare();
+
 	void OnStripSkip(object? s, RoutedEventArgs e) => App.Workspace?.Wizard?.SkipStep();
 
 	void OnStripStepClick(object? s, RoutedEventArgs e)

@@ -28,8 +28,6 @@ public partial class WizardView : UserControl
 
 	void OnSkip(object? sender, RoutedEventArgs e) => Vm?.SkipStep();
 
-	void OnContinueFromPrepare(object? sender, RoutedEventArgs e) => Vm?.ContinueFromPrepare();
-
 	void OnBounce(object? sender, RoutedEventArgs e) => Vm?.Bounce();
 
 	void OnRecord(object? sender, RoutedEventArgs e) => Vm?.OpenRecord();
