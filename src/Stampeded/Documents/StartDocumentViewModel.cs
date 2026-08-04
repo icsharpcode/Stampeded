@@ -44,9 +44,6 @@ public sealed partial class StartState : ObservableObject
 	[ObservableProperty]
 	bool isPreparing;
 
-	/// <summary>Current frame of the pending-item spinner.</summary>
-	[ObservableProperty]
-	string spinner = "⠋";
 }
 
 /// <summary>
@@ -56,11 +53,7 @@ public sealed partial class StartState : ObservableObject
 /// </summary>
 public class StartDocumentViewModel : Document
 {
-	static readonly string[] SpinnerFrames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
-
 	readonly ReviewWorkspace workspace;
-	readonly DispatcherTimer spinnerTimer = new() { Interval = TimeSpan.FromMilliseconds(80) };
-	int spinnerFrame;
 	bool openOverviewWhenReady;
 
 	public StartState State { get; } = new();
@@ -99,19 +92,6 @@ public class StartDocumentViewModel : Document
 		workspace.ChecksLoaded += () => Dispatcher.UIThread.Post(UpdatePreparation);
 		workspace.ChurnChanged += () => Dispatcher.UIThread.Post(UpdatePreparation);
 		workspace.CommentsChanged += () => Dispatcher.UIThread.Post(UpdatePreparation);
-		spinnerTimer.Tick += (_, _) => {
-			spinnerFrame = (spinnerFrame + 1) % SpinnerFrames.Length;
-			State.Spinner = SpinnerFrames[spinnerFrame];
-		};
-		State.PropertyChanged += (_, e) => {
-			if (e.PropertyName == nameof(StartState.IsPreparing))
-			{
-				if (State.IsPreparing)
-					spinnerTimer.Start();
-				else
-					spinnerTimer.Stop();
-			}
-		};
 		LoadStartPageAsync().HandleExceptions();
 	}
 

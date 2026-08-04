@@ -3,6 +3,7 @@
         xmlns:dock="using:Dock.Avalonia.Controls"
         xmlns:local="using:Stampeded"
         xmlns:docs="using:Stampeded.Documents"
+        xmlns:controls="using:Stampeded.Controls"
         x:Class="Stampeded.MainWindow"
         x:DataType="local:MainViewModel"
         Title="{Binding WindowTitle}"
@@ -75,19 +76,18 @@
                 MaxWidth="560" HorizontalAlignment="Center" VerticalAlignment="Center"
                 BorderBrush="#3794FF" BorderThickness="1">
           <StackPanel Spacing="6">
-            <StackPanel Orientation="Horizontal" Spacing="8">
+            <StackPanel Orientation="Horizontal" Spacing="12">
               <TextBlock FontWeight="SemiBold" FontSize="14" Text="Preparing the review workspace" />
-              <TextBlock FontSize="14" FontFamily="monospace" Foreground="#3794FF"
-                         Text="{Binding StartPage.State.Spinner}" />
+              <controls:WaveSpinner SquareSize="7" VerticalAlignment="Center" />
             </StackPanel>
             <ItemsControl ItemsSource="{Binding StartPage.PrepareItems}">
               <ItemsControl.ItemTemplate>
                 <DataTemplate x:DataType="docs:PrepareItem">
                   <DockPanel Margin="2,3">
-                    <Panel DockPanel.Dock="Left" Width="22">
+                    <Panel DockPanel.Dock="Left" Width="44" Margin="0,0,6,0">
                       <TextBlock Text="✓" FontWeight="Bold" Foreground="#2EA043" IsVisible="{Binding Done}" />
-                      <TextBlock FontFamily="monospace" Foreground="#3794FF" IsVisible="{Binding !Done}"
-                                 Text="{Binding $parent[Window].((local:MainViewModel)DataContext).StartPage.State.Spinner}" />
+                      <controls:WaveSpinner SquareSize="2.7" VerticalAlignment="Center"
+                                            HorizontalAlignment="Left" IsVisible="{Binding !Done}" />
                     </Panel>
                     <TextBlock DockPanel.Dock="Right" Opacity="0.7" FontSize="12" Margin="12,0,0,0"
                                Text="{Binding Status}" />
