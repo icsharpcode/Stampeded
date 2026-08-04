@@ -25,6 +25,15 @@ public sealed partial class CommentsState : ObservableObject
 
 public sealed record CommentRow(string RelPath, int? Line, bool OldSide, string Body, Guid? DraftId, string Author)
 {
+	/// <summary>Compact excerpt for the list row; the inline thread box (and the row
+	/// tooltip) carry the full text. Long bodies made the pane's layout pass crawl.</summary>
+	public string Preview {
+		get {
+			string flat = Body.ReplaceLineEndings(" ").Trim();
+			return flat.Length <= 220 ? flat : flat[..220] + "...";
+		}
+	}
+
 	public string Header =>
 		$"{(DraftId is not null ? "draft" : Author)}  ·  {RelPath}:{(Line?.ToString() ?? "outdated")}{(OldSide ? " (base)" : "")}";
 
