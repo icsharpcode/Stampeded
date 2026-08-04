@@ -4,8 +4,8 @@
              x:Class="Stampeded.Panes.PrFilesPaneView"
              x:DataType="panes:PrFilesPaneViewModel">
   <DockPanel>
-    <ToggleButton DockPanel.Dock="Top" Margin="4,2" FontSize="11" Content="Tests first (read the spec before the code)"
-                  IsChecked="{Binding TestsFirst}" HorizontalAlignment="Left" />
+    <CheckBox DockPanel.Dock="Top" Margin="6,2" FontSize="11" Content="Tests first (read the spec before the code)"
+              IsChecked="{Binding TestsFirst}" />
     <ListBox x:Name="List" ItemsSource="{Binding Files}" DoubleTapped="OnDoubleTapped">
     <ListBox.ContextMenu>
       <ContextMenu>
