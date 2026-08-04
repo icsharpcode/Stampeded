@@ -26,6 +26,8 @@
                   ToolTip.Tip="Draft a decline-with-reason review comment" />
           <Button Content="Review record" FontSize="11" Click="OnRecord"
                   ToolTip.Tip="Write the close-out artifact: reviewed at which depth, verified how, skipped what" />
+          <Button Content="Close review" FontSize="11" Click="OnCloseReview"
+                  ToolTip.Tip="End this review: close its documents and return to the start page" />
         </StackPanel>
         <TextBlock FontWeight="SemiBold" FontSize="15" Text="{Binding State.Title}"
                    TextTrimming="CharacterEllipsis" />

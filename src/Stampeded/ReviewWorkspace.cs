@@ -174,12 +174,15 @@ public sealed class ReviewWorkspace(string repoPath)
 		await ApplyReReviewCarryOverAsync(ct);
 		ComputeChurnAsync().HandleExceptions();
 		history.Clear();
-		CloseOpenDiffs();
+		CloseDocumentsExceptStart();
 		PostedComments = [];
 		CommentsLoaded = true;
 		ReviewChanged?.Invoke();
 		OpenUnviewedFilesAsync()
-			.ContinueWith(_ => Avalonia.Threading.Dispatcher.UIThread.Post(OpenOverview))
+			.ContinueWith(_ => Avalonia.Threading.Dispatcher.UIThread.Post(() => {
+				OpenOverview();
+				CloseStartPage();
+			}))
 			.HandleExceptions();
 		LoadSemanticsAsync(headSha, baseSha, ct).HandleExceptions();
 		ReattachDraftsAsync(ct).HandleExceptions();
@@ -213,12 +216,15 @@ public sealed class ReviewWorkspace(string repoPath)
 		await ApplyReReviewCarryOverAsync(ct);
 		ComputeChurnAsync().HandleExceptions();
 		history.Clear();
-		CloseOpenDiffs();
+		CloseDocumentsExceptStart();
 		ReviewChanged?.Invoke();
 		// Guided reviews keep the wizard in front (the description is inline there);
 		// plain opens lead with the overview tab.
 		OpenUnviewedFilesAsync()
-			.ContinueWith(_ => Avalonia.Threading.Dispatcher.UIThread.Post(OpenOverview))
+			.ContinueWith(_ => Avalonia.Threading.Dispatcher.UIThread.Post(() => {
+				OpenOverview();
+				CloseStartPage();
+			}))
 			.HandleExceptions();
 		LoadSemanticsAsync(headSha, baseSha, ct).HandleExceptions();
 		ReattachDraftsAsync(ct).HandleExceptions();
@@ -278,14 +284,6 @@ public sealed class ReviewWorkspace(string repoPath)
 			addedLinesByFile[file.Path] = added;
 			removedLinesByFile[file.OldPath] = removed;
 		}
-	}
-
-	void CloseOpenDiffs()
-	{
-		if (Documents?.VisibleDockables is null || Factory is null)
-			return;
-		foreach (var diff in Documents.VisibleDockables.OfType<DiffDocumentViewModel>().ToList())
-			Factory.CloseDockable(diff);
 	}
 
 	/// <summary>Opens every not-yet-viewed file as a diff tab and focuses the first, so a
@@ -705,11 +703,67 @@ public sealed class ReviewWorkspace(string repoPath)
 	public Task OpenOnGitHubAsync(int number)
 		=> ExternalTool.RunAsync("gh", ["pr", "view", number.ToString(), "--web"], RepoPath);
 
-	/// <summary>The start page document; owns the preparation overlay state.</summary>
+	/// <summary>The start page document; owns the preparation overlay state. One instance
+	/// for the workspace's lifetime - it is closed while a review is open and re-added on
+	/// Close Review, keeping its subscriptions and the overlay binding intact.</summary>
 	public Documents.StartDocumentViewModel? StartPage { get; private set; }
 
 	public void OpenStart()
-		=> StartPage = ShowDocument("start", () => new Documents.StartDocumentViewModel(this));
+	{
+		StartPage ??= new Documents.StartDocumentViewModel(this);
+		ShowDocument("start", () => StartPage);
+	}
+
+	/// <summary>Ends the review session: background work cancelled, semantics released,
+	/// state cleared, every review document closed and the start page back in front.</summary>
+	public void CloseReview()
+	{
+		sessionCts?.Cancel();
+		Semantics?.Dispose();
+		Semantics = null;
+		BaseSemantics?.Dispose();
+		BaseSemantics = null;
+		CurrentPr = null;
+		BaseSha = null;
+		HeadSha = null;
+		Files = [];
+		addedLinesByFile = [];
+		removedLinesByFile = [];
+		Coverage = null;
+		Checks = null;
+		LastSweep = null;
+		PostedComments = [];
+		CommentsLoaded = false;
+		LastPassHead = null;
+		TouchedSinceLastPass = null;
+		ResetChangeMap();
+		history.Clear();
+		CloseDocumentsExceptStart();
+		OpenStart();
+		ReviewChanged?.Invoke();
+		SemanticsChanged?.Invoke();
+		CoverageChanged?.Invoke();
+		ChecksLoaded?.Invoke();
+		CommentsChanged?.Invoke();
+		CliLog.Write("action", "review closed");
+	}
+
+	void CloseDocumentsExceptStart()
+	{
+		if (Documents?.VisibleDockables is null || Factory is null)
+			return;
+		foreach (var dockable in Documents.VisibleDockables.ToList())
+		{
+			if (dockable.Id != "start")
+				Factory.CloseDockable(dockable);
+		}
+	}
+
+	void CloseStartPage()
+	{
+		if (Documents?.VisibleDockables?.FirstOrDefault(d => d.Id == "start") is { } start && Factory is not null)
+			Factory.CloseDockable(start);
+	}
 
 	/// <summary>Opens (or refocuses) the review overview document.</summary>
 	public void OpenOverview()

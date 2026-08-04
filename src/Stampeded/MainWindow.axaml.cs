@@ -69,6 +69,8 @@ public partial class MainWindow : Window
 
 	void OnOpenStart(object? s, RoutedEventArgs e) => App.Workspace?.OpenStart();
 
+	void OnCloseReview(object? s, RoutedEventArgs e) => App.Workspace?.CloseReview();
+
 	void OnOpenOverview(object? s, RoutedEventArgs e) => App.Workspace?.OpenOverview();
 
 	void OnContinueFromPrepare(object? s, RoutedEventArgs e) => App.Workspace?.StartPage?.ContinueNow();

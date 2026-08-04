@@ -33,6 +33,8 @@ static class ScreenshotWatcher
 				// so interactive UI (e.g. the inline comment editor) can be verified.
 				if (lines.Contains("comment"))
 					Documents.DiffDocumentView.ActiveView?.CommentAtCaretCommand();
+				if (lines.Contains("close-review"))
+					App.Workspace?.CloseReview();
 				foreach (var command in lines.Where(l => l.StartsWith("goto:", StringComparison.Ordinal)))
 				{
 					var parts = command.Split(':', 3);

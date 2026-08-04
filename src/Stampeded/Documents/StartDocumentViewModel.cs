@@ -68,7 +68,6 @@ public class StartDocumentViewModel : Document
 	{
 		this.workspace = workspace;
 		Title = "Start";
-		CanClose = false;
 		PrList = new PrListPaneViewModel(workspace);
 		foreach (var label in new[] {
 			"Diff and review state",

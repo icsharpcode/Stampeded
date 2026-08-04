@@ -47,6 +47,7 @@
         <MenuItem Header="Recent Repositories" x:Name="RecentMenu" ItemsSource="{Binding Recent}" />
         <Separator />
         <MenuItem Header="Open PR on GitHub" Click="OnOpenOnGitHub" />
+        <MenuItem Header="Close Review" Click="OnCloseReview" />
         <MenuItem Header="Rebase PR onto Target Branch" Click="OnRebasePr" />
         <MenuItem Header="Show Interdiff Since Last Pass" Click="OnInterdiff" />
         <MenuItem Header="Show Semantic Load Log" Click="OnShowSemanticLog" />
