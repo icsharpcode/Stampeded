@@ -92,7 +92,8 @@
             </DataTemplate>
           </ItemsControl.ItemTemplate>
         </ItemsControl>
-        <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" Spacing="4" Margin="10,0,0,0">
+        <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" Spacing="4" Margin="10,0,0,0"
+                    IsVisible="{Binding $parent[Window].((local:MainViewModel)DataContext).ShowDock}">
           <Button Content="Next" FontSize="11" Padding="7,1" Click="OnStripNext" FontWeight="SemiBold"
                   ToolTip.Tip="Mark this phase done and advance" />
           <Button Content="Skip" FontSize="11" Padding="7,1" Click="OnStripSkip"

@@ -49,15 +49,24 @@
       </ItemsControl.ItemTemplate>
     </ItemsControl>
 
-    <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Spacing="8" Margin="0,8,0,0">
-      <Button Content="Bounce..." Click="OnBounce" IsVisible="{Binding TriageStep.IsCurrent}"
-              ToolTip.Tip="Draft a decline-with-reason review comment" />
-      <Button Content="Review record" Click="OnRecord" IsVisible="{Binding CloseStep.IsCurrent}"
-              ToolTip.Tip="Write the close-out artifact" />
-      <TextBlock FontWeight="SemiBold" VerticalAlignment="Center" Text="{Binding State.Progress}" />
-      <CheckBox IsChecked="{Binding State.OverrideGate}" FontSize="11"
-                Content="Allow approving anyway (override)" />
-    </StackPanel>
+    <DockPanel DockPanel.Dock="Bottom" Margin="0,8,0,0">
+      <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="6">
+        <Button Content="Back" Click="OnBack" />
+        <Button Content="Skip" Click="OnSkip"
+                ToolTip.Tip="Advance without marking the phase done" />
+        <Button Content="Next" Click="OnNext" FontWeight="SemiBold" MinWidth="72"
+                ToolTip.Tip="Mark this phase done and advance" />
+      </StackPanel>
+      <StackPanel Orientation="Horizontal" Spacing="8">
+        <Button Content="Bounce..." Click="OnBounce" IsVisible="{Binding TriageStep.IsCurrent}"
+                ToolTip.Tip="Draft a decline-with-reason review comment" />
+        <Button Content="Review record" Click="OnRecord" IsVisible="{Binding CloseStep.IsCurrent}"
+                ToolTip.Tip="Write the close-out artifact" />
+        <TextBlock FontWeight="SemiBold" VerticalAlignment="Center" Text="{Binding State.Progress}" />
+        <CheckBox IsChecked="{Binding State.OverrideGate}" FontSize="11"
+                  Content="Allow approving anyway (override)" />
+      </StackPanel>
+    </DockPanel>
 
     <DockPanel>
       <!-- Uniform step header: guidance, computed facts, done-check. -->
