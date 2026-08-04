@@ -47,6 +47,15 @@ public sealed partial class OverviewState : ObservableObject
 	string checksHeader = "CI: not loaded yet.";
 
 	[ObservableProperty]
+	bool checksFailing;
+
+	[ObservableProperty]
+	bool checksGreen;
+
+	[ObservableProperty]
+	bool checksUnknown = true;
+
+	[ObservableProperty]
 	string coverageLine = "Coverage: not measured (Tests pane > Run + Coverage).";
 
 	[ObservableProperty]
@@ -268,10 +277,16 @@ public class OverviewDocumentViewModel : Document
 		var checks = workspace.Checks;
 		if (checks is null)
 		{
+			State.ChecksFailing = false;
+			State.ChecksGreen = false;
+			State.ChecksUnknown = true;
 			State.ChecksHeader = workspace.CurrentPr is null ? "CI: local review - none." : "CI: loading...";
 			return;
 		}
+		State.ChecksUnknown = false;
 		int failing = checks.Count(c => c.Bucket == "fail");
+		State.ChecksFailing = failing > 0;
+		State.ChecksGreen = failing == 0;
 		State.ChecksHeader = failing > 0
 			? $"CI: {failing} of {checks.Count} check(s) FAILING - is this ready for review?"
 			: $"CI: all {checks.Count} check(s) passing or skipped.";

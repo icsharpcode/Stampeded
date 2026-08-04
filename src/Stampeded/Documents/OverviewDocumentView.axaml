@@ -6,9 +6,16 @@
              x:DataType="docs:OverviewDocumentViewModel">
   <UserControl.Styles>
     <Style Selector="TextBlock.blockhead">
-      <Setter Property="FontSize" Value="11" />
+      <Setter Property="FontSize" Value="13" />
       <Setter Property="FontFamily" Value="monospace" />
-      <Setter Property="Opacity" Value="0.85" />
+      <Setter Property="Opacity" Value="0.9" />
+    </Style>
+    <Style Selector="TextBlock.statusline">
+      <Setter Property="FontSize" Value="13" />
+    </Style>
+    <Style Selector="TextBlock.mono">
+      <Setter Property="FontSize" Value="12.5" />
+      <Setter Property="FontFamily" Value="monospace" />
     </Style>
     <Style Selector="Border.block">
       <Setter Property="Margin" Value="0,6,0,0" />
@@ -29,15 +36,21 @@
           <Button Content="Close review" FontSize="11" Click="OnCloseReview"
                   ToolTip.Tip="End this review: close its documents and return to the start page" />
         </StackPanel>
-        <TextBlock FontWeight="SemiBold" FontSize="15" Text="{Binding State.Title}"
+        <TextBlock FontWeight="SemiBold" FontSize="17" Text="{Binding State.Title}"
                    TextTrimming="CharacterEllipsis" />
       </DockPanel>
-      <TextBlock FontSize="11" FontStyle="Italic" Opacity="0.85" Margin="0,4,0,0" TextWrapping="Wrap"
+      <TextBlock Classes="statusline" Opacity="0.95" Margin="0,6,0,0" TextWrapping="Wrap"
                  Text="{Binding State.Estimate}"
                  IsVisible="{Binding State.Estimate, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
       <DockPanel Margin="0,2,0,0">
-        <TextBlock DockPanel.Dock="Left" FontSize="11" FontStyle="Italic" Opacity="0.85"
-                   VerticalAlignment="Center" Text="{Binding State.ChecksHeader}" />
+        <Panel DockPanel.Dock="Left" VerticalAlignment="Center">
+          <TextBlock Classes="statusline" FontWeight="SemiBold" Foreground="#F85149"
+                     Text="{Binding State.ChecksHeader}" IsVisible="{Binding State.ChecksFailing}" />
+          <TextBlock Classes="statusline" FontWeight="SemiBold" Foreground="#2EA043"
+                     Text="{Binding State.ChecksHeader}" IsVisible="{Binding State.ChecksGreen}" />
+          <TextBlock Classes="statusline" Opacity="0.8" Text="{Binding State.ChecksHeader}"
+                     IsVisible="{Binding State.ChecksUnknown}" />
+        </Panel>
         <ItemsControl ItemsSource="{Binding CheckLines}" Margin="10,0,0,0">
           <ItemsControl.ItemsPanel>
             <ItemsPanelTemplate>
@@ -46,16 +59,16 @@
           </ItemsControl.ItemsPanel>
           <ItemsControl.ItemTemplate>
             <DataTemplate x:DataType="docs:CheckLine">
-              <TextBlock FontSize="11" FontFamily="monospace" Foreground="#F85149" Margin="0,0,10,0">
+              <TextBlock Classes="mono" Foreground="#F85149" Margin="0,0,10,0">
                 <Run Text="{Binding Marker}" /> <Run Text="{Binding Name}" />
               </TextBlock>
             </DataTemplate>
           </ItemsControl.ItemTemplate>
         </ItemsControl>
       </DockPanel>
-      <TextBlock FontSize="11" FontStyle="Italic" Opacity="0.85" Text="{Binding State.CoverageLine}" />
+      <TextBlock Classes="statusline" Opacity="0.95" Margin="0,2,0,0" Text="{Binding State.CoverageLine}" />
       <DockPanel Margin="0,2,0,0" IsVisible="{Binding LinkedIssues.Count}">
-        <TextBlock DockPanel.Dock="Left" FontSize="11" Opacity="0.85" VerticalAlignment="Center"
+        <TextBlock DockPanel.Dock="Left" Classes="statusline" Opacity="0.9" VerticalAlignment="Center"
                    Text="Linked issues:" />
         <ItemsControl ItemsSource="{Binding LinkedIssues}" Margin="6,0,0,0">
           <ItemsControl.ItemsPanel>
@@ -65,7 +78,7 @@
           </ItemsControl.ItemsPanel>
           <ItemsControl.ItemTemplate>
             <DataTemplate x:DataType="docs:IssueRef">
-              <Button Content="{Binding Display}" FontSize="11" Padding="5,1" Margin="0,0,4,0"
+              <Button Content="{Binding Display}" FontSize="12.5" Padding="6,2" Margin="0,0,4,0"
                       Click="OnIssueClick" ToolTip.Tip="Open on GitHub" />
             </DataTemplate>
           </ItemsControl.ItemTemplate>
@@ -83,10 +96,10 @@
             <ItemsControl.ItemTemplate>
               <DataTemplate x:DataType="docs:CommitLine">
                 <StackPanel Orientation="Horizontal">
-                  <TextBlock FontSize="11" FontFamily="monospace" Opacity="0.7" Width="86" Text="{Binding ShortSha}" Margin="12,0,0,0" />
-                  <TextBlock FontSize="11" FontFamily="monospace" Width="50" TextAlignment="Right" Foreground="#2EA043" Text="{Binding Added}" />
-                  <TextBlock FontSize="11" FontFamily="monospace" Width="46" TextAlignment="Right" Foreground="#F85149" Text="{Binding Removed}" Margin="0,0,10,0" />
-                  <TextBlock FontSize="11" FontFamily="monospace" Opacity="0.85" Text="{Binding Subject}" TextTrimming="CharacterEllipsis" />
+                  <TextBlock Classes="mono" Opacity="0.7" Width="96" Text="{Binding ShortSha}" Margin="12,0,0,0" />
+                  <TextBlock Classes="mono" Width="56" TextAlignment="Right" Foreground="#2EA043" Text="{Binding Added}" />
+                  <TextBlock Classes="mono" Width="52" TextAlignment="Right" Foreground="#F85149" Text="{Binding Removed}" Margin="0,0,10,0" />
+                  <TextBlock Classes="mono" Opacity="0.9" Text="{Binding Subject}" TextTrimming="CharacterEllipsis" />
                 </StackPanel>
               </DataTemplate>
             </ItemsControl.ItemTemplate>
@@ -101,12 +114,12 @@
             <ListBox.ItemTemplate>
               <DataTemplate x:DataType="docs:FileCostRow">
                 <StackPanel Orientation="Horizontal">
-                  <TextBlock FontSize="11" FontFamily="monospace" Opacity="0.7" Width="44" Text="{Binding Marker}" />
-                  <TextBlock FontSize="11" FontFamily="monospace" Width="50" TextAlignment="Right" Foreground="#2EA043" Text="{Binding Added}" />
-                  <TextBlock FontSize="11" FontFamily="monospace" Width="46" TextAlignment="Right" Foreground="#F85149" Text="{Binding Removed}" />
-                  <TextBlock FontSize="11" FontFamily="monospace" Width="70" TextAlignment="Right" Opacity="0.9" Text="{Binding Minutes}" Margin="0,0,8,0" />
-                  <TextBlock FontSize="11" FontFamily="monospace" Width="56" Opacity="0.8" Text="{Binding Churn}" />
-                  <TextBlock FontSize="11" FontFamily="monospace" Opacity="0.85" Text="{Binding Path}" TextTrimming="CharacterEllipsis" />
+                  <TextBlock Classes="mono" Opacity="0.7" Width="50" Text="{Binding Marker}" />
+                  <TextBlock Classes="mono" Width="56" TextAlignment="Right" Foreground="#2EA043" Text="{Binding Added}" />
+                  <TextBlock Classes="mono" Width="52" TextAlignment="Right" Foreground="#F85149" Text="{Binding Removed}" />
+                  <TextBlock Classes="mono" Width="78" TextAlignment="Right" Opacity="0.9" Text="{Binding Minutes}" Margin="0,0,8,0" />
+                  <TextBlock Classes="mono" Width="62" Opacity="0.8" Text="{Binding Churn}" />
+                  <TextBlock Classes="mono" Opacity="0.9" Text="{Binding Path}" TextTrimming="CharacterEllipsis" />
                 </StackPanel>
               </DataTemplate>
             </ListBox.ItemTemplate>
@@ -120,7 +133,7 @@
           <ListBox x:Name="ImplList" ItemsSource="{Binding ImplMembers}" DoubleTapped="OnImplDoubleTapped">
             <ListBox.ItemTemplate>
               <DataTemplate x:DataType="docs:MemberRow">
-                <TextBlock FontSize="11" FontFamily="monospace" Foreground="{Binding Foreground}"
+                <TextBlock Classes="mono" Foreground="{Binding Foreground}"
                            Text="{Binding Text}" TextTrimming="CharacterEllipsis" />
               </DataTemplate>
             </ListBox.ItemTemplate>
@@ -128,7 +141,7 @@
           <ListBox x:Name="TestList" ItemsSource="{Binding TestGroups}" DoubleTapped="OnTestDoubleTapped">
             <ListBox.ItemTemplate>
               <DataTemplate x:DataType="docs:MemberRow">
-                <TextBlock FontSize="11" FontFamily="monospace" Foreground="{Binding Foreground}"
+                <TextBlock Classes="mono" Foreground="{Binding Foreground}"
                            Text="{Binding Text}" TextTrimming="CharacterEllipsis" />
               </DataTemplate>
             </ListBox.ItemTemplate>
@@ -142,7 +155,7 @@
           <ListBox x:Name="SweepList" ItemsSource="{Binding SweepItems}" DoubleTapped="OnSweepDoubleTapped">
             <ListBox.ItemTemplate>
               <DataTemplate>
-                <TextBlock FontSize="11" Text="{Binding Title}" TextWrapping="Wrap" />
+                <TextBlock FontSize="13" Text="{Binding Title}" TextWrapping="Wrap" />
               </DataTemplate>
             </ListBox.ItemTemplate>
           </ListBox>
