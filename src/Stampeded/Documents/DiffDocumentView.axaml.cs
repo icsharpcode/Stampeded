@@ -63,6 +63,10 @@ public partial class DiffDocumentView : UserControl
 					: StandardCursorType.Ibeam);
 		Editor.TextArea.LeftMargins.Insert(0, margin);
 		Editor.TextArea.AddHandler(KeyDownEvent, OnEditorKeyDown, RoutingStrategies.Tunnel);
+		// Click-vs-drag discrimination (ported from ILSpy's DecompilerTextView): the press
+		// only records its position; the release compares against it, so press-and-drag
+		// over a link selects text instead of navigating away on release.
+		Editor.TextArea.AddHandler(PointerPressedEvent, OnTextAreaPointerPressedForClick, RoutingStrategies.Tunnel, handledEventsToo: true);
 		Editor.TextArea.TextView.AddHandler(PointerReleasedEvent, OnTextViewPointerReleased, RoutingStrategies.Bubble, handledEventsToo: true);
 		Editor.TextArea.AddHandler(PointerPressedEvent, OnPointerPressedForContextMenu, RoutingStrategies.Tunnel);
 		AddHandler(GotFocusEvent, (_, _) => MakeActive(), RoutingStrategies.Bubble, handledEventsToo: true);
@@ -779,16 +783,39 @@ public partial class DiffDocumentView : UserControl
 		}
 	}
 
+	// Position of the last left-button press; null while no press is in flight.
+	Avalonia.Point? clickStart;
+
+	// WPF's default minimum drag distance; a release farther than this is a drag.
+	const double MinimumDragDistance = 4;
+
+	void OnTextAreaPointerPressedForClick(object? sender, PointerPressedEventArgs e)
+	{
+		clickStart = e.GetCurrentPoint(this).Properties.IsLeftButtonPressed
+			? e.GetPosition(this)
+			: null;
+	}
+
 	void OnTextViewPointerReleased(object? sender, PointerReleasedEventArgs e)
 	{
-		if (e.InitialPressMouseButton != MouseButton.Left)
+		var start = clickStart;
+		clickStart = null;
+		if (e.InitialPressMouseButton != MouseButton.Left || start is null)
 			return;
-		// The click has already placed the caret. Ctrl+Click navigates; a plain click on
-		// a symbol highlights its occurrences in this document.
+		var delta = e.GetPosition(this) - start.Value;
+		if (Math.Abs(delta.X) >= MinimumDragDistance || Math.Abs(delta.Y) >= MinimumDragDistance)
+			return;
+		// A stationary click has already placed the caret. Ctrl+Click navigates; a plain
+		// click on a symbol highlights its occurrences in this document.
 		if (e.KeyModifiers == KeyModifiers.Control)
+		{
+			Editor.TextArea.ClearSelection();
 			NavigateToDefinitionAtCaret();
+		}
 		else if (e.KeyModifiers == KeyModifiers.None && Editor.TextArea.Selection.IsEmpty)
+		{
 			HighlightOccurrencesAtCaretAsync().HandleExceptions();
+		}
 	}
 
 	/// <summary>Caret as a blob position: head side on context/added lines, base side on
