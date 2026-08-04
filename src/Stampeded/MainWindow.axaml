@@ -63,10 +63,6 @@
     <Border DockPanel.Dock="Top" Padding="6,2" BorderThickness="0,0,0,1" BorderBrush="#30808080"
             DataContext="{Binding Wizard}" IsVisible="{Binding State.HasReview, FallbackValue=False}">
       <DockPanel>
-        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="4">
-          <Button Content="Next" FontSize="11" Padding="7,1" Click="OnStripNext" FontWeight="SemiBold" />
-          <Button Content="Skip" FontSize="11" Padding="7,1" Click="OnStripSkip" />
-        </StackPanel>
         <ItemsControl DockPanel.Dock="Left" ItemsSource="{Binding Steps}" VerticalAlignment="Center">
           <ItemsControl.Styles>
             <Style Selector="Button.strip">
@@ -96,6 +92,12 @@
             </DataTemplate>
           </ItemsControl.ItemTemplate>
         </ItemsControl>
+        <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" Spacing="4" Margin="10,0,0,0">
+          <Button Content="Next" FontSize="11" Padding="7,1" Click="OnStripNext" FontWeight="SemiBold"
+                  ToolTip.Tip="Mark this phase done and advance" />
+          <Button Content="Skip" FontSize="11" Padding="7,1" Click="OnStripSkip"
+                  ToolTip.Tip="Advance without marking the phase done" />
+        </StackPanel>
         <TextBlock Margin="10,0" FontSize="11" Opacity="0.75" VerticalAlignment="Center"
                    TextTrimming="CharacterEllipsis" Text="{Binding State.CurrentFact}" />
       </DockPanel>
