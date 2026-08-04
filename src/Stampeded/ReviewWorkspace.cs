@@ -714,6 +714,14 @@ public sealed class ReviewWorkspace(string repoPath)
 		BaseSemantics?.Dispose();
 	}
 
+	/// <summary>Opens any URL in the browser (Linux-first: xdg-open).</summary>
+	public Task OpenUrlAsync(string url)
+		=> ExternalTool.RunAsync("xdg-open", [url], RepoPath);
+
+	/// <summary>Opens a commit on GitHub via gh.</summary>
+	public Task OpenCommitOnGitHubAsync(string sha)
+		=> ExternalTool.RunAsync("gh", ["browse", sha], RepoPath);
+
 	/// <summary>Opens a PR in the browser via gh.</summary>
 	public Task OpenOnGitHubAsync(int number)
 		=> ExternalTool.RunAsync("gh", ["pr", "view", number.ToString(), "--web"], RepoPath);
@@ -1125,7 +1133,7 @@ public sealed class ReviewWorkspace(string repoPath)
 	public sealed record CommentTarget(string RelPath, bool OldSide, int Line, string LineText);
 
 	public sealed record PostedCommentView(string RelPath, int? Line, bool OldSide, string Body, string Author,
-		bool IsApproximate = false, string? ThreadId = null, bool IsResolved = false);
+		bool IsApproximate = false, string? ThreadId = null, bool IsResolved = false, string? Url = null);
 
 	public IReadOnlyList<DraftComment> Drafts { get; private set; } = [];
 	public IReadOnlyList<PostedCommentView> PostedComments { get; private set; } = [];
@@ -1249,7 +1257,7 @@ public sealed class ReviewWorkspace(string repoPath)
 				var resolution = resolutionByComment.GetValueOrDefault(comment.Id);
 				views.Add(new PostedCommentView(
 					comment.Path, line, oldSide, comment.Body, comment.User?.Login ?? "?",
-					approximate, resolution.ThreadId, resolution.Resolved));
+					approximate, resolution.ThreadId, resolution.Resolved, comment.HtmlUrl));
 			}
 			PostedComments = views;
 		}

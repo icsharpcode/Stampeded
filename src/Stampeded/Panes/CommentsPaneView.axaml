@@ -19,6 +19,7 @@
         <ContextMenu>
           <MenuItem Header="Go to Line (click)" Click="OnGoTo" />
           <MenuItem Header="Delete Draft" Click="OnDelete" />
+          <MenuItem Header="Open on GitHub" Click="OnOpenOnGitHub" />
         </ContextMenu>
       </ListBox.ContextMenu>
       <ListBox.ItemTemplate>

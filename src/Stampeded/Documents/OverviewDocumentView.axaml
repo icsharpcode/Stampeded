@@ -29,6 +29,8 @@
     <StackPanel>
       <DockPanel>
         <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="6">
+          <Button Content="Open on GitHub" FontSize="11" Click="OnOpenPr"
+                  ToolTip.Tip="Open this PR in the browser" />
           <Button Content="Bounce..." FontSize="11" Click="OnBounce"
                   ToolTip.Tip="Draft a decline-with-reason review comment" />
           <Button Content="Review record" FontSize="11" Click="OnRecord"
@@ -59,9 +61,12 @@
           </ItemsControl.ItemsPanel>
           <ItemsControl.ItemTemplate>
             <DataTemplate x:DataType="docs:CheckLine">
-              <TextBlock Classes="mono" Foreground="#F85149" Margin="0,0,10,0">
-                <Run Text="{Binding Marker}" /> <Run Text="{Binding Name}" />
-              </TextBlock>
+              <Button Background="Transparent" Padding="2,0" Margin="0,0,8,0" Click="OnCheckClick"
+                      Cursor="Hand" ToolTip.Tip="Open this check run on GitHub">
+                <TextBlock Classes="mono" Foreground="#F85149">
+                  <Run Text="{Binding Marker}" /> <Run Text="{Binding Name}" />
+                </TextBlock>
+              </Button>
             </DataTemplate>
           </ItemsControl.ItemTemplate>
         </ItemsControl>
@@ -93,8 +98,9 @@
       <Border Classes="block" IsVisible="{Binding State.CommitsHeader, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
         <StackPanel>
           <TextBlock Classes="blockhead" Text="{Binding State.CommitsHeader}" />
-          <ItemsControl ItemsSource="{Binding CommitLines}">
-            <ItemsControl.ItemTemplate>
+          <ListBox x:Name="CommitsList" ItemsSource="{Binding CommitLines}" DoubleTapped="OnCommitDoubleTapped"
+                   ToolTip.Tip="Double-click opens the commit on GitHub">
+            <ListBox.ItemTemplate>
               <DataTemplate x:DataType="docs:CommitLine">
                 <StackPanel Orientation="Horizontal">
                   <TextBlock Classes="mono" Opacity="0.7" Width="96" Text="{Binding ShortSha}" Margin="12,0,0,0" />
@@ -103,8 +109,8 @@
                   <TextBlock Classes="mono" Opacity="0.9" Text="{Binding Subject}" TextTrimming="CharacterEllipsis" />
                 </StackPanel>
               </DataTemplate>
-            </ItemsControl.ItemTemplate>
-          </ItemsControl>
+            </ListBox.ItemTemplate>
+          </ListBox>
         </StackPanel>
       </Border>
 

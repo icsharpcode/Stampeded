@@ -25,6 +25,12 @@ public partial class CommentsPaneView : UserControl
 			vm.Open(row);
 	}
 
+	void OnOpenOnGitHub(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+	{
+		if (DataContext is CommentsPaneViewModel vm && List.SelectedItem is CommentRow row)
+			vm.OpenOnGitHub(row);
+	}
+
 	void OnDelete(object? s, RoutedEventArgs e)
 	{
 		if (Vm is { } vm && List.SelectedItem is CommentRow row)

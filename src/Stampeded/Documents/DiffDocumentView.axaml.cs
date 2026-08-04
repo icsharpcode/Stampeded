@@ -145,7 +145,7 @@ public partial class DiffDocumentView : UserControl
 		CommentBox.Focus();
 	}
 
-	sealed record ThreadComment(bool IsDraft, string Author, string Body, Guid? DraftId, string? ThreadId = null, bool Resolved = false);
+	sealed record ThreadComment(bool IsDraft, string Author, string Body, Guid? DraftId, string? ThreadId = null, bool Resolved = false, string? Url = null);
 
 	sealed record ThreadData(bool OldSide, int BlobLine, List<ThreadComment> Comments, string? OutdatedQuote = null, bool Approximate = false);
 
@@ -163,7 +163,7 @@ public partial class DiffDocumentView : UserControl
 			return;
 		var threads = new Dictionary<string, ThreadData>();
 		void Add(string path, bool oldSide, int? blobLine, bool isDraft, string author, string body, Guid? draftId,
-			bool approximate = false, string? threadId = null, bool resolved = false)
+			bool approximate = false, string? threadId = null, bool resolved = false, string? url = null)
 		{
 			string expected = oldSide ? viewModel!.File.OldPath : viewModel!.File.Path;
 			if (blobLine is not { } line || path != expected)
@@ -173,11 +173,11 @@ public partial class DiffDocumentView : UserControl
 				threads[key] = thread = new ThreadData(oldSide, line, [], Approximate: approximate);
 			else if (approximate && !thread.Approximate)
 				threads[key] = thread = thread with { Approximate = true, Comments = thread.Comments };
-			thread.Comments.Add(new ThreadComment(isDraft, author, body, draftId, threadId, resolved));
+			thread.Comments.Add(new ThreadComment(isDraft, author, body, draftId, threadId, resolved, url));
 		}
 		foreach (var posted in ws.PostedComments)
 			Add(posted.RelPath, posted.OldSide, posted.Line, false, posted.Author, posted.Body, null,
-				posted.IsApproximate, posted.ThreadId, posted.IsResolved);
+				posted.IsApproximate, posted.ThreadId, posted.IsResolved, posted.Url);
 		foreach (var draft in ws.Drafts)
 			Add(draft.Stored.Anchor.Path, draft.Stored.Anchor.OldSide, draft.CurrentLine, true, "you (draft)", draft.Stored.Body, draft.Stored.Id,
 				draft.IsApproximate);
@@ -317,6 +317,18 @@ public partial class DiffDocumentView : UserControl
 		foreach (var comment in thread.Comments)
 		{
 			var header = new Avalonia.Controls.DockPanel();
+			if (comment.Url is { Length: > 0 } commentUrl)
+			{
+				var github = new Avalonia.Controls.Button {
+					Content = "GitHub",
+					FontSize = 10,
+					Padding = new Avalonia.Thickness(5, 1),
+					Cursor = new Cursor(StandardCursorType.Hand),
+					[Avalonia.Controls.DockPanel.DockProperty] = Avalonia.Controls.Dock.Right,
+				};
+				github.Click += (_, _) => App.Workspace?.OpenUrlAsync(commentUrl).HandleExceptions();
+				header.Children.Add(github);
+			}
 			if (comment.DraftId is { } draftId)
 			{
 				var delete = new Avalonia.Controls.Button {

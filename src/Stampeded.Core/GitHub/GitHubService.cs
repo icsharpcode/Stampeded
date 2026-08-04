@@ -73,7 +73,8 @@ public sealed record PostedComment(
 	string? Side,
 	PostedUser? User,
 	[property: JsonPropertyName("original_line")] int? OriginalLine,
-	[property: JsonPropertyName("diff_hunk")] string? DiffHunk);
+	[property: JsonPropertyName("diff_hunk")] string? DiffHunk,
+	[property: JsonPropertyName("html_url")] string? HtmlUrl = null);
 
 /// <summary>Resolution state of one GitHub review thread and the REST ids of its comments.</summary>
 public sealed record ThreadResolution(string ThreadId, bool IsResolved, IReadOnlyList<long> CommentIds);

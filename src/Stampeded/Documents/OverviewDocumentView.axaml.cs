@@ -15,6 +15,20 @@ public partial class OverviewDocumentView : UserControl
 
 	void OnBounce(object? sender, RoutedEventArgs e) => Vm?.Bounce();
 
+	void OnOpenPr(object? sender, RoutedEventArgs e) => Vm?.OpenPrOnGitHub();
+
+	void OnCommitDoubleTapped(object? sender, TappedEventArgs e)
+	{
+		if (Vm is { } vm && CommitsList.SelectedItem is CommitLine line)
+			vm.OpenCommit(line);
+	}
+
+	void OnCheckClick(object? sender, RoutedEventArgs e)
+	{
+		if (Vm is { } vm && (sender as Button)?.DataContext is CheckLine line)
+			vm.OpenCheck(line);
+	}
+
 	void OnRecord(object? sender, RoutedEventArgs e) => Vm?.OpenRecord();
 
 	void OnCloseReview(object? sender, RoutedEventArgs e) => App.Workspace?.CloseReview();

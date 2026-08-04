@@ -37,6 +37,18 @@ public partial class StartDocumentView : UserControl
 			vm.OpenBranch(row.Info);
 	}
 
+	void OnPrOpenOnGitHub(object? sender, RoutedEventArgs e)
+	{
+		if (Vm is { } vm && PrListBox.SelectedItem is PrSummary pr)
+			vm.OpenPrOnGitHub(pr);
+	}
+
+	void OnBranchPrOnGitHub(object? sender, RoutedEventArgs e)
+	{
+		if (Vm is { } vm && BranchList.SelectedItem is BranchRow row)
+			vm.OpenBranchPrOnGitHub(row);
+	}
+
 	void OnRecentDoubleTapped(object? sender, TappedEventArgs e)
 	{
 		if (Vm is { } vm && RecentList.SelectedItem is string path)

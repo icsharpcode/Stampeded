@@ -26,7 +26,7 @@ public sealed partial class PrepareItem(string label) : ObservableObject
 
 /// <summary>A local branch on the start page, annotated with its associated PR when one
 /// exists - including whether the local head differs from what the PR is showing.</summary>
-public sealed record BranchRow(BranchInfo Info, string PrTag)
+public sealed record BranchRow(BranchInfo Info, string PrTag, int? PrNumber = null)
 {
 	public bool HasPrTag => PrTag.Length > 0;
 }
@@ -120,13 +120,15 @@ public class StartDocumentViewModel : Document
 		foreach (var branch in rawBranches)
 		{
 			string tag = "";
+			int? prNumber = null;
 			if (prsByBranch.TryGetValue(branch.Name, out var pr))
 			{
 				bool differs = pr.HeadRefOid is { Length: > 0 } oid
 					&& !string.Equals(oid, branch.Sha, StringComparison.OrdinalIgnoreCase);
 				tag = differs ? $"PR #{pr.Number} (differs)" : $"PR #{pr.Number}";
+				prNumber = pr.Number;
 			}
-			rows.Add(new BranchRow(branch, tag));
+			rows.Add(new BranchRow(branch, tag, prNumber));
 		}
 		foreach (var row in rows.OrderBy(r => r.HasPrTag ? 0 : 1))
 			Branches.Add(row);
@@ -147,6 +149,15 @@ public class StartDocumentViewModel : Document
 	}
 
 	public void OpenRecent(string path) => App.OpenRepositoryAsync(path).HandleExceptions();
+
+	public void OpenPrOnGitHub(PrSummary pr)
+		=> workspace.OpenOnGitHubAsync(pr.Number).HandleExceptions();
+
+	public void OpenBranchPrOnGitHub(BranchRow row)
+	{
+		if (row.PrNumber is { } number)
+			workspace.OpenOnGitHubAsync(number).HandleExceptions();
+	}
 
 	void BeginPreparation()
 	{

@@ -27,6 +27,12 @@
         <Button Content="Refresh" Click="OnPrRefresh" />
       </StackPanel>
       <ListBox x:Name="PrListBox" ItemsSource="{Binding PrList.Items}" DoubleTapped="OnPrDoubleTapped">
+        <ListBox.ContextMenu>
+          <ContextMenu>
+            <MenuItem Header="Open Review (double-click)" Click="OnPrOpen" />
+            <MenuItem Header="Open on GitHub" Click="OnPrOpenOnGitHub" />
+          </ContextMenu>
+        </ListBox.ContextMenu>
         <ListBox.Styles>
           <Style Selector="StackPanel.draftpr">
             <Setter Property="Opacity" Value="0.55" />
@@ -62,6 +68,12 @@
         <Button Content="Open" Click="OnBranchOpen" FontWeight="SemiBold" />
       </StackPanel>
       <ListBox x:Name="BranchList" ItemsSource="{Binding Branches}" DoubleTapped="OnBranchDoubleTapped">
+        <ListBox.ContextMenu>
+          <ContextMenu>
+            <MenuItem Header="Open Review (double-click)" Click="OnBranchOpen" />
+            <MenuItem Header="Open PR on GitHub" Click="OnBranchPrOnGitHub" />
+          </ContextMenu>
+        </ListBox.ContextMenu>
         <ListBox.ItemTemplate>
           <DataTemplate x:DataType="docs:BranchRow">
             <StackPanel Margin="2">

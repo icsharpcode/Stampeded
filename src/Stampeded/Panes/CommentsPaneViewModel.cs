@@ -23,7 +23,7 @@ public sealed partial class CommentsState : ObservableObject
 	string reviewBody = "";
 }
 
-public sealed record CommentRow(string RelPath, int? Line, bool OldSide, string Body, Guid? DraftId, string Author)
+public sealed record CommentRow(string RelPath, int? Line, bool OldSide, string Body, Guid? DraftId, string Author, string? Url = null)
 {
 	/// <summary>Compact excerpt for the list row; the inline thread box (and the row
 	/// tooltip) carry the full text. Long bodies made the pane's layout pass crawl.</summary>
@@ -79,7 +79,7 @@ public class CommentsPaneViewModel : Tool
 		foreach (var posted in workspace.PostedComments)
 		{
 			string author = posted.IsResolved ? $"[resolved] {posted.Author}" : posted.Author;
-			Items.Add(new CommentRow(posted.RelPath, posted.Line, posted.OldSide, posted.Body, null, author));
+			Items.Add(new CommentRow(posted.RelPath, posted.Line, posted.OldSide, posted.Body, null, author, posted.Url));
 		}
 		int outdated = workspace.Drafts.Count(d => d.CurrentLine is null);
 		State.Status = $"{workspace.Drafts.Count} draft(s){(outdated > 0 ? $" ({outdated} outdated)" : "")}, {workspace.PostedComments.Count} posted.";
@@ -104,6 +104,12 @@ public class CommentsPaneViewModel : Tool
 	{
 		if (row.DraftId is { } id)
 			workspace.RemoveDraft(id);
+	}
+
+	public void OpenOnGitHub(CommentRow row)
+	{
+		if (row.Url is { Length: > 0 } url)
+			workspace.OpenUrlAsync(url).HandleExceptions();
 	}
 
 	public void Open(CommentRow row)

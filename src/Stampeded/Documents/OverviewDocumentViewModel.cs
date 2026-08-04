@@ -19,7 +19,7 @@ public sealed record FileCostRow(string Marker, string Added, string Removed, st
 /// <summary>An individual implementation member, or a test type with member changes aggregated.</summary>
 public sealed record MemberRow(IBrush Foreground, string Text, ReviewWorkspace.ChangeMapEntry? Entry);
 
-public sealed record CheckLine(string Marker, string Name);
+public sealed record CheckLine(string Marker, string Name, string? Link);
 
 public sealed record IssueRef(string Display, int Number);
 
@@ -300,7 +300,7 @@ public class OverviewDocumentViewModel : Document
 			? $"CI: {failing} of {checks.Count} check(s) FAILING - is this ready for review?"
 			: $"CI: all {checks.Count} check(s) passing or skipped.";
 		foreach (var check in checks.Where(c => c.Bucket == "fail").Take(10))
-			CheckLines.Add(new CheckLine("FAIL", check.Name));
+			CheckLines.Add(new CheckLine("FAIL", check.Name, check.Link));
 	}
 
 	void RebuildTests()
@@ -338,6 +338,24 @@ public class OverviewDocumentViewModel : Document
 	{
 		if (item.Path is not null)
 			workspace.NavigateToFileLineAsync(item.Path, Math.Max(1, item.Line), oldSide: false, record: true).HandleExceptions();
+	}
+
+	public void OpenPrOnGitHub()
+	{
+		if (workspace.CurrentPr is { } pr)
+			workspace.OpenOnGitHubAsync(pr.Number).HandleExceptions();
+	}
+
+	public void OpenCommit(CommitLine line)
+	{
+		if (line.ShortSha.Length > 0)
+			workspace.OpenCommitOnGitHubAsync(line.ShortSha).HandleExceptions();
+	}
+
+	public void OpenCheck(CheckLine line)
+	{
+		if (line.Link is { Length: > 0 } url)
+			workspace.OpenUrlAsync(url).HandleExceptions();
 	}
 
 	public void Bounce() => workspace.PrepareBounceBody();
