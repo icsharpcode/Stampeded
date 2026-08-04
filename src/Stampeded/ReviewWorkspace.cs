@@ -1112,6 +1112,30 @@ public sealed class ReviewWorkspace(string repoPath)
 				}
 			}
 		}
+		// A removed and an added entry sharing a simple name are one member whose
+		// SIGNATURE changed, not a removal plus an addition - fold each such pair into
+		// the added entry as Modified. Pairing is by simple name (overload-count
+		// balanced), so genuinely deleted overloads still surface as Removed.
+		var removedByName = entries.Where(e => e.Kind == "Removed")
+			.GroupBy(e => MemberSimpleName(e.Display))
+			.ToDictionary(g => g.Key, g => new Queue<ChangeMapEntry>(g));
+		var folded = new List<ChangeMapEntry>(entries.Count);
+		var consumed = new HashSet<ChangeMapEntry>();
+		foreach (var entry in entries)
+		{
+			if (entry.Kind == "Added"
+				&& removedByName.TryGetValue(MemberSimpleName(entry.Display), out var partners)
+				&& partners.Count > 0)
+			{
+				consumed.Add(partners.Dequeue());
+				folded.Add(entry with { Kind = "Modified" });
+			}
+			else
+			{
+				folded.Add(entry);
+			}
+		}
+		entries = folded.Where(e => !consumed.Contains(e)).ToList();
 		ChangeMap = entries;
 		ChangeMapChanged?.Invoke();
 		CliLog.Write("semantics", $"change map: {entries.Count} member(s)");
