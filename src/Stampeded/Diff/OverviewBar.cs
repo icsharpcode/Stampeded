@@ -24,6 +24,7 @@ public sealed class OverviewBar : Control
 
 	static readonly IBrush AddedTick = new SolidColorBrush(Color.Parse("#2EA043"));
 	static readonly IBrush RemovedTick = new SolidColorBrush(Color.Parse("#F85149"));
+	static readonly IBrush CommentTick = new SolidColorBrush(Color.Parse("#D29922"));
 	static readonly IBrush ViewportBrush = new SolidColorBrush(Colors.Gray, 0.25);
 
 	TextEditor? editor;
@@ -44,25 +45,33 @@ public sealed class OverviewBar : Control
 		if (tags is null || tags.Count == 0 || editor is null)
 			return;
 
+		// Map through the height tree, not line indices: comment-thread boxes make one
+		// document line hundreds of pixels tall and collapsed folds do the inverse, so
+		// linear per-line mapping drifts from where the scrollbar actually goes.
+		var textView = editor.TextArea.TextView;
 		double height = Bounds.Height;
-		double perLine = height / tags.Count;
-		for (int i = 0; i < tags.Count; i++)
+		double docHeight = Math.Max(1, textView.DocumentHeight);
+		int lineCount = Math.Min(tags.Count, editor.Document.LineCount);
+		for (int i = 0; i < lineCount; i++)
 		{
 			var brush = tags[i].Kind switch {
 				DiffLineKind.Added => AddedTick,
 				DiffLineKind.Removed => RemovedTick,
+				DiffLineKind.Comment => CommentTick,
 				_ => null,
 			};
-			if (brush is not null)
-				context.FillRectangle(brush, new Rect(2, i * perLine, Bounds.Width - 4, Math.Max(2, perLine)));
+			if (brush is null)
+				continue;
+			double top = textView.GetVisualTopByDocumentLine(i + 1) / docHeight * height;
+			double bottom = (i + 2 <= editor.Document.LineCount
+				? textView.GetVisualTopByDocumentLine(i + 2)
+				: docHeight) / docHeight * height;
+			context.FillRectangle(brush, new Rect(2, top, Bounds.Width - 4, Math.Max(2, bottom - top)));
 		}
 
-		// Viewport indicator from the text view's scroll state.
-		var textView = editor.TextArea.TextView;
-		double docHeight = Math.Max(1, textView.DocumentHeight);
-		double top = textView.VerticalOffset / docHeight * height;
+		double vpTop = textView.VerticalOffset / docHeight * height;
 		double vpHeight = textView.Bounds.Height / docHeight * height;
-		context.FillRectangle(ViewportBrush, new Rect(0, top, Bounds.Width, Math.Max(8, vpHeight)));
+		context.FillRectangle(ViewportBrush, new Rect(0, vpTop, Bounds.Width, Math.Max(8, vpHeight)));
 	}
 
 	protected override void OnPointerPressed(PointerPressedEventArgs e)
@@ -83,7 +92,9 @@ public sealed class OverviewBar : Control
 	{
 		if (tags is null || tags.Count == 0 || editor is null)
 			return;
-		int line = Math.Clamp((int)(y / Bounds.Height * tags.Count) + 1, 1, tags.Count);
-		editor.ScrollToLine(line);
+		var textView = editor.TextArea.TextView;
+		double docHeight = Math.Max(1, textView.DocumentHeight);
+		double target = y / Bounds.Height * docHeight - textView.Bounds.Height / 2;
+		editor.ScrollToVerticalOffset(Math.Max(0, target));
 	}
 }
