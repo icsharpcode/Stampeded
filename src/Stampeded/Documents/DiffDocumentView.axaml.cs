@@ -67,7 +67,10 @@ public partial class DiffDocumentView : UserControl
 		// only records its position; the release compares against it, so press-and-drag
 		// over a link selects text instead of navigating away on release.
 		Editor.TextArea.AddHandler(PointerPressedEvent, OnTextAreaPointerPressedForClick, RoutingStrategies.Tunnel, handledEventsToo: true);
-		Editor.TextArea.TextView.AddHandler(PointerReleasedEvent, OnTextViewPointerReleased, RoutingStrategies.Bubble, handledEventsToo: true);
+		// On the TextArea, not the TextView: AvaloniaEdit captures the pointer on press,
+		// and captured releases are raised on the capturing control - a TextView handler
+		// never sees them (evidenced by presses logging without releases).
+		Editor.TextArea.AddHandler(PointerReleasedEvent, OnTextViewPointerReleased, RoutingStrategies.Bubble, handledEventsToo: true);
 		Editor.TextArea.AddHandler(PointerPressedEvent, OnPointerPressedForContextMenu, RoutingStrategies.Tunnel);
 		AddHandler(GotFocusEvent, (_, _) => MakeActive(), RoutingStrategies.Bubble, handledEventsToo: true);
 		Editor.TextArea.TextView.PointerMoved += OnPointerMovedForHover;
