@@ -13,9 +13,9 @@
   </UserControl.Styles>
   <Grid RowDefinitions="Auto,2*,4,Auto,3*">
     <TextBlock Grid.Row="0" Classes="section" Text="CHANGED FILES" />
-    <panes:PrFilesPaneView Grid.Row="1" DataContext="{Binding Files}" />
+    <panes:PrFilesPaneView Grid.Row="1" x:Name="FilesSection" DataContext="{Binding Files}" />
     <GridSplitter Grid.Row="2" Height="4" HorizontalAlignment="Stretch" Background="#30808080" />
     <TextBlock Grid.Row="3" Classes="section" Text="REPOSITORY" />
-    <panes:FileBrowserPaneView Grid.Row="4" DataContext="{Binding Browser}" />
+    <panes:FileBrowserPaneView Grid.Row="4" x:Name="BrowserSection" DataContext="{Binding Browser}" />
   </Grid>
 </UserControl>

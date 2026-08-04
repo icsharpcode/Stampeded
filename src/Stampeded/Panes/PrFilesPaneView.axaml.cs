@@ -42,6 +42,18 @@ public partial class PrFilesPaneView : UserControl
 		}
 	}
 
+	/// <summary>Selects and reveals the entry for a repo-relative path, if listed.</summary>
+	public void RevealFile(string relPath)
+	{
+		if (DataContext is not PrFilesPaneViewModel vm)
+			return;
+		var entry = vm.Files.FirstOrDefault(f => f.File.Path == relPath);
+		if (entry is null || ReferenceEquals(List.SelectedItem, entry))
+			return;
+		List.SelectedItem = entry;
+		List.ScrollIntoView(entry);
+	}
+
 	void OnDepthDeep(object? sender, RoutedEventArgs e) => SetDepth("deep");
 
 	void OnDepthSkim(object? sender, RoutedEventArgs e) => SetDepth("skim");
