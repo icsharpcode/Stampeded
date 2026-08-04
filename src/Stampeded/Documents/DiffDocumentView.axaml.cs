@@ -657,8 +657,48 @@ public partial class DiffDocumentView : UserControl
 				runStart = -1;
 			}
 		}
+		AddMemberFoldings(m, foldings);
 		foldingManager.Clear();
 		foldingManager.UpdateFoldings(foldings.OrderBy(f => f.StartOffset).ToList(), -1);
+	}
+
+	/// <summary>IDE-style folds for types, methods, properties and events. The diff
+	/// document itself is not valid C# (removed lines interleave), so the side text is
+	/// reconstructed from the line map, parsed, and the regions mapped back.</summary>
+	void AddMemberFoldings(DiffDocumentModel m, List<NewFolding> foldings)
+	{
+		if (viewModel is null || !viewModel.File.Path.EndsWith(".cs", StringComparison.OrdinalIgnoreCase))
+			return;
+		bool oldSide = viewModel.File.Kind == Core.Diff.FileChangeKind.Deleted;
+		var sideLines = new List<string>();
+		var sideToDocLine = new List<int>();
+		var docLines = m.Text.Split('\n');
+		for (int i = 0; i < m.Tags.Count && i < docLines.Length; i++)
+		{
+			int sideLine = oldSide ? m.Tags[i].OldLine : m.Tags[i].NewLine;
+			if (sideLine > 0)
+			{
+				sideLines.Add(docLines[i]);
+				sideToDocLine.Add(i + 1);
+			}
+		}
+		if (sideLines.Count == 0)
+			return;
+		foreach (var region in Core.Roslyn.MemberFolding.Compute(string.Join('\n', sideLines)))
+		{
+			if (region.StartLine > sideToDocLine.Count || region.EndLine > sideToDocLine.Count)
+				continue;
+			int docStart = sideToDocLine[region.StartLine - 1];
+			int docEnd = sideToDocLine[region.EndLine - 1];
+			if (docEnd <= docStart)
+				continue;
+			// Fold from the end of the header line so the signature stays visible.
+			foldings.Add(new NewFolding(
+				Editor.Document.GetLineByNumber(docStart).EndOffset,
+				Editor.Document.GetLineByNumber(docEnd).EndOffset) {
+				Name = " ... ",
+			});
+		}
 	}
 
 	void AddFolding(DiffDocumentModel m, List<NewFolding> foldings, int firstTag, int lastTag)
