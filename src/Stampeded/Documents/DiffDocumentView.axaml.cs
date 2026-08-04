@@ -123,6 +123,8 @@ public partial class DiffDocumentView : UserControl
 
 	public void JumpToHunkCommand(int direction) => JumpToHunk(direction);
 
+	static readonly global::Markdown.Avalonia.Markdown ThreadMarkdownEngine = new();
+
 	ReviewWorkspace.CommentTarget? inlineCommentTarget;
 
 	public void CommentAtCaretCommand()
@@ -335,12 +337,16 @@ public partial class DiffDocumentView : UserControl
 					: (dark ? Avalonia.Media.Brushes.Gainsboro : Avalonia.Media.Brushes.Black),
 			});
 			panel.Children.Add(header);
-			// Review comments are markdown (code spans, lists, links) - render them so.
-			panel.Children.Add(new global::Markdown.Avalonia.MarkdownScrollViewer {
-				Markdown = comment.Body,
-				MaxHeight = 340,
+			// Review comments are markdown (code spans, lists, links). Rendered via the
+			// engine directly: a ScrollViewer inside an editor inline object would nest
+			// scroll regions into every visual line and wreck scrolling performance.
+			var rendered = ThreadMarkdownEngine.Transform(comment.Body);
+			var host = new Avalonia.Controls.ContentControl {
+				Content = rendered,
 				Margin = new Avalonia.Thickness(0, 0, 0, 4),
-			});
+			};
+			host.Styles.Add(global::Markdown.Avalonia.MarkdownStyle.Standard);
+			panel.Children.Add(host);
 		}
 		var buttons = new Avalonia.Controls.StackPanel {
 			Orientation = Avalonia.Layout.Orientation.Horizontal,
