@@ -67,6 +67,7 @@
         </ItemsControl>
       </DockPanel>
       <TextBlock Classes="statusline" Opacity="0.95" Margin="0,2,0,0" Text="{Binding State.CoverageLine}" />
+      <TextBlock Classes="statusline" Opacity="0.95" Text="{Binding State.TestsLine}" />
       <DockPanel Margin="0,2,0,0" IsVisible="{Binding LinkedIssues.Count}">
         <TextBlock DockPanel.Dock="Left" Classes="statusline" Opacity="0.9" VerticalAlignment="Center"
                    Text="Linked issues:" />

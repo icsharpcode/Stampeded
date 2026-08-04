@@ -352,6 +352,17 @@ public sealed class ReviewWorkspace(string repoPath)
 
 	public event Action<string>? StatusMessage;
 
+	/// <summary>Outcome line of the most recent local test run, for the overview.</summary>
+	public string? LastTestSummary { get; private set; }
+
+	public event Action? TestResultsChanged;
+
+	public void SetTestSummary(string summary)
+	{
+		LastTestSummary = summary;
+		TestResultsChanged?.Invoke();
+	}
+
 	public void PostStatus(string message) => StatusMessage?.Invoke(message);
 
 	#region Re-review (head moved since the last pass)

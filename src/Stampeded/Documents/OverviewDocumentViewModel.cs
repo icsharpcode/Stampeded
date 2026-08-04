@@ -59,6 +59,9 @@ public sealed partial class OverviewState : ObservableObject
 	string coverageLine = "Coverage: not measured (Tests pane > Run + Coverage).";
 
 	[ObservableProperty]
+	string testsLine = "Tests: not run in this session (Tests pane).";
+
+	[ObservableProperty]
 	string sweepHeader = "Consequence sweep: waiting for the change map.";
 }
 
@@ -96,7 +99,12 @@ public class OverviewDocumentViewModel : Document
 		workspace.ChurnChanged += () => Dispatcher.UIThread.Post(RebuildFiles);
 		workspace.ChangeMapChanged += () => Dispatcher.UIThread.Post(OnChangeMap);
 		workspace.ChecksLoaded += () => Dispatcher.UIThread.Post(RebuildChecks);
-		workspace.CoverageChanged += () => Dispatcher.UIThread.Post(RebuildCoverage);
+		workspace.CoverageChanged += () => Dispatcher.UIThread.Post(() => {
+			RebuildCoverage();
+			// The sweep's uncovered-lines finding goes stale after a coverage run.
+			RunSweepOnceAsync().HandleExceptions();
+		});
+		workspace.TestResultsChanged += () => Dispatcher.UIThread.Post(RebuildTests);
 		RebuildAll();
 	}
 
@@ -112,6 +120,7 @@ public class OverviewDocumentViewModel : Document
 		RebuildFiles();
 		RebuildChecks();
 		RebuildCoverage();
+		RebuildTests();
 		OnChangeMap();
 		LoadCommitsAsync().HandleExceptions();
 	}
@@ -292,6 +301,13 @@ public class OverviewDocumentViewModel : Document
 			: $"CI: all {checks.Count} check(s) passing or skipped.";
 		foreach (var check in checks.Where(c => c.Bucket == "fail").Take(10))
 			CheckLines.Add(new CheckLine("FAIL", check.Name));
+	}
+
+	void RebuildTests()
+	{
+		State.TestsLine = workspace.LastTestSummary is { } summary
+			? $"Tests: {summary}."
+			: "Tests: not run in this session (Tests pane).";
 	}
 
 	void RebuildCoverage()

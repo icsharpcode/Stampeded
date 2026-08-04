@@ -24,6 +24,9 @@ public sealed partial class TestsState : ObservableObject
 
 	[ObservableProperty]
 	bool running;
+
+	[ObservableProperty]
+	string spinner = "";
 }
 
 public sealed record TestRow(TestResult Result, string? Marker = null)
@@ -38,8 +41,12 @@ public sealed record TestRow(TestResult Result, string? Marker = null)
 public class TestsPaneViewModel : Tool
 {
 	readonly ReviewWorkspace workspace;
+	static readonly string[] SpinnerFrames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+
 	readonly StringBuilder outputBuffer = new();
 	readonly DispatcherTimer flushTimer = new() { Interval = TimeSpan.FromMilliseconds(300) };
+	readonly DispatcherTimer spinnerTimer = new() { Interval = TimeSpan.FromMilliseconds(80) };
+	int spinnerFrame;
 	CancellationTokenSource? runCts;
 	string? runLogFile;
 	bool withCoverage;
@@ -52,6 +59,20 @@ public class TestsPaneViewModel : Tool
 		this.workspace = workspace;
 		workspace.ReviewChanged += OnReviewChanged;
 		flushTimer.Tick += (_, _) => FlushOutput();
+		spinnerTimer.Tick += (_, _) => {
+			spinnerFrame = (spinnerFrame + 1) % SpinnerFrames.Length;
+			State.Spinner = SpinnerFrames[spinnerFrame];
+		};
+		State.PropertyChanged += (_, e) => {
+			if (e.PropertyName == nameof(TestsState.Running))
+			{
+				if (State.Running)
+					spinnerTimer.Start();
+				else
+					spinnerTimer.Stop();
+				State.Spinner = State.Running ? SpinnerFrames[0] : "";
+			}
+		};
 	}
 
 	void OnReviewChanged()
@@ -185,6 +206,10 @@ public class TestsPaneViewModel : Tool
 				$"head {comparison.HeadPassed} pass / {comparison.HeadFailed} fail - " +
 				$"{comparison.NewlyFailing.Count} newly failing, {comparison.Fixed.Count} fixed, " +
 				$"{comparison.StillFailing.Count} already broken at base.  Full log: {runLogFile}";
+			workspace.SetTestSummary(
+				$"A/B: head {comparison.HeadPassed} pass / {comparison.HeadFailed} fail; " +
+				$"{comparison.NewlyFailing.Count} newly failing, {comparison.Fixed.Count} fixed, " +
+				$"{comparison.StillFailing.Count} already broken at base");
 			workspace.OpenSideBySideText("abtests", "Test output: base | head", baseOut.ToString(), headOut.ToString());
 		}
 		catch (OperationCanceledException)
@@ -266,6 +291,8 @@ public class TestsPaneViewModel : Tool
 			State.Status = (results.Count == 0
 				? $"Run finished (exit {exitCode}) - no .trx results found."
 				: $"{passed} passed, {failed.Count} failed, {skipped} skipped. Double-click a failure to open its frame.") + logHint;
+			if (results.Count > 0)
+				workspace.SetTestSummary($"{passed} passed, {failed.Count} failed, {skipped} skipped{(coverageFile is not null ? " (with coverage)" : "")}");
 		}
 		catch (OperationCanceledException)
 		{
