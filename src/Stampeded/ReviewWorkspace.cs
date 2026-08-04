@@ -178,6 +178,9 @@ public sealed class ReviewWorkspace(string repoPath)
 		PostedComments = [];
 		CommentsLoaded = true;
 		ReviewChanged?.Invoke();
+		// Overview first so it holds the leftmost tab; the diff tabs open behind it and
+		// the continuation brings it back to the front.
+		OpenOverview();
 		OpenUnviewedFilesAsync()
 			.ContinueWith(_ => Avalonia.Threading.Dispatcher.UIThread.Post(() => {
 				OpenOverview();
@@ -218,8 +221,9 @@ public sealed class ReviewWorkspace(string repoPath)
 		history.Clear();
 		CloseDocumentsExceptStart();
 		ReviewChanged?.Invoke();
-		// Guided reviews keep the wizard in front (the description is inline there);
-		// plain opens lead with the overview tab.
+		// Overview first so it holds the leftmost tab; the diff tabs open behind it and
+		// the continuation brings it back to the front.
+		OpenOverview();
 		OpenUnviewedFilesAsync()
 			.ContinueWith(_ => Avalonia.Threading.Dispatcher.UIThread.Post(() => {
 				OpenOverview();
@@ -754,8 +758,11 @@ public sealed class ReviewWorkspace(string repoPath)
 			return;
 		foreach (var dockable in Documents.VisibleDockables.ToList())
 		{
-			if (dockable.Id != "start")
-				Factory.CloseDockable(dockable);
+			if (dockable.Id == "start")
+				continue;
+			if (dockable is Dock.Model.Mvvm.Controls.Document document)
+				document.CanClose = true;
+			Factory.CloseDockable(dockable);
 		}
 	}
 

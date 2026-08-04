@@ -81,6 +81,8 @@ public class OverviewDocumentViewModel : Document
 	{
 		this.workspace = workspace;
 		Title = "Overview";
+		// The review's home tab: pinned first; teardown unpins before closing.
+		CanClose = false;
 		workspace.ReviewChanged += () => Dispatcher.UIThread.Post(RebuildAll);
 		workspace.ChurnChanged += () => Dispatcher.UIThread.Post(RebuildFiles);
 		workspace.ChangeMapChanged += () => Dispatcher.UIThread.Post(OnChangeMap);

@@ -216,9 +216,15 @@ public partial class DiffDocumentView : UserControl
 		ApplyModelToEditor(target);
 		if (caret is { } restore)
 		{
+			// Restore position without focusing: a background tab grabbing focus would
+			// make the dock activate it (e.g. stealing the front from the Overview).
 			int? docLine = restore.OldSide ? target.DocLineFromOldLine(restore.Line) : target.DocLineFromNewLine(restore.Line);
-			if (docLine is { } dl)
-				MoveCaretToLine(dl);
+			if (docLine is { } dl && dl >= 1 && dl <= Editor.Document.LineCount)
+			{
+				Editor.TextArea.Caret.Line = dl;
+				Editor.TextArea.Caret.Column = 1;
+				Editor.ScrollToLine(dl);
+			}
 		}
 	}
 
