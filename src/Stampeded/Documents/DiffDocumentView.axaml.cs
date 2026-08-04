@@ -365,6 +365,12 @@ public partial class DiffDocumentView : UserControl
 				Margin = new Avalonia.Thickness(0, 0, 0, 4),
 			};
 			host.Styles.Add(global::Markdown.Avalonia.MarkdownStyle.Standard);
+			// The engine's default paragraph spacing is cramped for review prose.
+			var paragraphStyle = new Avalonia.Styling.Style(x =>
+				Avalonia.Styling.Selectors.OfType(x, typeof(global::ColorTextBlock.Avalonia.CTextBlock)));
+			paragraphStyle.Setters.Add(new Avalonia.Styling.Setter(
+				Avalonia.Layout.Layoutable.MarginProperty, new Avalonia.Thickness(0, 0, 0, 10)));
+			host.Styles.Add(paragraphStyle);
 			panel.Children.Add(host);
 		}
 		var buttons = new Avalonia.Controls.StackPanel {
@@ -407,7 +413,7 @@ public partial class DiffDocumentView : UserControl
 		}
 		foreach (var button in Avalonia.LogicalTree.LogicalExtensions.GetLogicalDescendants(panel).OfType<Avalonia.Controls.Button>())
 			button.Cursor = new Cursor(StandardCursorType.Hand);
-		return new Avalonia.Controls.Border {
+		var border = new Avalonia.Controls.Border {
 			// The editor's I-beam must not bleed over the embedded box; children without
 			// their own cursor inherit the arrow from here.
 			Cursor = new Cursor(StandardCursorType.Arrow),
@@ -419,9 +425,17 @@ public partial class DiffDocumentView : UserControl
 			CornerRadius = new Avalonia.CornerRadius(4),
 			Padding = new Avalonia.Thickness(10, 6),
 			Margin = new Avalonia.Thickness(24, 2, 8, 2),
-			MaxWidth = 760,
 			HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Left,
 		};
+		// Full viewport width (an inline object only sizes to content otherwise), kept
+		// in sync with view resizes; the subscription dies with the box.
+		var view = Editor.TextArea.TextView;
+		var widthSubscription = Avalonia.AvaloniaObjectExtensions
+			.GetObservable(view, Avalonia.Visual.BoundsProperty)
+			.Subscribe(new Avalonia.Reactive.AnonymousObserver<Avalonia.Rect>(bounds =>
+				border.Width = Math.Max(320, bounds.Width - 56)));
+		border.DetachedFromVisualTree += (_, _) => widthSubscription.Dispose();
+		return border;
 	}
 
 	void OnCommentBoxKeyDown(object? sender, KeyEventArgs e)
