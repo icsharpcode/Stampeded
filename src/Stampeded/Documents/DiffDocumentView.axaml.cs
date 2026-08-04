@@ -211,9 +211,11 @@ public partial class DiffDocumentView : UserControl
 			return;
 		}
 		var caret = CaretBlobPosition();
+		var expandedFolds = CaptureExpandedFolds();
 		viewModel.ReplaceModel(target);
 		model = target;
 		ApplyModelToEditor(target);
+		RestoreExpandedFolds(expandedFolds);
 		if (caret is { } restore)
 		{
 			// Restore position without focusing: a background tab grabbing focus would
@@ -221,6 +223,12 @@ public partial class DiffDocumentView : UserControl
 			int? docLine = restore.OldSide ? target.DocLineFromOldLine(restore.Line) : target.DocLineFromNewLine(restore.Line);
 			if (docLine is { } dl && dl >= 1 && dl <= Editor.Document.LineCount)
 			{
+				int offset = Editor.Document.GetLineByNumber(dl).Offset;
+				if (foldingManager is not null)
+				{
+					foreach (var folding in foldingManager.GetFoldingsContaining(offset))
+						folding.IsFolded = false;
+				}
 				Editor.TextArea.Caret.Line = dl;
 				Editor.TextArea.Caret.Column = 1;
 				Editor.ScrollToLine(dl);
@@ -232,6 +240,42 @@ public partial class DiffDocumentView : UserControl
 	{
 		foreach (var marginControl in Editor.TextArea.LeftMargins.OfType<Avalonia.Controls.Control>())
 			marginControl.Cursor = new Cursor(StandardCursorType.Arrow);
+	}
+
+	/// <summary>Blob positions (side, line) of folds the user has expanded; fold state is
+	/// keyed by content so it survives the re-splices that renumber document lines.</summary>
+	List<(bool OldSide, int Line)> CaptureExpandedFolds()
+	{
+		var expanded = new List<(bool, int)>();
+		if (foldingManager is null || model is null)
+			return expanded;
+		foreach (var folding in foldingManager.AllFoldings.Where(f => !f.IsFolded))
+		{
+			int docLine = Editor.Document.GetLineByOffset(folding.StartOffset).LineNumber;
+			if (docLine < 1 || docLine > model.Tags.Count)
+				continue;
+			var tag = model.Tags[docLine - 1];
+			if (tag.NewLine > 0)
+				expanded.Add((false, tag.NewLine));
+			else if (tag.OldLine > 0)
+				expanded.Add((true, tag.OldLine));
+		}
+		return expanded;
+	}
+
+	void RestoreExpandedFolds(List<(bool OldSide, int Line)> expanded)
+	{
+		if (foldingManager is null || model is null || expanded.Count == 0)
+			return;
+		foreach (var (oldSide, blobLine) in expanded)
+		{
+			int? docLine = oldSide ? model.DocLineFromOldLine(blobLine) : model.DocLineFromNewLine(blobLine);
+			if (docLine is not { } dl || dl < 1 || dl > Editor.Document.LineCount)
+				continue;
+			int offset = Editor.Document.GetLineByNumber(dl).Offset;
+			foreach (var folding in foldingManager.AllFoldings.Where(f => f.StartOffset == offset))
+				folding.IsFolded = false;
+		}
 	}
 
 	void ApplyModelToEditor(DiffDocumentModel m)
@@ -291,10 +335,10 @@ public partial class DiffDocumentView : UserControl
 					: (dark ? Avalonia.Media.Brushes.Gainsboro : Avalonia.Media.Brushes.Black),
 			});
 			panel.Children.Add(header);
-			panel.Children.Add(new Avalonia.Controls.SelectableTextBlock {
-				Text = comment.Body,
-				TextWrapping = Avalonia.Media.TextWrapping.Wrap,
-				FontSize = 12,
+			// Review comments are markdown (code spans, lists, links) - render them so.
+			panel.Children.Add(new global::Markdown.Avalonia.MarkdownScrollViewer {
+				Markdown = comment.Body,
+				MaxHeight = 340,
 				Margin = new Avalonia.Thickness(0, 0, 0, 4),
 			});
 		}
