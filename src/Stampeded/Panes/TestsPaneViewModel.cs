@@ -62,6 +62,8 @@ public class TestsPaneViewModel : Tool
 		spinnerTimer.Tick += (_, _) => {
 			spinnerFrame = (spinnerFrame + 1) % SpinnerFrames.Length;
 			State.Spinner = SpinnerFrames[spinnerFrame];
+			// The dock tab renders Title, so the spinner shows there too.
+			Title = $"Tests {State.Spinner}";
 		};
 		State.PropertyChanged += (_, e) => {
 			if (e.PropertyName == nameof(TestsState.Running))
@@ -71,6 +73,7 @@ public class TestsPaneViewModel : Tool
 				else
 					spinnerTimer.Stop();
 				State.Spinner = State.Running ? SpinnerFrames[0] : "";
+				Title = State.Running ? $"Tests {SpinnerFrames[0]}" : "Tests";
 			}
 		};
 	}
