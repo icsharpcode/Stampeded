@@ -35,7 +35,7 @@ public sealed record PrSummary(
 				string verdict = (conclusion is { Length: > 0 } ? conclusion : state) ?? "";
 				switch (verdict.ToUpperInvariant())
 				{
-					case "FAILURE" or "ERROR" or "TIMED_OUT" or "STARTUP_FAILURE":
+					case "FAILURE" or "ERROR" or "TIMED_OUT" or "STARTUP_FAILURE" or "CANCELLED" or "ACTION_REQUIRED":
 						return "fail";
 					case "" or "PENDING" or "IN_PROGRESS" or "QUEUED" or "EXPECTED" or "WAITING" or "REQUESTED":
 						pending = true;

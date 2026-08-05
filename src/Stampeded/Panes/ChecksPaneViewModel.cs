@@ -60,12 +60,15 @@ public partial class ChecksPaneViewModel : Tool
 		{
 			var checks = await workspace.GitHub.GetChecksAsync(pr.Number);
 			workspace.SetChecks(checks);
-			foreach (var check in checks.OrderBy(c => c.Bucket == "fail" ? 0 : c.Bucket == "pending" ? 1 : 2))
+			foreach (var check in checks.OrderBy(c => c.Bucket is "fail" or "cancel" ? 0 : c.Bucket == "pending" ? 1 : 2))
 				Items.Add(new CheckRow(check));
-			int failed = checks.Count(c => c.Bucket == "fail");
+			int failed = checks.Count(c => c.Bucket is "fail" or "cancel");
+			int pending = checks.Count(c => c.Bucket == "pending");
 			State.Status = failed > 0
 				? $"{failed} of {checks.Count} check(s) failed - double-click one for its log."
-				: $"{checks.Count} check(s), none failing.";
+				: pending > 0
+					? $"{pending} of {checks.Count} check(s) still in progress."
+					: $"{checks.Count} check(s), none failing.";
 		}
 		catch (ToolFailedException ex)
 		{

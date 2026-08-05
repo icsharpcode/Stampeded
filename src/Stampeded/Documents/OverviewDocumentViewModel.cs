@@ -53,6 +53,9 @@ public sealed partial class OverviewState : ObservableObject
 	bool checksGreen;
 
 	[ObservableProperty]
+	bool checksPending;
+
+	[ObservableProperty]
 	bool checksUnknown = true;
 
 	[ObservableProperty]
@@ -308,17 +311,23 @@ public class OverviewDocumentViewModel : Document
 		{
 			State.ChecksFailing = false;
 			State.ChecksGreen = false;
+			State.ChecksPending = false;
 			State.ChecksUnknown = true;
 			State.ChecksHeader = workspace.CurrentPr is null ? "CI: local review - none." : "CI: loading...";
 			return;
 		}
 		State.ChecksUnknown = false;
-		int failing = checks.Count(c => c.Bucket == "fail");
+		// Cancelled runs are treated as failures: they did not vouch for the change.
+		int failing = checks.Count(c => c.Bucket is "fail" or "cancel");
+		int pending = checks.Count(c => c.Bucket == "pending");
 		State.ChecksFailing = failing > 0;
-		State.ChecksGreen = failing == 0;
+		State.ChecksPending = failing == 0 && pending > 0;
+		State.ChecksGreen = failing == 0 && pending == 0;
 		State.ChecksHeader = failing > 0
-			? $"CI: {failing} of {checks.Count} check(s) FAILING - is this ready for review?"
-			: $"CI: all {checks.Count} check(s) passing or skipped.";
+			? $"CI: {failing} of {checks.Count} check(s) FAILING{(pending > 0 ? $", {pending} in progress" : "")} - is this ready for review?"
+			: pending > 0
+				? $"CI: {pending} of {checks.Count} check(s) still in progress."
+				: $"CI: all {checks.Count} check(s) passing or skipped.";
 		foreach (var check in checks.Where(c => c.Bucket == "fail").Take(10))
 			CheckLines.Add(new CheckLine("FAIL", check.Name, check.Link));
 	}

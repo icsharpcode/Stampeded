@@ -58,6 +58,8 @@
                      Text="{Binding State.ChecksHeader}" IsVisible="{Binding State.ChecksFailing}" />
           <TextBlock Classes="statusline" FontWeight="SemiBold" Foreground="#2EA043"
                      Text="{Binding State.ChecksHeader}" IsVisible="{Binding State.ChecksGreen}" />
+          <TextBlock Classes="statusline" FontWeight="SemiBold" Foreground="#D29922"
+                     Text="{Binding State.ChecksHeader}" IsVisible="{Binding State.ChecksPending}" />
           <TextBlock Classes="statusline" Opacity="0.8" Text="{Binding State.ChecksHeader}"
                      IsVisible="{Binding State.ChecksUnknown}" />
         </Panel>
