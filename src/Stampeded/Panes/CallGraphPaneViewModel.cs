@@ -54,13 +54,10 @@ public sealed class CallMemberNode : SharpTreeNode
 			return;
 		Children.Add(new CallBucketNode(owner, Item, CallDirection.Callers));
 		Children.Add(new CallBucketNode(owner, Item, CallDirection.Callees));
-		// One site needs no list - the node itself goes there. Several do, because which
-		// call is the interesting one is exactly the reviewer's question.
-		if (Item.Sites.Count > 1)
-		{
-			foreach (var site in Item.Sites)
-				Children.Add(new CallSiteNode(owner, site));
-		}
+		// The member row goes to the definition, so the calls themselves need rows of
+		// their own - which one matters is exactly the reviewer's question.
+		foreach (var site in Item.Sites)
+			Children.Add(new CallSiteNode(owner, site));
 	}
 
 	public override void ActivateItem(IPlatformRoutedEventArgs e)
@@ -180,20 +177,16 @@ public partial class CallGraphPaneViewModel : Tool
 			new CallNode(value.Display, "", value.RelPath, value.Line, value.Column, []),
 			value.RelPath, value.OldSide, []);
 		var node = new CallMemberNode(this, item);
-		Root = node;
+		var hidden = new PlaceholderNode("");
+		hidden.Children.Add(node);
+		Root = hidden;
 		node.IsExpanded = true;
 	}
 
-	/// <summary>Jumps to where this member calls its parent, not to its signature: the
-	/// call is what a change to the target actually has to survive. Falls back to the
-	/// declaration for a root, which has no call of its own.</summary>
+	/// <summary>Goes to the member's own definition. Where it calls its parent is a
+	/// separate question, answered by the call rows underneath it.</summary>
 	public void OpenMember(CallMemberNode node)
 	{
-		if (node.Item.Sites is [var single, ..])
-		{
-			OpenSite(single);
-			return;
-		}
 		if (node.Item is { RelPath: { Length: > 0 } path } item)
 			workspace.NavigateToFileLineAsync(path, item.Node.Line, item.OldSide, record: true).HandleExceptions();
 	}

@@ -10,6 +10,7 @@
     <!-- SharpTreeView flattens the hierarchy into one virtualized list, so depth costs an
          indent rather than a nested container per level - a call tree can recurse as far
          as the reader keeps expanding. -->
-    <tv:SharpTreeView x:Name="Tree" Root="{Binding Root}" ShowLines="True" FontSize="12" />
+    <tv:SharpTreeView x:Name="Tree" Root="{Binding Root}" ShowRoot="False" ShowLines="True"
+                      FontSize="12" />
   </DockPanel>
 </UserControl>
