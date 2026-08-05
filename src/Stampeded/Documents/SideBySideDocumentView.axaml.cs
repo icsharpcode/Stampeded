@@ -45,6 +45,8 @@ public partial class SideBySideDocumentView : UserControl
 		Right.TextArea.TextView.VisualLinesChanged += (_, _) => MirrorFolds(rightFolding, leftFolding);
 		leftPane = new SideBySidePane(Left, oldSide: true);
 		rightPane = new SideBySidePane(Right, oldSide: false);
+		FoldViewportAnchor.Install(Left);
+		FoldViewportAnchor.Install(Right);
 	}
 
 	protected override void OnAttachedToVisualTree(Avalonia.VisualTreeAttachmentEventArgs e)

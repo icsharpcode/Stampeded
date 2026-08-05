@@ -59,6 +59,7 @@ public partial class DiffDocumentView : UserControl
 					? StandardCursorType.Hand
 					: StandardCursorType.Ibeam);
 		Editor.TextArea.LeftMargins.Insert(0, margin);
+		FoldViewportAnchor.Install(Editor);
 		Editor.TextArea.AddHandler(KeyDownEvent, OnEditorKeyDown, RoutingStrategies.Tunnel);
 		// Click-vs-drag discrimination (ported from ILSpy's DecompilerTextView): the press
 		// only records its position; the release compares against it, so press-and-drag
