@@ -15,4 +15,10 @@ public partial class ChecksPaneView : UserControl
 		if (DataContext is ChecksPaneViewModel vm && List.SelectedItem is CheckRow row)
 			vm.Open(row);
 	}
+
+	void OnRefresh(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+	{
+		if (DataContext is ChecksPaneViewModel vm)
+			vm.LoadAsync().HandleExceptions();
+	}
 }

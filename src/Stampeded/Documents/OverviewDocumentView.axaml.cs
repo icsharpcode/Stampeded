@@ -19,6 +19,8 @@ public partial class OverviewDocumentView : UserControl
 
 	void OnOpenVsCode(object? sender, RoutedEventArgs e) => Vm?.OpenInVsCode();
 
+	void OnRefreshChecks(object? sender, RoutedEventArgs e) => Vm?.RefreshChecks();
+
 	void OnOpenFixtures(object? sender, RoutedEventArgs e) => Vm?.OpenFixturesInIlspy();
 
 	void OnCommitDoubleTapped(object? sender, TappedEventArgs e)

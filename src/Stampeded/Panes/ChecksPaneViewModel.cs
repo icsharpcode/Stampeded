@@ -47,6 +47,7 @@ public partial class ChecksPaneViewModel : Tool
 	{
 		this.workspace = workspace;
 		workspace.ReviewChanged += () => LoadAsync().HandleExceptions();
+		workspace.ChecksRefreshRequested += () => LoadAsync().HandleExceptions();
 	}
 
 	public async Task LoadAsync()

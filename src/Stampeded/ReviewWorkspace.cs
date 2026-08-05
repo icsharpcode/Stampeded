@@ -143,6 +143,12 @@ public sealed class ReviewWorkspace(string repoPath)
 	public event Action<string, string>? PickaxeRequested;
 
 	public void RequestPickaxe(string text, string path) => PickaxeRequested?.Invoke(text, path);
+
+	/// <summary>Asks the Checks pane (which owns the gh call) to re-fetch CI state;
+	/// results arrive through <see cref="ChecksLoaded"/> as usual.</summary>
+	public event Action? ChecksRefreshRequested;
+
+	public void RequestChecksRefresh() => ChecksRefreshRequested?.Invoke();
 	public event Action<string, IReadOnlyList<ReferenceItem>>? ReferencesAvailable;
 
 	CancellationTokenSource? sessionCts;

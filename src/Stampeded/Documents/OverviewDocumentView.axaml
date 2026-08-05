@@ -61,6 +61,9 @@
           <TextBlock Classes="statusline" Opacity="0.8" Text="{Binding State.ChecksHeader}"
                      IsVisible="{Binding State.ChecksUnknown}" />
         </Panel>
+        <Button DockPanel.Dock="Left" Content="Refresh" FontSize="10" Padding="5,1" Margin="8,0,0,0"
+                VerticalAlignment="Center" Click="OnRefreshChecks"
+                ToolTip.Tip="Re-fetch CI check state from GitHub" />
         <ItemsControl ItemsSource="{Binding CheckLines}" Margin="10,0,0,0">
           <ItemsControl.ItemsPanel>
             <ItemsPanelTemplate>

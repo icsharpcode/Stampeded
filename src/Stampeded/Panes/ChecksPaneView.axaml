@@ -4,8 +4,12 @@
              x:Class="Stampeded.Panes.ChecksPaneView"
              x:DataType="panes:ChecksPaneViewModel">
   <DockPanel>
-    <TextBlock DockPanel.Dock="Bottom" Margin="6,4" Opacity="0.7" TextWrapping="Wrap"
-               Text="{Binding State.Status}" />
+    <DockPanel DockPanel.Dock="Bottom">
+      <Button DockPanel.Dock="Right" Content="Refresh" FontSize="10" Padding="5,1" Margin="0,2,4,2"
+              VerticalAlignment="Center" Click="OnRefresh"
+              ToolTip.Tip="Re-fetch CI check state from GitHub" />
+      <TextBlock Margin="6,4" Opacity="0.7" TextWrapping="Wrap" Text="{Binding State.Status}" />
+    </DockPanel>
     <ListBox x:Name="List" ItemsSource="{Binding Items}" DoubleTapped="OnDoubleTapped"
              FontFamily="monospace" FontSize="12">
       <ListBox.ItemTemplate>

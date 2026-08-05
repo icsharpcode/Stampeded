@@ -118,6 +118,14 @@ public class OverviewDocumentViewModel : Document
 
 	public void OpenInVsCode() => workspace.OpenInVsCodeAsync(oldSide: false).HandleExceptions();
 
+	public void RefreshChecks()
+	{
+		if (workspace.CurrentPr is null)
+			return;
+		State.ChecksHeader = "CI: refreshing...";
+		workspace.RequestChecksRefresh();
+	}
+
 	public void OpenFixturesInIlspy() => workspace.OpenAffectedFixturesInILSpyAsync().HandleExceptions();
 
 	void RebuildAll()
