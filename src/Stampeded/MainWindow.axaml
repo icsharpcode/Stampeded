@@ -32,6 +32,7 @@
         <Separator />
         <MenuItem Header="Explorer Pane" Tag="Explorer" Click="OnShowPane" />
         <MenuItem Header="Change Map Pane" Tag="Map" Click="OnShowPane" />
+        <MenuItem Header="Structure Pane" Tag="Structure" Click="OnShowPane" />
         <MenuItem Header="References Pane" Tag="References" Click="OnShowPane" />
         <MenuItem Header="Comments Pane" Tag="Comments" Click="OnShowPane" />
         <MenuItem Header="Checks Pane" Tag="Checks" Click="OnShowPane" />

@@ -35,6 +35,8 @@ static class ScreenshotWatcher
 					Documents.DiffDocumentView.ActiveView?.CommentAtCaretCommand();
 				if (lines.Contains("close-review"))
 					App.Workspace?.CloseReview();
+				foreach (var pane in lines.Where(l => l.StartsWith("pane:", StringComparison.Ordinal)))
+					App.Workspace?.Factory?.ShowPane(pane["pane:".Length..].Trim());
 				foreach (var command in lines.Where(l => l.StartsWith("goto:", StringComparison.Ordinal)))
 				{
 					var parts = command.Split(':', 3);

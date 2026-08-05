@@ -71,14 +71,16 @@ public class StampededDockFactory(ReviewWorkspace workspace) : Factory
 
 		var explorer = new ExplorerPaneViewModel(workspace) { Id = "Explorer", Title = "Explorer" };
 		var map = new ChangeMapPaneViewModel(workspace) { Id = "Map", Title = "Map" };
+		var structure = new StructurePaneViewModel(workspace) { Id = "Structure", Title = "Structure" };
 		var filesDock = new ToolDock {
 			Id = "FilesDock",
 			Alignment = Alignment.Left,
-			VisibleDockables = CreateList<IDockable>(explorer, map),
+			VisibleDockables = CreateList<IDockable>(explorer, structure, map),
 			ActiveDockable = explorer,
 		};
 		panes[explorer.Id] = (explorer, filesDock);
 		panes[map.Id] = (map, filesDock);
+		panes[structure.Id] = (structure, filesDock);
 		var leftDock = new ProportionalDock {
 			Proportion = 0.2,
 			Orientation = Orientation.Vertical,

@@ -74,6 +74,26 @@ public sealed class DiffDocumentModel
 	public int? DocLineFromOldLine(int oldLine)
 		=> oldToDoc.Value.TryGetValue(oldLine, out int doc) ? doc : null;
 
+	/// <summary>One side's text reconstructed from the document (the document itself is
+	/// not valid source - removed lines interleave), plus the 1-based document line for
+	/// each side line, for mapping parse results back.</summary>
+	public (string Text, IReadOnlyList<int> SideToDocLine) GetSideText(bool oldSide)
+	{
+		var docLines = Text.Split('\n');
+		var sideLines = new List<string>();
+		var sideToDoc = new List<int>();
+		for (int i = 0; i < Tags.Count && i < docLines.Length; i++)
+		{
+			int sideLine = oldSide ? Tags[i].OldLine : Tags[i].NewLine;
+			if (sideLine > 0)
+			{
+				sideLines.Add(docLines[i]);
+				sideToDoc.Add(i + 1);
+			}
+		}
+		return (string.Join('\n', sideLines), sideToDoc);
+	}
+
 	public const string ThreadMarkerPrefix = "@@thread:";
 	public const string ThreadMarkerSuffix = "@@";
 

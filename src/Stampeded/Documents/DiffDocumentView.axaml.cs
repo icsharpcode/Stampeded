@@ -691,21 +691,10 @@ public partial class DiffDocumentView : UserControl
 		if (viewModel is null || !viewModel.File.Path.EndsWith(".cs", StringComparison.OrdinalIgnoreCase))
 			return;
 		bool oldSide = viewModel.File.Kind == Core.Diff.FileChangeKind.Deleted;
-		var sideLines = new List<string>();
-		var sideToDocLine = new List<int>();
-		var docLines = m.Text.Split('\n');
-		for (int i = 0; i < m.Tags.Count && i < docLines.Length; i++)
-		{
-			int sideLine = oldSide ? m.Tags[i].OldLine : m.Tags[i].NewLine;
-			if (sideLine > 0)
-			{
-				sideLines.Add(docLines[i]);
-				sideToDocLine.Add(i + 1);
-			}
-		}
-		if (sideLines.Count == 0)
+		var (sideText, sideToDocLine) = m.GetSideText(oldSide);
+		if (sideToDocLine.Count == 0)
 			return;
-		foreach (var region in Core.Roslyn.MemberFolding.Compute(string.Join('\n', sideLines)))
+		foreach (var region in Core.Roslyn.MemberFolding.Compute(sideText))
 		{
 			if (region.StartLine > sideToDocLine.Count || region.EndLine > sideToDocLine.Count)
 				continue;
