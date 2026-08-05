@@ -672,14 +672,14 @@ public partial class DiffDocumentView : UserControl
 	void InstallFoldings(DiffDocumentModel m)
 	{
 		foldingManager ??= FoldingManager.Install(Editor.TextArea);
-		var ranges = Diff.DiffFolding.UnchangedRuns(m.Tags, m.Hunks.Count > 0);
+		var ranges = DiffFolding.UnchangedRuns(m.Tags, m.Hunks.Count > 0);
 		if (viewModel is { } vm && vm.File.Path.EndsWith(".cs", StringComparison.OrdinalIgnoreCase))
 		{
 			bool oldSide = vm.File.Kind == Core.Diff.FileChangeKind.Deleted;
 			var (sideText, sideToDocLine) = m.GetSideText(oldSide);
-			ranges.AddRange(Diff.DiffFolding.Members(sideText, sideToDocLine));
+			ranges.AddRange(DiffFolding.Members(sideText, sideToDocLine));
 		}
-		var foldings = Diff.FoldInstaller.ToFoldings(Editor.Document, ranges);
+		var foldings = FoldInstaller.ToFoldings(Editor.Document, ranges);
 		foldingManager.Clear();
 		foldingManager.UpdateFoldings(foldings, -1);
 	}

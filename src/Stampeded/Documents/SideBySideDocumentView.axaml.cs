@@ -19,6 +19,8 @@ public partial class SideBySideDocumentView : UserControl
 {
 	readonly DiffLineNumberMargin leftMargin = new();
 	readonly DiffLineNumberMargin rightMargin = new();
+	SideBySidePane? leftPane;
+	SideBySidePane? rightPane;
 	IReadOnlyList<DiffLineTag>? leftTags;
 	IReadOnlyList<DiffLineTag>? rightTags;
 	FoldingManager? leftFolding;
@@ -41,12 +43,32 @@ public partial class SideBySideDocumentView : UserControl
 		Right.TextArea.LeftMargins.Insert(0, rightMargin);
 		Left.TextArea.TextView.VisualLinesChanged += (_, _) => MirrorFolds(leftFolding, rightFolding);
 		Right.TextArea.TextView.VisualLinesChanged += (_, _) => MirrorFolds(rightFolding, leftFolding);
+		leftPane = new SideBySidePane(Left, oldSide: true);
+		rightPane = new SideBySidePane(Right, oldSide: false);
 	}
 
 	protected override void OnAttachedToVisualTree(Avalonia.VisualTreeAttachmentEventArgs e)
 	{
 		base.OnAttachedToVisualTree(e);
 		Dispatcher.UIThread.Post(WireScrollSync, DispatcherPriority.Loaded);
+		if (App.Workspace is { } ws)
+			ws.SemanticsChanged += OnSemanticsChanged;
+		RefreshSemantics();
+	}
+
+	protected override void OnDetachedFromVisualTree(Avalonia.VisualTreeAttachmentEventArgs e)
+	{
+		if (App.Workspace is { } ws)
+			ws.SemanticsChanged -= OnSemanticsChanged;
+		base.OnDetachedFromVisualTree(e);
+	}
+
+	void OnSemanticsChanged() => Dispatcher.UIThread.Post(RefreshSemantics);
+
+	void RefreshSemantics()
+	{
+		leftPane?.RefreshSemanticsAsync().HandleExceptions();
+		rightPane?.RefreshSemanticsAsync().HandleExceptions();
 	}
 
 	// The editors' ScrollViewers only exist once their templates are applied; sync their
@@ -100,6 +122,9 @@ public partial class SideBySideDocumentView : UserControl
 		leftMargin.InvalidateMeasure();
 		rightMargin.InvalidateMeasure();
 		InstallFoldings(vm);
+		leftPane?.SetDocument(vm);
+		rightPane?.SetDocument(vm);
+		RefreshSemantics();
 	}
 
 	/// <summary>
