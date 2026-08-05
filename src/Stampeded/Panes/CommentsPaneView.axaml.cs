@@ -21,19 +21,19 @@ public partial class CommentsPaneView : UserControl
 
 	void OpenSelected()
 	{
-		if (Vm is { } vm && List.SelectedItem is CommentRow row)
+		if (Vm is { } vm && CommentList.SelectedItem is CommentRow row)
 			vm.Open(row);
 	}
 
 	void OnOpenOnGitHub(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
 	{
-		if (DataContext is CommentsPaneViewModel vm && List.SelectedItem is CommentRow row)
+		if (DataContext is CommentsPaneViewModel vm && CommentList.SelectedItem is CommentRow row)
 			vm.OpenOnGitHub(row);
 	}
 
 	void OnDelete(object? s, RoutedEventArgs e)
 	{
-		if (Vm is { } vm && List.SelectedItem is CommentRow row)
+		if (Vm is { } vm && CommentList.SelectedItem is CommentRow row)
 			vm.RemoveSelected(row);
 	}
 

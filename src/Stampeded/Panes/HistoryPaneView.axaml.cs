@@ -12,7 +12,7 @@ public partial class HistoryPaneView : UserControl
 
 	void OnDoubleTapped(object? sender, TappedEventArgs e)
 	{
-		if (DataContext is HistoryPaneViewModel vm && List.SelectedItem is CommitRow row)
+		if (DataContext is HistoryPaneViewModel vm && HistoryList.SelectedItem is CommitRow row)
 			vm.Open(row);
 	}
 }

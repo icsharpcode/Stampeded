@@ -17,9 +17,7 @@ public sealed record CommitLine(string ShortSha, string Added, string Removed, s
 	/// <summary>The pending working-tree row rather than a commit.</summary>
 	public bool IsUncommitted { get; init; }
 
-	public IBrush ShaBrush => IsUncommitted
-		? new SolidColorBrush(Color.Parse("#D29922"))
-		: Brushes.Gray;
+	public FontWeight Weight => IsUncommitted ? FontWeight.SemiBold : FontWeight.Normal;
 }
 
 public sealed record FileCostRow(string Marker, string Added, string Removed, string Minutes, string Churn, string Path);

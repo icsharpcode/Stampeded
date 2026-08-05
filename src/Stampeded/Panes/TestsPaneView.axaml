@@ -21,7 +21,7 @@
                  Text="{Binding State.Spinner}" IsVisible="{Binding State.Running}" />
       <TextBlock Opacity="0.7" TextWrapping="Wrap" Text="{Binding State.Status}" />
     </DockPanel>
-    <ListBox Grid.Row="2" x:Name="List" ItemsSource="{Binding Failures}" DoubleTapped="OnDoubleTapped"
+    <ListBox Grid.Row="2" x:Name="FailureList" ItemsSource="{Binding Failures}" DoubleTapped="OnDoubleTapped"
              FontFamily="monospace" FontSize="12">
       <ListBox.ItemTemplate>
         <DataTemplate x:DataType="panes:TestRow">

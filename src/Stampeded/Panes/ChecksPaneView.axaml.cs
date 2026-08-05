@@ -12,7 +12,7 @@ public partial class ChecksPaneView : UserControl
 
 	void OnDoubleTapped(object? sender, TappedEventArgs e)
 	{
-		if (DataContext is ChecksPaneViewModel vm && List.SelectedItem is CheckRow row)
+		if (DataContext is ChecksPaneViewModel vm && CheckList.SelectedItem is CheckRow row)
 			vm.Open(row);
 	}
 

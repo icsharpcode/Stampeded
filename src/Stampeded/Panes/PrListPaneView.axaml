@@ -16,7 +16,7 @@
                    Text="{Binding State.Status}" />
       </DockPanel>
     </StackPanel>
-    <ListBox x:Name="List" ItemsSource="{Binding Items}" DoubleTapped="OnDoubleTapped">
+    <ListBox x:Name="PullRequestList" ItemsSource="{Binding Items}" DoubleTapped="OnDoubleTapped">
       <ListBox.ContextMenu>
         <ContextMenu>
           <MenuItem Header="Open Review (double-click)" Click="OnOpenClicked" />

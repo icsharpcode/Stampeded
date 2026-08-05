@@ -70,7 +70,7 @@ public partial class TestsPaneView : UserControl
 
 	void OnDoubleTapped(object? sender, TappedEventArgs e)
 	{
-		if (DataContext is TestsPaneViewModel vm && List.SelectedItem is TestRow row)
+		if (DataContext is TestsPaneViewModel vm && FailureList.SelectedItem is TestRow row)
 			vm.Open(row);
 	}
 }

@@ -6,7 +6,7 @@
   <DockPanel>
     <TextBlock DockPanel.Dock="Top" Margin="6,4" Opacity="0.7" TextWrapping="Wrap"
                Text="{Binding State.Status}" />
-    <ListBox x:Name="List" ItemsSource="{Binding Commits}" DoubleTapped="OnDoubleTapped"
+    <ListBox x:Name="HistoryList" ItemsSource="{Binding Commits}" DoubleTapped="OnDoubleTapped"
              FontFamily="monospace" FontSize="12">
       <ListBox.ItemTemplate>
         <DataTemplate x:DataType="panes:CommitRow">

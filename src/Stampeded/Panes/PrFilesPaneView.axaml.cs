@@ -23,19 +23,19 @@ public partial class PrFilesPaneView : UserControl
 
 	void OpenSelected()
 	{
-		if (DataContext is PrFilesPaneViewModel vm && List.SelectedItem is FileEntry entry)
+		if (DataContext is PrFilesPaneViewModel vm && FileList.SelectedItem is FileEntry entry)
 			vm.Open(entry);
 	}
 
 	void OnToggleViewedClicked(object? sender, RoutedEventArgs e)
 	{
-		if (List.SelectedItem is FileEntry entry)
+		if (FileList.SelectedItem is FileEntry entry)
 			entry.IsViewed = !entry.IsViewed;
 	}
 
 	void SetDepth(string depth)
 	{
-		if (DataContext is PrFilesPaneViewModel vm && List.SelectedItem is FileEntry entry)
+		if (DataContext is PrFilesPaneViewModel vm && FileList.SelectedItem is FileEntry entry)
 		{
 			vm.SetDepth(entry, depth);
 			entry.Depth = depth;
@@ -48,10 +48,10 @@ public partial class PrFilesPaneView : UserControl
 		if (DataContext is not PrFilesPaneViewModel vm)
 			return;
 		var entry = vm.Files.FirstOrDefault(f => f.File.Path == relPath);
-		if (entry is null || ReferenceEquals(List.SelectedItem, entry))
+		if (entry is null || ReferenceEquals(FileList.SelectedItem, entry))
 			return;
-		List.SelectedItem = entry;
-		List.ScrollIntoView(entry);
+		FileList.SelectedItem = entry;
+		FileList.ScrollIntoView(entry);
 	}
 
 	void OnDepthDeep(object? sender, RoutedEventArgs e) => SetDepth("deep");

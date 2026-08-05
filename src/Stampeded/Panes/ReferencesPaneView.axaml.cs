@@ -12,7 +12,7 @@ public partial class ReferencesPaneView : UserControl
 
 	void OnDoubleTapped(object? sender, TappedEventArgs e)
 	{
-		if (DataContext is ReferencesPaneViewModel vm && List.SelectedItem is ReferenceRow row)
+		if (DataContext is ReferencesPaneViewModel vm && ReferenceList.SelectedItem is ReferenceRow row)
 			vm.Open(row);
 	}
 }

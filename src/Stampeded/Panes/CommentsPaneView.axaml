@@ -14,7 +14,7 @@
                  Watermark="Draft comment text..." />
       </DockPanel>
     </StackPanel>
-    <ListBox Grid.Row="2" x:Name="List" ItemsSource="{Binding Items}" SelectionChanged="OnSelectionChanged">
+    <ListBox Grid.Row="2" x:Name="CommentList" ItemsSource="{Binding Items}" SelectionChanged="OnSelectionChanged">
       <ListBox.ContextMenu>
         <ContextMenu>
           <MenuItem Header="Go to Line (click)" Click="OnGoTo" />

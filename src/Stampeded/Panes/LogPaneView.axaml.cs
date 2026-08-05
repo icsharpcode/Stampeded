@@ -23,8 +23,8 @@ public partial class LogPaneView : UserControl
 
 	void OnLinesChanged(object? sender, NotifyCollectionChangedEventArgs e)
 	{
-		if (e.Action == NotifyCollectionChangedAction.Add && List.ItemCount > 0)
-			List.ScrollIntoView(List.ItemCount - 1);
+		if (e.Action == NotifyCollectionChangedAction.Add && LogList.ItemCount > 0)
+			LogList.ScrollIntoView(LogList.ItemCount - 1);
 	}
 
 	void OnClear(object? sender, RoutedEventArgs e)
@@ -52,7 +52,7 @@ public partial class LogPaneView : UserControl
 
 	void CopySelected()
 	{
-		if (DataContext is not LogPaneViewModel vm || List.SelectedItems is not { Count: > 0 } selected)
+		if (DataContext is not LogPaneViewModel vm || LogList.SelectedItems is not { Count: > 0 } selected)
 			return;
 		// SelectedItems reflects selection order; copy in display order instead.
 		var chosen = selected.OfType<string>().ToHashSet();

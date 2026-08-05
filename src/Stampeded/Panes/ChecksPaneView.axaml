@@ -10,7 +10,7 @@
               ToolTip.Tip="Re-fetch CI check state from GitHub" />
       <TextBlock Margin="6,4" Opacity="0.7" TextWrapping="Wrap" Text="{Binding State.Status}" />
     </DockPanel>
-    <ListBox x:Name="List" ItemsSource="{Binding Items}" DoubleTapped="OnDoubleTapped"
+    <ListBox x:Name="CheckList" ItemsSource="{Binding Items}" DoubleTapped="OnDoubleTapped"
              FontFamily="monospace" FontSize="12">
       <ListBox.ItemTemplate>
         <DataTemplate x:DataType="panes:CheckRow">

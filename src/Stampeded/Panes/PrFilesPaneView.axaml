@@ -9,7 +9,7 @@
     <!-- Rows must fit the pane: an overflowing row scrolled its trailing badges and the
          viewed checkbox out of reach. Paths give up whole directory segments instead, so
          the file name - the part being identified - always survives. -->
-    <ListBox x:Name="List" ItemsSource="{Binding Files}" DoubleTapped="OnDoubleTapped"
+    <ListBox x:Name="FileList" ItemsSource="{Binding Files}" DoubleTapped="OnDoubleTapped"
              ScrollViewer.HorizontalScrollBarVisibility="Disabled">
     <ListBox.ContextMenu>
       <ContextMenu>

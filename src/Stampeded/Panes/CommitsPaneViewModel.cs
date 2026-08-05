@@ -30,10 +30,7 @@ public sealed record CommitRow(CommitInfo Commit, bool IsUncommitted = false)
 		}
 	}
 
-	/// <summary>Null for a commit, so the row keeps the theme's colour.</summary>
-	public IBrush? Foreground => IsUncommitted ? Pending : null;
-
-	static readonly IBrush Pending = new SolidColorBrush(Color.Parse("#D29922"));
+	public FontWeight Weight => IsUncommitted ? FontWeight.SemiBold : FontWeight.Normal;
 }
 
 /// <summary>A file within a commit, or - when the sha is empty - within the working tree.</summary>

@@ -12,7 +12,7 @@
         <ListBox.ItemTemplate>
           <DataTemplate x:DataType="panes:CommitRow">
             <TextBlock Text="{Binding Display}" TextTrimming="CharacterEllipsis"
-                       Foreground="{Binding Foreground, TargetNullValue={DynamicResource ThemeForegroundBrush}}" />
+                       FontWeight="{Binding Weight}" />
           </DataTemplate>
         </ListBox.ItemTemplate>
       </ListBox>

@@ -25,13 +25,13 @@ public partial class PrListPaneView : UserControl
 
 	void OpenSelected()
 	{
-		if (DataContext is PrListPaneViewModel vm && List.SelectedItem is PrSummary pr)
+		if (DataContext is PrListPaneViewModel vm && PullRequestList.SelectedItem is PrSummary pr)
 			vm.Open(pr);
 	}
 
 	void OnOpenOnGitHubClicked(object? sender, RoutedEventArgs e)
 	{
-		if (List.SelectedItem is PrSummary pr)
+		if (PullRequestList.SelectedItem is PrSummary pr)
 			App.Workspace?.OpenOnGitHubAsync(pr.Number).HandleExceptions();
 	}
 
