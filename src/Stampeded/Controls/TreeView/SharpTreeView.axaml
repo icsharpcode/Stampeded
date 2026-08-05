@@ -110,6 +110,7 @@
 						       Margin="4,0,6,0" VerticalAlignment="Center" />
 						<TextBlock Text="{Binding Text}" VerticalAlignment="Center"
 						           TextTrimming="CharacterEllipsis"
+						           Foreground="{Binding Foreground}"
 						           Classes.autoloaded="{Binding IsAutoLoaded}"
 						           Classes.nonPublicAPI="{Binding IsNonPublicAPI}" />
 					</StackPanel>

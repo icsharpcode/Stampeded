@@ -14,63 +14,120 @@ public sealed partial class CallGraphState : ObservableObject
 {
 	[ObservableProperty]
 	string status = "Right-click a symbol in a diff and choose Show Call Graph.";
-
-	/// <summary>True while listing callers; false while listing callees.</summary>
-	[ObservableProperty]
-	bool showCallers = true;
 }
 
 /// <summary>
-/// One member in the call tree. Children load on first expansion - a caller tree over a
-/// widely used member is effectively unbounded, and the flattened tree lets it be walked
-/// as deep as the reader cares to go.
+/// A member in the call tree. Its children are the two directions - who calls it and what
+/// it calls - so either can be followed at any depth without losing the tree, plus the
+/// individual sites where it calls its parent when there is more than one.
 /// </summary>
-public sealed class CallGraphTreeNode : SharpTreeNode
+public sealed class CallMemberNode : SharpTreeNode
 {
 	readonly CallGraphPaneViewModel owner;
-	readonly ReviewWorkspace.CallGraphItem item;
 
-	public CallGraphTreeNode(CallGraphPaneViewModel owner, ReviewWorkspace.CallGraphItem item)
+	public CallMemberNode(CallGraphPaneViewModel owner, ReviewWorkspace.CallGraphItem item)
 	{
 		this.owner = owner;
-		this.item = item;
+		Item = item;
+		// Without this the node never asks for its children, so the direction buckets
+		// under it are never built.
 		LazyLoading = item.CanExpand;
 	}
 
-	public ReviewWorkspace.CallGraphItem Item => item;
+	public ReviewWorkspace.CallGraphItem Item { get; }
 
-	public override object Text => item.Detail.Length > 0 ? $"{item.Display}   {item.Detail}" : item.Display;
+	public override object Text => Item.Detail.Length > 0
+		? $"{Item.Display}   {Item.Detail}"
+		: Item.Display;
 
 	public override object Icon => Images.Method;
 
-	public override object ToolTip => item.RelPath is { Length: > 0 } path
-		? $"{item.Node.Display}\n{path}:{item.Node.Line}"
-		: item.Node.Display;
+	public override object ToolTip => Item.RelPath is { Length: > 0 } path
+		? $"{Item.Node.Display}\n{path}:{Item.Node.Line}"
+		: Item.Node.Display;
+
+	public override bool ShowExpander => Item.CanExpand;
 
 	protected override void LoadChildren()
 	{
-		// The lookup is asynchronous; a placeholder keeps the expander open meanwhile,
-		// since an empty child list would collapse the node again.
-		var placeholder = new PlaceholderNode("finding...");
-		Children.Add(placeholder);
-		LoadAsync().HandleExceptions();
-
-		async Task LoadAsync()
+		if (!Item.CanExpand)
+			return;
+		Children.Add(new CallBucketNode(owner, Item, CallDirection.Callers));
+		Children.Add(new CallBucketNode(owner, Item, CallDirection.Callees));
+		// One site needs no list - the node itself goes there. Several do, because which
+		// call is the interesting one is exactly the reviewer's question.
+		if (Item.Sites.Count > 1)
 		{
-			var calls = await owner.GetCallsAsync(item);
-			Dispatcher.UIThread.Post(() => {
-				Children.Clear();
-				foreach (var call in calls)
-					Children.Add(new CallGraphTreeNode(owner, call));
-				if (Children.Count == 0)
-					Children.Add(new PlaceholderNode(owner.EmptyMessage));
-			});
+			foreach (var site in Item.Sites)
+				Children.Add(new CallSiteNode(owner, site));
 		}
 	}
 
 	public override void ActivateItem(IPlatformRoutedEventArgs e)
 	{
-		owner.Open(this);
+		owner.OpenMember(this);
+		e.Handled = true;
+	}
+}
+
+/// <summary>One direction under a member: expanding it runs the lookup.</summary>
+public sealed class CallBucketNode : SharpTreeNode
+{
+	readonly CallGraphPaneViewModel owner;
+	readonly ReviewWorkspace.CallGraphItem item;
+	readonly CallDirection direction;
+
+	public CallBucketNode(CallGraphPaneViewModel owner, ReviewWorkspace.CallGraphItem item, CallDirection direction)
+	{
+		this.owner = owner;
+		this.item = item;
+		this.direction = direction;
+		LazyLoading = true;
+	}
+
+	public override object Text => direction == CallDirection.Callers
+		? $"Calls to '{item.Node.Display}'"
+		: $"Calls from '{item.Node.Display}'";
+
+	public override object Icon => direction == CallDirection.Callers ? Images.SubTypes : Images.SuperTypes;
+
+	protected override void LoadChildren()
+	{
+		// The lookup is asynchronous; a placeholder holds the expander open, since an
+		// empty child list would collapse the node again before the answer arrives.
+		Children.Add(new PlaceholderNode("finding..."));
+		LoadAsync().HandleExceptions();
+
+		async Task LoadAsync()
+		{
+			var calls = await owner.GetCallsAsync(item, direction);
+			Dispatcher.UIThread.Post(() => {
+				Children.Clear();
+				foreach (var call in calls)
+					Children.Add(new CallMemberNode(owner, call));
+				if (Children.Count == 0)
+				{
+					Children.Add(new PlaceholderNode(direction == CallDirection.Callers
+						? "(no callers in this solution)"
+						: "(no calls out)"));
+				}
+			});
+		}
+	}
+}
+
+/// <summary>One call, at the line it happens on.</summary>
+public sealed class CallSiteNode(CallGraphPaneViewModel owner, ReviewWorkspace.CallSiteItem site) : SharpTreeNode
+{
+	public ReviewWorkspace.CallSiteItem Site { get; } = site;
+
+	public override object Text => $"{Site.RelPath}:{Site.Line}   {Site.Preview}";
+
+	public override object Icon => Images.Field;
+
+	public override void ActivateItem(IPlatformRoutedEventArgs e)
+	{
+		owner.OpenSite(Site);
 		e.Handled = true;
 	}
 }
@@ -82,13 +139,13 @@ public sealed class PlaceholderNode(string text) : SharpTreeNode
 }
 
 /// <summary>
-/// The call hierarchy around a symbol. Callers answer the question a change raises - who
-/// depends on this - and callees answer how the member does its work.
+/// The call hierarchy around a symbol, in both directions at every level. Callers answer
+/// the question a change raises - who depends on this - and callees answer how the member
+/// does its work.
 /// </summary>
 public partial class CallGraphPaneViewModel : Tool
 {
 	readonly ReviewWorkspace workspace;
-	ReviewWorkspace.CallRoot? currentRoot;
 
 	public CallGraphState State { get; } = new();
 
@@ -105,41 +162,42 @@ public partial class CallGraphPaneViewModel : Tool
 			State.Status = message;
 		});
 		workspace.ReviewChanged += () => Dispatcher.UIThread.Post(() => {
-			currentRoot = null;
 			Root = null;
 			State.Status = "Right-click a symbol in a diff and choose Show Call Graph.";
 		});
-		State.PropertyChanged += (_, e) => {
-			if (e.PropertyName == nameof(CallGraphState.ShowCallers) && currentRoot is { } current)
-				SetRoot(current);
-		};
 	}
 
-	CallDirection Direction => State.ShowCallers ? CallDirection.Callers : CallDirection.Callees;
-
-	public string EmptyMessage => State.ShowCallers ? "(no callers in this solution)" : "(no calls out)";
-
-	internal Task<IReadOnlyList<ReviewWorkspace.CallGraphItem>> GetCallsAsync(ReviewWorkspace.CallGraphItem item)
+	internal Task<IReadOnlyList<ReviewWorkspace.CallGraphItem>> GetCallsAsync(
+		ReviewWorkspace.CallGraphItem item, CallDirection direction)
 		=> item.RelPath is { Length: > 0 } relPath
-			? workspace.GetCallsAsync(relPath, item.Node.Line, item.Node.Column, item.OldSide, Direction)
+			? workspace.GetCallsAsync(relPath, item.Node.Line, item.Node.Column, item.OldSide, direction)
 			: Task.FromResult<IReadOnlyList<ReviewWorkspace.CallGraphItem>>([]);
 
 	void SetRoot(ReviewWorkspace.CallRoot value)
 	{
-		currentRoot = value;
-		State.Status = $"{(State.ShowCallers ? "Callers of" : "Calls from")} {value.Display}. "
-			+ "Expand for the next level; double-click to jump.";
+		State.Status = $"{value.Display}: expand either direction, at any level. Double-click to jump.";
 		var item = new ReviewWorkspace.CallGraphItem(
-			new CallNode(value.Display, "", value.RelPath, value.Line, value.Column, 0),
-			value.RelPath, value.OldSide);
-		var node = new CallGraphTreeNode(this, item);
+			new CallNode(value.Display, "", value.RelPath, value.Line, value.Column, []),
+			value.RelPath, value.OldSide, []);
+		var node = new CallMemberNode(this, item);
 		Root = node;
 		node.IsExpanded = true;
 	}
 
-	public void Open(CallGraphTreeNode node)
+	/// <summary>Jumps to where this member calls its parent, not to its signature: the
+	/// call is what a change to the target actually has to survive. Falls back to the
+	/// declaration for a root, which has no call of its own.</summary>
+	public void OpenMember(CallMemberNode node)
 	{
+		if (node.Item.Sites is [var single, ..])
+		{
+			OpenSite(single);
+			return;
+		}
 		if (node.Item is { RelPath: { Length: > 0 } path } item)
 			workspace.NavigateToFileLineAsync(path, item.Node.Line, item.OldSide, record: true).HandleExceptions();
 	}
+
+	public void OpenSite(ReviewWorkspace.CallSiteItem site)
+		=> workspace.NavigateToFileLineAsync(site.RelPath, site.Line, site.OldSide, record: true).HandleExceptions();
 }

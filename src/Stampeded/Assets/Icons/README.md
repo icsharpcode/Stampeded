@@ -22,6 +22,8 @@ repository's LICENSE), which documents their origin as follows:
 | Property     |  x  |  VS 2017 Icon Pack (Property)                                  |
 | Resource     |  x  |  VS 2017 Icon Pack (Document)                                  |
 | Struct       |  x  |  VS 2017 Icon Pack (Structure)                                 |
+| SubTypes     |  x  |  based on VS 2017 Icon Pack (BaseType) rotated +90 degrees      |
+| SuperTypes   |  x  |  based on VS 2017 Icon Pack (BaseType) rotated -90 degrees      |
 
 ## Information on Sources
 

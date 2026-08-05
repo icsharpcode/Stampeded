@@ -1124,16 +1124,26 @@ public sealed class ReviewWorkspace(string repoPath)
 			return [];
 		var nodes = await sem.GetCallsAsync(symbol, direction, CancellationToken.None);
 		return nodes
-			.Select(n => new CallGraphItem(n, n.FilePath is null ? null : sem.ToRelativePath(n.FilePath), oldSide))
+			.Select(n => new CallGraphItem(
+				n,
+				n.FilePath is null ? null : sem.ToRelativePath(n.FilePath),
+				oldSide,
+				[.. n.Sites
+					.Select(s => (Rel: sem.ToRelativePath(s.FilePath), Site: s))
+					.Where(x => x.Rel is not null)
+					.Select(x => new CallSiteItem(x.Rel!, x.Site.Line, x.Site.Preview, oldSide))]))
 			.ToList();
 	}
 
-	/// <summary>A call-graph node paired with the repo-relative path it lives in.</summary>
-	public sealed record CallGraphItem(CallNode Node, string? RelPath, bool OldSide)
+	/// <summary>One call, at a repo-relative position.</summary>
+	public sealed record CallSiteItem(string RelPath, int Line, string Preview, bool OldSide);
+
+	/// <summary>A call-graph node paired with the repo-relative paths it lives at.</summary>
+	public sealed record CallGraphItem(CallNode Node, string? RelPath, bool OldSide, IReadOnlyList<CallSiteItem> Sites)
 	{
 		public bool CanExpand => RelPath is { Length: > 0 };
 
-		public string Display => Node.CallSites > 1 ? $"{Node.Display}  ({Node.CallSites}x)" : Node.Display;
+		public string Display => Sites.Count > 1 ? $"{Node.Display}  ({Sites.Count}x)" : Node.Display;
 
 		public string Detail => RelPath is { Length: > 0 } path
 			? $"{Node.ContainingType}  -  {path}:{Node.Line}"

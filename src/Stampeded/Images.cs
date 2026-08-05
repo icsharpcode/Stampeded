@@ -52,6 +52,8 @@ public static class Images
 	public static readonly IImage FolderClosed = LoadSvg(nameof(FolderClosed));
 	public static readonly IImage FolderOpen = LoadSvg(nameof(FolderOpen));
 	public static readonly IImage Document = LoadSvg("Resource");
+	public static readonly IImage SubTypes = LoadSvg(nameof(SubTypes));
+	public static readonly IImage SuperTypes = LoadSvg(nameof(SuperTypes));
 
 	/// <summary>Icon for a DocumentOutline node kind (lowercase syntax kinds).</summary>
 	public static IImage? ForOutlineKind(string kind) => kind switch {

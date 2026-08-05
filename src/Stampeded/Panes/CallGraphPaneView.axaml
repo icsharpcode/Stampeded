@@ -5,13 +5,6 @@
              x:Class="Stampeded.Panes.CallGraphPaneView"
              x:DataType="panes:CallGraphPaneViewModel">
   <DockPanel>
-    <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="12" Margin="6,4,6,2">
-      <RadioButton GroupName="CallDirection" Content="Callers" FontSize="12"
-                   IsChecked="{Binding State.ShowCallers}"
-                   ToolTip.Tip="Who calls this - what a change to it can break" />
-      <RadioButton GroupName="CallDirection" Content="Calls out" FontSize="12"
-                   ToolTip.Tip="What this member calls - how it does its work" />
-    </StackPanel>
     <TextBlock DockPanel.Dock="Bottom" Margin="6,4" Opacity="0.7" TextWrapping="Wrap" FontSize="11"
                Text="{Binding State.Status}" />
     <!-- SharpTreeView flattens the hierarchy into one virtualized list, so depth costs an

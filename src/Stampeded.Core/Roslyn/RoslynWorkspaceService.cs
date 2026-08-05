@@ -611,15 +611,17 @@ public sealed class RoslynWorkspaceService : IDisposable
 		{
 			// Indirect callers reach the symbol through an interface or override; they are
 			// real consequences of a change, so they are kept and not marked apart.
-			int sites = caller.Locations.Count(l => l.IsInSource);
-			nodes.Add(ToNode(caller.CallingSymbol, Math.Max(1, sites)));
+			var sites = new List<CallSite>();
+			foreach (var location in caller.Locations.Where(l => l.IsInSource))
+				sites.Add(await ToSiteAsync(location, ct));
+			nodes.Add(ToNode(caller.CallingSymbol, sites));
 		}
 		return Order(nodes);
 	}
 
 	async Task<IReadOnlyList<CallNode>> GetCalleesAsync(ISymbol symbol, CancellationToken ct)
 	{
-		var counts = new Dictionary<ISymbol, int>(SymbolEqualityComparer.Default);
+		var sitesByTarget = new Dictionary<ISymbol, List<CallSite>>(SymbolEqualityComparer.Default);
 		foreach (var reference in symbol.DeclaringSyntaxReferences)
 		{
 			var syntax = await reference.GetSyntaxAsync(ct);
@@ -640,20 +642,37 @@ public sealed class RoslynWorkspaceService : IDisposable
 				}
 				if (semanticModel.GetSymbolInfo(node, ct).Symbol is not { } target)
 					continue;
-				counts[target.OriginalDefinition] = counts.GetValueOrDefault(target.OriginalDefinition) + 1;
+				if (!sitesByTarget.TryGetValue(target.OriginalDefinition, out var sites))
+					sitesByTarget[target.OriginalDefinition] = sites = [];
+				sites.Add(await ToSiteAsync(node.GetLocation(), ct));
 			}
 		}
-		return Order([.. counts.Select(pair => ToNode(pair.Key, pair.Value))]);
+		return Order([.. sitesByTarget.Select(pair => ToNode(pair.Key, pair.Value))]);
 	}
 
-	static IReadOnlyList<CallNode> Order(List<CallNode> nodes)
+	/// <summary>A call location with the source line it sits on, for display.</summary>
+	static async Task<CallSite> ToSiteAsync(Location location, CancellationToken ct)
+	{
+		var lineSpan = location.GetLineSpan();
+		int line = lineSpan.StartLinePosition.Line + 1;
+		string preview = "";
+		if (location.SourceTree is { } tree)
+		{
+			var text = await tree.GetTextAsync(ct);
+			if (line <= text.Lines.Count)
+				preview = text.Lines[line - 1].ToString().Trim();
+		}
+		return new CallSite(location.SourceTree?.FilePath ?? "", line, preview);
+	}
+
+	static IReadOnlyList<CallNode> Order(IReadOnlyList<CallNode> nodes)
 		=> nodes
 			.DistinctBy(n => (n.ContainingType, n.Display, n.FilePath, n.Line))
 			.OrderBy(n => n.ContainingType, StringComparer.Ordinal)
 			.ThenBy(n => n.Display, StringComparer.Ordinal)
 			.ToList();
 
-	static CallNode ToNode(ISymbol symbol, int callSites)
+	static CallNode ToNode(ISymbol symbol, IReadOnlyList<CallSite> sites)
 	{
 		var location = symbol.OriginalDefinition.Locations.FirstOrDefault(l => l.IsInSource);
 		var lineSpan = location?.GetLineSpan();
@@ -663,7 +682,7 @@ public sealed class RoslynWorkspaceService : IDisposable
 			location?.SourceTree?.FilePath,
 			(lineSpan?.StartLinePosition.Line ?? 0) + 1,
 			(lineSpan?.StartLinePosition.Character ?? 0) + 1,
-			callSites);
+			sites);
 	}
 
 	public async Task<string?> GetHoverTextAsync(string repoRelativePath, int position, CancellationToken ct)

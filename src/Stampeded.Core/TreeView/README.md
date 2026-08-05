@@ -31,3 +31,10 @@ expansion rather than up front.
   template binds the node's plain `Text` instead.
 - The two focus brushes the template needs are defined in `App.axaml` as
   `Stampeded.TreeFocusFill` / `Stampeded.TreeFocusBorder`.
+
+## Deliberate divergences
+
+- The cell template binds `Foreground` to the node's own property. `SharpTreeNode` has
+  always exposed it; upstream's template does not bind it because ILSpy colours rows
+  through `RichNodeText`, which is not ported. The change-tinted trees (Structure, Map)
+  need per-node colour, and a null `Foreground` inherits as before.
