@@ -65,7 +65,7 @@ public sealed partial class OverviewState : ObservableObject
 	string testsLine = "Tests: not run in this session (Tests pane).";
 
 	[ObservableProperty]
-	string sweepHeader = "Consequence sweep: waiting for the change map.";
+	string sweepHeader = "waiting for the change map";
 
 	[ObservableProperty]
 	string toolStatus = "";
@@ -188,7 +188,7 @@ public class OverviewDocumentViewModel : Document
 		}
 		if (totals.Rows.Count > 20)
 			FileCosts.Add(new FileCostRow("", "", "", "", "", $"... and {totals.Rows.Count - 20} more file(s)"));
-		State.FilesHeader = totals.Rows.Count == 0 ? "" : $"{totals.Rows.Count} changed file(s), hot files (high churn) deserve extra caution:";
+		State.FilesHeader = totals.Rows.Count == 0 ? "" : $"{totals.Rows.Count} file(s); high churn deserves extra caution";
 	}
 
 	async Task LoadCommitsAsync()
@@ -208,7 +208,7 @@ public class OverviewDocumentViewModel : Document
 			}
 			if (commits.Count > 8)
 				CommitLines.Add(new CommitLine("", "", "", $"... and {commits.Count - 8} more (Commits pane)"));
-			State.CommitsHeader = commits.Count == 0 ? "" : $"{commits.Count} commit(s):";
+			State.CommitsHeader = commits.Count == 0 ? "" : $"{commits.Count} commit(s)";
 		}
 		catch (ToolFailedException)
 		{
@@ -275,10 +275,10 @@ public class OverviewDocumentViewModel : Document
 				group.OrderBy(e => e.Line).First()));
 		}
 		State.MembersHeader = !workspace.ChangeMapComputed
-			? "Changed members: waiting for semantics..."
+			? "waiting for semantics..."
 			: map.Count == 0
-				? "Changed members: none (non-code changes only)."
-				: $"{map.Count} changed member(s): {ImplMembers.Count} implementation (double-click to peek), tests grouped by type. Full tree: Map pane.";
+				? "none (non-code changes only)"
+				: $"{map.Count} member(s); {ImplMembers.Count} implementation, tests grouped by type";
 		RunSweepOnceAsync().HandleExceptions();
 	}
 
@@ -294,8 +294,8 @@ public class OverviewDocumentViewModel : Document
 			foreach (var item in items)
 				SweepItems.Add(item);
 			State.SweepHeader = items.Count == 0
-				? "Consequence sweep: no findings."
-				: $"Consequence sweep - {items.Count} computed finding(s) (double-click to jump; prompts, not verdicts):";
+				? "no findings"
+				: $"{items.Count} finding(s); prompts, not verdicts - double-click to jump";
 		}
 		finally
 		{

@@ -17,12 +17,21 @@
       <Setter Property="FontSize" Value="12.5" />
       <Setter Property="FontFamily" Value="monospace" />
     </Style>
-    <Style Selector="Border.block">
+    <Style Selector="Expander.block">
       <Setter Property="Margin" Value="0,6,0,0" />
-      <Setter Property="Padding" Value="8,4" />
-      <Setter Property="CornerRadius" Value="3" />
-      <Setter Property="BorderThickness" Value="1" />
-      <Setter Property="BorderBrush" Value="#40808080" />
+      <Setter Property="HorizontalAlignment" Value="Stretch" />
+      <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+    </Style>
+    <Style Selector="Expander.block TextBlock.sectiontitle">
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="FontSize" Value="13" />
+    </Style>
+    <Style Selector="Expander.block TextBlock.sectiondetail">
+      <Setter Property="FontSize" Value="12" />
+      <Setter Property="Opacity" Value="0.7" />
+      <Setter Property="Margin" Value="10,0,0,0" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+      <Setter Property="TextTrimming" Value="CharacterEllipsis" />
     </Style>
   </UserControl.Styles>
   <ScrollViewer Padding="8">
@@ -104,13 +113,21 @@
         </ItemsControl>
       </DockPanel>
 
-      <Border Classes="block">
-        <md:MarkdownScrollViewer Markdown="{Binding State.Description}" MaxHeight="420" />
-      </Border>
+      <Expander Classes="block" IsExpanded="True">
+        <Expander.Header>
+          <TextBlock Classes="sectiontitle" Text="Description" />
+        </Expander.Header>
+        <md:MarkdownScrollViewer Markdown="{Binding State.Description}" MaxHeight="240" />
+      </Expander>
 
-      <Border Classes="block" IsVisible="{Binding State.CommitsHeader, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+      <Expander Classes="block" IsExpanded="False" IsVisible="{Binding State.CommitsHeader, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+        <Expander.Header>
+          <DockPanel>
+            <TextBlock Classes="sectiontitle" Text="Commits" />
+            <TextBlock Classes="sectiondetail" Text="{Binding State.CommitsHeader}" />
+          </DockPanel>
+        </Expander.Header>
         <StackPanel>
-          <TextBlock Classes="blockhead" Text="{Binding State.CommitsHeader}" />
           <ListBox x:Name="CommitsList" ItemsSource="{Binding CommitLines}" DoubleTapped="OnCommitDoubleTapped"
                    ToolTip.Tip="Double-click opens the commit on GitHub">
             <ListBox.ItemTemplate>
@@ -125,11 +142,16 @@
             </ListBox.ItemTemplate>
           </ListBox>
         </StackPanel>
-      </Border>
+      </Expander>
 
-      <Border Classes="block" IsVisible="{Binding State.FilesHeader, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+      <Expander Classes="block" IsExpanded="True" IsVisible="{Binding State.FilesHeader, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+        <Expander.Header>
+          <DockPanel>
+            <TextBlock Classes="sectiontitle" Text="Changed files" />
+            <TextBlock Classes="sectiondetail" Text="{Binding State.FilesHeader}" />
+          </DockPanel>
+        </Expander.Header>
         <StackPanel>
-          <TextBlock Classes="blockhead" Text="{Binding State.FilesHeader}" />
           <ListBox x:Name="FilesList" ItemsSource="{Binding FileCosts}" DoubleTapped="OnFileDoubleTapped">
             <ListBox.ItemTemplate>
               <DataTemplate x:DataType="docs:FileCostRow">
@@ -145,11 +167,16 @@
             </ListBox.ItemTemplate>
           </ListBox>
         </StackPanel>
-      </Border>
+      </Expander>
 
-      <Border Classes="block">
+      <Expander Classes="block" IsExpanded="False">
+        <Expander.Header>
+          <DockPanel>
+            <TextBlock Classes="sectiontitle" Text="Changed members" />
+            <TextBlock Classes="sectiondetail" Text="{Binding State.MembersHeader}" />
+          </DockPanel>
+        </Expander.Header>
         <StackPanel>
-          <TextBlock Classes="blockhead" Text="{Binding State.MembersHeader}" />
           <ListBox x:Name="ImplList" ItemsSource="{Binding ImplMembers}" DoubleTapped="OnImplDoubleTapped">
             <ListBox.ItemTemplate>
               <DataTemplate x:DataType="docs:MemberRow">
@@ -167,11 +194,16 @@
             </ListBox.ItemTemplate>
           </ListBox>
         </StackPanel>
-      </Border>
+      </Expander>
 
-      <Border Classes="block">
+      <Expander Classes="block" IsExpanded="True">
+        <Expander.Header>
+          <DockPanel>
+            <TextBlock Classes="sectiontitle" Text="Consequence sweep" />
+            <TextBlock Classes="sectiondetail" Text="{Binding State.SweepHeader}" />
+          </DockPanel>
+        </Expander.Header>
         <StackPanel>
-          <TextBlock Classes="blockhead" Text="{Binding State.SweepHeader}" />
           <ListBox x:Name="SweepList" ItemsSource="{Binding SweepItems}" DoubleTapped="OnSweepDoubleTapped">
             <ListBox.ItemTemplate>
               <DataTemplate>
@@ -180,7 +212,7 @@
             </ListBox.ItemTemplate>
           </ListBox>
         </StackPanel>
-      </Border>
+      </Expander>
     </StackPanel>
   </ScrollViewer>
 </UserControl>
