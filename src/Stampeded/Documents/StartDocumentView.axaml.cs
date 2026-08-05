@@ -17,6 +17,8 @@ public partial class StartDocumentView : UserControl
 
 	void OnPrRefresh(object? sender, RoutedEventArgs e) => Vm?.PrList.LoadAsync().HandleExceptions();
 
+	void OnRefsRefresh(object? sender, RoutedEventArgs e) => Vm?.ReloadRefs();
+
 	void OnPrOpen(object? sender, RoutedEventArgs e) => OpenSelectedPr();
 
 	void OnPrDoubleTapped(object? sender, TappedEventArgs e) => OpenSelectedPr();

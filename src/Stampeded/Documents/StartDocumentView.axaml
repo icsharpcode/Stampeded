@@ -33,6 +33,13 @@
     <Style Selector="ListBoxItem:selected StackPanel.rowactions">
       <Setter Property="IsVisible" Value="True" />
     </Style>
+    <Style Selector="Button.headbutton">
+      <Setter Property="FontSize" Value="11" />
+      <Setter Property="Padding" Value="6,0" />
+      <Setter Property="MinHeight" Value="20" />
+      <Setter Property="MinWidth" Value="0" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
     <Style Selector="StackPanel.rowactions > Button">
       <Setter Property="FontSize" Value="10" />
       <Setter Property="Padding" Value="4,0" />
@@ -52,11 +59,11 @@
                FontSize="13" ScrollViewer.HorizontalScrollBarVisibility="Disabled" />
     </DockPanel>
     <DockPanel Grid.Column="2">
-      <TextBlock DockPanel.Dock="Top" Classes="colhead" Text="{Binding State.PrColumnHeader}" />
-      <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Spacing="6" Margin="0,4,0,0">
-        <Button Content="Open" Click="OnPrOpen" FontWeight="SemiBold" />
-        <Button Content="Refresh" Click="OnPrRefresh" />
-      </StackPanel>
+      <DockPanel DockPanel.Dock="Top" Margin="0,0,0,4">
+        <Button DockPanel.Dock="Right" Classes="headbutton" Content="Refresh" Click="OnPrRefresh"
+                ToolTip.Tip="Re-read the open pull requests from GitHub" />
+        <TextBlock Classes="colhead" Margin="0" Text="{Binding State.PrColumnHeader}" />
+      </DockPanel>
       <ListBox x:Name="PrListBox" ItemsSource="{Binding PrList.Items}" DoubleTapped="OnPrDoubleTapped"
                ScrollViewer.HorizontalScrollBarVisibility="Disabled">
         <ListBox.ContextMenu>
@@ -101,21 +108,22 @@
       </ListBox>
     </DockPanel>
     <DockPanel Grid.Column="4">
-      <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="12" Margin="0,0,0,4">
-        <RadioButton x:Name="BranchesMode" Classes="colhead" GroupName="RefKind"
-                     Content="{Binding State.BranchesLabel}"
-                     IsChecked="True" IsCheckedChanged="OnRefKindChanged" />
-        <RadioButton x:Name="StashesMode" Classes="colhead" GroupName="RefKind"
-                     Content="{Binding State.StashesLabel}"
-                     IsCheckedChanged="OnRefKindChanged"
-                     ToolTip.Tip="Review a stash as the diff between the commit it was taken on and the stashed state" />
-      </StackPanel>
+      <DockPanel DockPanel.Dock="Top" Margin="0,0,0,4">
+        <Button DockPanel.Dock="Right" Classes="headbutton" Content="Refresh" Click="OnRefsRefresh"
+                ToolTip.Tip="Re-read branches and stashes from the repository" />
+        <StackPanel Orientation="Horizontal" Spacing="12">
+          <RadioButton x:Name="BranchesMode" Classes="colhead" GroupName="RefKind"
+                       Content="{Binding State.BranchesLabel}"
+                       IsChecked="True" IsCheckedChanged="OnRefKindChanged" />
+          <RadioButton x:Name="StashesMode" Classes="colhead" GroupName="RefKind"
+                       Content="{Binding State.StashesLabel}"
+                       IsCheckedChanged="OnRefKindChanged"
+                       ToolTip.Tip="Review a stash as the diff between the commit it was taken on and the stashed state" />
+        </StackPanel>
+      </DockPanel>
       <TextBlock DockPanel.Dock="Bottom" Margin="0,4,0,0" FontSize="12" Opacity="0.85" TextWrapping="Wrap"
                  Text="{Binding State.Status}"
                  IsVisible="{Binding State.Status, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
-      <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Spacing="6" Margin="0,4,0,0">
-        <Button Content="Open" Click="OnBranchOpen" FontWeight="SemiBold" />
-      </StackPanel>
       <ListBox x:Name="BranchList" ItemsSource="{Binding Branches}" DoubleTapped="OnBranchDoubleTapped"
                ScrollViewer.HorizontalScrollBarVisibility="Disabled">
         <ListBox.ContextMenu>

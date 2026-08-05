@@ -155,6 +155,8 @@ public class StartDocumentViewModel : Document
 		AnnotateBranches();
 	}
 
+	public void ReloadRefs() => ReloadRefsAsync().HandleExceptions();
+
 	/// <summary>Re-reads branches and stashes after an operation changed them.</summary>
 	async Task ReloadRefsAsync()
 	{
