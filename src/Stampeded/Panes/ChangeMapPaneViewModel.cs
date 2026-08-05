@@ -7,6 +7,8 @@ using CommunityToolkit.Mvvm.ComponentModel;
 
 using Dock.Model.Mvvm.Controls;
 
+using Stampeded.Core.TreeView;
+
 namespace Stampeded.Panes;
 
 public sealed partial class ChangeMapState : ObservableObject
@@ -15,13 +17,33 @@ public sealed partial class ChangeMapState : ObservableObject
 	string status = "The change map lists changed members once semantics are loaded.";
 }
 
-public sealed class MapNode(string title, IBrush? foreground, ReviewWorkspace.ChangeMapEntry? entry, IImage? icon)
+public sealed class MapNode : SharpTreeNode
 {
-	public string Title { get; } = title;
-	public IImage? Icon { get; } = icon;
-	public IBrush Foreground { get; } = foreground ?? Brushes.Gray;
-	public ReviewWorkspace.ChangeMapEntry? Entry { get; } = entry;
-	public ObservableCollection<MapNode> Children { get; } = [];
+	readonly string title;
+	readonly IImage? icon;
+	readonly IBrush foreground;
+
+	public MapNode(string title, IBrush? foreground, ReviewWorkspace.ChangeMapEntry? entry, IImage? icon)
+	{
+		this.title = title;
+		this.icon = icon;
+		this.foreground = foreground ?? Brushes.Gray;
+		Entry = entry;
+	}
+
+	public ReviewWorkspace.ChangeMapEntry? Entry { get; }
+
+	public Action<MapNode>? Activated { get; init; }
+
+	public override object Text => title;
+	public override object? Icon => icon;
+	public override object Foreground => foreground;
+
+	public override void ActivateItem(Stampeded.Core.TreeView.PlatformAbstractions.IPlatformRoutedEventArgs e)
+	{
+		Activated?.Invoke(this);
+		e.Handled = true;
+	}
 }
 
 /// <summary>
@@ -29,7 +51,7 @@ public sealed class MapNode(string title, IBrush? foreground, ReviewWorkspace.Ch
 /// change kind: green added, blue modified, red removed. The design-stage anchor of the
 /// review guide; clicking a member jumps to it.
 /// </summary>
-public class ChangeMapPaneViewModel : Tool
+public partial class ChangeMapPaneViewModel : Tool
 {
 	static readonly IBrush Added = new SolidColorBrush(Color.Parse("#2EA043"));
 	static readonly IBrush Modified = new SolidColorBrush(Color.Parse("#3794FF"));
@@ -37,7 +59,9 @@ public class ChangeMapPaneViewModel : Tool
 
 	readonly ReviewWorkspace workspace;
 
-	public ObservableCollection<MapNode> Roots { get; } = [];
+	/// <summary>Invisible parent of the project rows; SharpTreeView takes one root.</summary>
+	[ObservableProperty]
+	SharpTreeNode? root;
 	public ChangeMapState State { get; } = new();
 
 	public ChangeMapPaneViewModel(ReviewWorkspace workspace)
@@ -54,26 +78,30 @@ public class ChangeMapPaneViewModel : Tool
 
 	void Rebuild()
 	{
-		Roots.Clear();
+		var root = new MapNode("", null, null, null);
 		var map = workspace.ChangeMap;
 		foreach (var projectGroup in map.GroupBy(e => e.Project))
 		{
-			var projectNode = new MapNode(projectGroup.Key, null, null, Images.Assembly);
+			var projectNode = new MapNode(projectGroup.Key, null, null, Images.Assembly) { IsExpanded = true };
 			foreach (var fileGroup in projectGroup.GroupBy(e => e.RelPath))
 			{
-				var fileNode = new MapNode(Path.GetFileName(fileGroup.Key), null, null, Images.Document);
+				var fileNode = new MapNode(Path.GetFileName(fileGroup.Key), null, null, Images.Document) { IsExpanded = true };
 				foreach (var entry in fileGroup.OrderBy(e => e.Line))
-					fileNode.Children.Add(new MapNode(entry.Display, BrushFor(entry.Kind), entry, Images.ForMemberKind(entry.MemberKind)));
+				{
+					fileNode.Children.Add(new MapNode(entry.Display, BrushFor(entry.Kind), entry,
+						Images.ForMemberKind(entry.MemberKind)) { Activated = Open });
+				}
 				projectNode.Children.Add(fileNode);
 			}
-			Roots.Add(projectNode);
+			root.Children.Add(projectNode);
 		}
+		Root = root;
 		State.Status = map.Count == 0
 			? "No changed members mapped (semantics still loading, or non-C# changes only)."
 			: $"{map.Count} changed member(s): green added, blue modified, red removed. Click to jump.";
 	}
 
-	public void Open(MapNode node)
+	void Open(MapNode node)
 	{
 		if (node.Entry is { } entry)
 			workspace.NavigateToFileLineAsync(entry.RelPath, entry.Line, entry.OldSide, record: true).HandleExceptions();

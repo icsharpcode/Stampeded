@@ -8,10 +8,4 @@ public partial class ChangeMapPaneView : UserControl
 	{
 		InitializeComponent();
 	}
-
-	void OnSelectionChanged(object? sender, SelectionChangedEventArgs e)
-	{
-		if (DataContext is ChangeMapPaneViewModel vm && Tree.SelectedItem is MapNode node)
-			vm.Open(node);
-	}
 }

@@ -1,27 +1,13 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:panes="using:Stampeded.Panes"
+             xmlns:tv="using:Stampeded.Controls.TreeView"
              x:Class="Stampeded.Panes.ChangeMapPaneView"
              x:DataType="panes:ChangeMapPaneViewModel">
-  <UserControl.Styles>
-    <Style Selector="TreeViewItem">
-      <Setter Property="IsExpanded" Value="True" />
-    </Style>
-  </UserControl.Styles>
   <DockPanel>
     <TextBlock DockPanel.Dock="Bottom" Margin="6,4" Opacity="0.7" TextWrapping="Wrap"
                Text="{Binding State.Status}" />
-    <TreeView x:Name="Tree" ItemsSource="{Binding Roots}" SelectionChanged="OnSelectionChanged"
-              FontSize="12">
-      <TreeView.ItemTemplate>
-        <TreeDataTemplate DataType="panes:MapNode" ItemsSource="{Binding Children}">
-          <StackPanel Orientation="Horizontal">
-            <Image Source="{Binding Icon}" Width="16" Height="16" Margin="0,0,4,0" />
-            <TextBlock Text="{Binding Title}" Foreground="{Binding Foreground}"
-                       TextTrimming="CharacterEllipsis" />
-          </StackPanel>
-        </TreeDataTemplate>
-      </TreeView.ItemTemplate>
-    </TreeView>
+    <tv:SharpTreeView x:Name="Tree" Root="{Binding Root}" ShowRoot="False" ShowLines="False"
+                      FontSize="12" />
   </DockPanel>
 </UserControl>

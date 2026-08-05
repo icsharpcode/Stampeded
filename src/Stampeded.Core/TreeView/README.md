@@ -37,4 +37,5 @@ expansion rather than up front.
 - The cell template binds `Foreground` to the node's own property. `SharpTreeNode` has
   always exposed it; upstream's template does not bind it because ILSpy colours rows
   through `RichNodeText`, which is not ported. The change-tinted trees (Structure, Map)
-  need per-node colour, and a null `Foreground` inherits as before.
+  need per-node colour. A node that sets none binds null, which would blank the label, so
+  the binding falls back to the theme foreground.
