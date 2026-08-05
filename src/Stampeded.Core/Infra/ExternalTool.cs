@@ -31,7 +31,7 @@ public static class ExternalTool
 	/// non-zero exit; returns stdout. Cancellation kills the process tree (CliWrap).</summary>
 	public static async Task<string> RunAsync(
 		string exe, IReadOnlyList<string> args, string workingDir, CancellationToken ct = default,
-		IReadOnlyDictionary<string, string>? env = null)
+		IReadOnlyDictionary<string, string>? env = null, IReadOnlyList<int>? okExitCodes = null)
 	{
 		var watch = System.Diagnostics.Stopwatch.StartNew();
 		var result = await CliWrap.Cli.Wrap(exe)
@@ -48,7 +48,7 @@ public static class ExternalTool
 		if (argsText.Length > 160)
 			argsText = argsText[..160] + "...";
 		CliLog.Write(exe, $"{argsText} -> exit {result.ExitCode} ({watch.ElapsedMilliseconds} ms)");
-		if (result.ExitCode != 0)
+		if (result.ExitCode != 0 && okExitCodes?.Contains(result.ExitCode) != true)
 			throw new ToolFailedException(exe, result.ExitCode, result.StandardError);
 		return result.StandardOutput;
 	}

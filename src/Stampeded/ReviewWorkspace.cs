@@ -132,6 +132,16 @@ public sealed class ReviewWorkspace(string repoPath)
 		Coverage = coverage;
 		CoverageChanged?.Invoke();
 	}
+	/// <summary>
+	/// When the reviewed branch is checked out somewhere with uncommitted work, that
+	/// checkout's path. The review's head is then the files on disk rather than a commit,
+	/// so head-side text is read from there.
+	/// </summary>
+	public string? DirtyWorktreePath { get; private set; }
+
+	/// <summary>How many files the head side takes from the working tree rather than a commit.</summary>
+	public int UncommittedFileCount { get; private set; }
+
 	public string? WorktreePath { get; private set; }
 	public string? BaseWorktreePath { get; private set; }
 
@@ -168,7 +178,12 @@ public sealed class ReviewWorkspace(string repoPath)
 		CliLog.Write("action", $"open local range {baseRef}..{headRef}");
 		string headSha = await ResolveAsync(headRef, ct);
 		string baseSha = await Git.GetMergeBaseAsync(await ResolveAsync(baseRef, ct), headSha, ct);
-		var files = await Git.DiffAsync(baseSha, headSha, ct);
+		DirtyWorktreePath = await FindDirtyCheckoutAsync(headRef, ct);
+		var committed = await Git.DiffAsync(baseSha, headSha, ct);
+		var files = DirtyWorktreePath is { } dirty
+			? await Git.DiffWorkingTreeAsync(dirty, baseSha, ct)
+			: committed;
+		UncommittedFileCount = Math.Max(0, files.Count - committed.Count);
 		ct.ThrowIfCancellationRequested();
 
 		CurrentPr = null;
@@ -213,6 +228,8 @@ public sealed class ReviewWorkspace(string repoPath)
 		string headSha = await Git.FetchPrHeadAsync(number, ct);
 		await Git.FetchBranchAsync(detail.BaseRefName, ct);
 		string baseSha = await Git.GetMergeBaseAsync($"origin/{detail.BaseRefName}", headSha, ct);
+		DirtyWorktreePath = null;
+		UncommittedFileCount = 0;
 		var files = await Git.DiffAsync(baseSha, headSha, ct);
 		ct.ThrowIfCancellationRequested();
 
@@ -330,7 +347,7 @@ public sealed class ReviewWorkspace(string repoPath)
 			: await Git.ShowFileAsync(BaseSha, file.OldPath);
 		string newText = file.Kind == FileChangeKind.Deleted || file.IsBinary
 			? ""
-			: await Git.ShowFileAsync(HeadSha, file.NewPath);
+			: await ReadHeadFileAsync(file.NewPath);
 		return ShowDocument("diff:" + file.Path, () => new DiffDocumentViewModel(file, DiffDocumentBuilder.Build(oldText, newText)) {
 			Title = Path.GetFileName(file.Path),
 		});
@@ -626,7 +643,7 @@ public sealed class ReviewWorkspace(string repoPath)
 				: await Git.ShowFileAsync(BaseSha, file.OldPath);
 			string newText = file.Kind == FileChangeKind.Deleted || file.IsBinary
 				? ""
-				: await Git.ShowFileAsync(HeadSha, file.NewPath);
+				: await ReadHeadFileAsync(file.NewPath);
 			existing = new SideBySideDocumentViewModel(file, DiffDocumentBuilder.BuildPair(oldText, newText)) {
 				Id = id,
 				Title = Path.GetFileName(file.Path) + " (side-by-side)",
@@ -728,6 +745,25 @@ public sealed class ReviewWorkspace(string repoPath)
 		}
 	}
 
+	/// <summary>The checkout holding this branch, if it has uncommitted work. Reviewing a
+	/// branch you are still editing should show what is on disk, not the last commit.</summary>
+	async Task<string?> FindDirtyCheckoutAsync(string headRef, CancellationToken ct)
+	{
+		try
+		{
+			foreach (var checkout in await Git.ListWorktreesAsync(ct))
+			{
+				if (checkout.Branch == headRef && await Git.IsDirtyAsync(checkout.Path, ct))
+					return checkout.Path;
+			}
+		}
+		catch (ToolFailedException)
+		{
+			// Worktree discovery is an enhancement; a review of the commit still works.
+		}
+		return null;
+	}
+
 	/// <summary>Stops background work and releases the Roslyn workspaces; called when the
 	/// app switches to another repository and this instance is abandoned.</summary>
 	public void Shutdown()
@@ -738,6 +774,19 @@ public sealed class ReviewWorkspace(string repoPath)
 	}
 
 	/// <summary>Opens any URL in the browser (Linux-first: xdg-open).</summary>
+	/// <summary>Head-side text of a file: read from the checkout under review when that is
+	/// what the head means, else from the commit.</summary>
+	public Task<string> ReadHeadFileAsync(string relPath, CancellationToken ct = default)
+	{
+		if (DirtyWorktreePath is { } dir)
+		{
+			string absolute = Path.Combine(dir, relPath);
+			if (File.Exists(absolute))
+				return File.ReadAllTextAsync(absolute, ct);
+		}
+		return Git.ShowFileAsync(HeadSha!, relPath, ct);
+	}
+
 	public Task OpenUrlAsync(string url)
 		=> ExternalTool.RunAsync("xdg-open", [url], RepoPath);
 
@@ -875,6 +924,8 @@ public sealed class ReviewWorkspace(string repoPath)
 		BaseSemantics?.Dispose();
 		BaseSemantics = null;
 		CurrentPr = null;
+		DirtyWorktreePath = null;
+		UncommittedFileCount = 0;
 		BaseSha = null;
 		HeadSha = null;
 		Files = [];

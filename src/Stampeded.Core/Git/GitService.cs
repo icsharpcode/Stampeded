@@ -3,12 +3,15 @@ using Stampeded.Core.Infra;
 
 namespace Stampeded.Core.Git;
 
+/// <summary>A checkout of the repository and the branch it has, if any.</summary>
+public sealed record WorktreeCheckout(string Path, string? Branch);
+
 /// <summary>
 /// Git access for one local clone, via the git CLI. Never touches the user's working
-/// tree or index: reads come from the object database (fetch, merge-base, diff, show),
-/// and the operations that write (branch creation, rebase) touch refs only, running any
-/// checkout they need in a throwaway worktree. An open review cannot disturb whatever
-/// the user has checked out.
+/// tree or index: reads come from the object database (fetch, merge-base, diff, show) or,
+/// for a review of uncommitted work, from a checkout's files; the operations that write
+/// (branch creation, rebase) touch refs only, running any checkout they need in a
+/// throwaway worktree. An open review cannot disturb whatever the user has checked out.
 /// </summary>
 public sealed class GitService(string repoPath)
 {
@@ -48,6 +51,61 @@ public sealed class GitService(string repoPath)
 
 	public async Task<IReadOnlyList<FileDiff>> DiffAsync(string baseRev, string headRev, CancellationToken ct = default)
 		=> GitDiffParser.Parse(await RunAsync(ct, "diff", "-U3", "--find-renames", baseRev, headRev));
+
+	/// <summary>The checkouts of this repository - the main one and any linked worktrees -
+	/// with the branch each has checked out (null when detached).</summary>
+	public async Task<IReadOnlyList<WorktreeCheckout>> ListWorktreesAsync(CancellationToken ct = default)
+	{
+		var checkouts = new List<WorktreeCheckout>();
+		string? path = null;
+		string? branch = null;
+		foreach (var line in (await RunAsync(ct, "worktree", "list", "--porcelain")).ReplaceLineEndings("\n").Split('\n'))
+		{
+			if (line.StartsWith("worktree ", StringComparison.Ordinal))
+			{
+				if (path is not null)
+					checkouts.Add(new WorktreeCheckout(path, branch));
+				path = line["worktree ".Length..].Trim();
+				branch = null;
+			}
+			else if (line.StartsWith("branch refs/heads/", StringComparison.Ordinal))
+			{
+				branch = line["branch refs/heads/".Length..].Trim();
+			}
+		}
+		if (path is not null)
+			checkouts.Add(new WorktreeCheckout(path, branch));
+		return checkouts;
+	}
+
+	/// <summary>Whether a checkout has changes that are not committed - staged, unstaged
+	/// or untracked.</summary>
+	public async Task<bool> IsDirtyAsync(string worktreePath, CancellationToken ct = default)
+		=> (await ExternalTool.RunAsync("git", ["status", "--porcelain"], worktreePath, ct)).Trim().Length > 0;
+
+	/// <summary>
+	/// A checkout's current contents against a commit: everything `git diff &lt;base&gt;` reports
+	/// (staged and unstaged alike, since the comparison is with the working tree), plus the
+	/// untracked files, which that diff omits and which are read individually so the index
+	/// is never touched.
+	/// </summary>
+	public async Task<IReadOnlyList<FileDiff>> DiffWorkingTreeAsync(
+		string worktreePath, string baseRev, CancellationToken ct = default)
+	{
+		var files = GitDiffParser.Parse(await ExternalTool.RunAsync(
+			"git", ["diff", "-U3", "--find-renames", baseRev], worktreePath, ct)).ToList();
+		string untracked = await ExternalTool.RunAsync(
+			"git", ["ls-files", "--others", "--exclude-standard"], worktreePath, ct);
+		foreach (var relPath in untracked.ReplaceLineEndings("\n").Split('\n', StringSplitOptions.RemoveEmptyEntries))
+		{
+			// --no-index reports "differences found" as exit 1, which is the normal case here.
+			string diff = await ExternalTool.RunAsync(
+				"git", ["diff", "-U3", "--no-index", "--", "/dev/null", relPath],
+				worktreePath, ct, okExitCodes: [1]);
+			files.AddRange(GitDiffParser.Parse(diff));
+		}
+		return [.. files.OrderBy(f => f.Path, StringComparer.Ordinal)];
+	}
 
 	public Task<string> ShowFileAsync(string rev, string path, CancellationToken ct = default)
 		=> RunAsync(ct, "show", $"{rev}:{path}");

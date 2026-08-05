@@ -68,6 +68,9 @@ public sealed partial class OverviewState : ObservableObject
 	string sweepHeader = "waiting for the change map";
 
 	[ObservableProperty]
+	string workingTreeLine = "";
+
+	[ObservableProperty]
 	string toolStatus = "";
 
 	[ObservableProperty]
@@ -136,6 +139,10 @@ public class OverviewDocumentViewModel : Document
 		State.Title = workspace.CurrentPr is { } pr
 			? $"#{pr.Number}  {pr.Title}"
 			: workspace.HeadSha is null ? "No review open." : "Local range review";
+		State.WorkingTreeLine = workspace.DirtyWorktreePath is { } dirty
+			? $"Head is the working tree at {dirty} - uncommitted changes included"
+			+ (workspace.UncommittedFileCount > 0 ? $" ({workspace.UncommittedFileCount} file(s) beyond the last commit)." : ".")
+			: "";
 		State.Description = workspace.CurrentPr?.Body is { Length: > 0 } body
 			? body.ReplaceLineEndings("\n")
 			: "(no description)";

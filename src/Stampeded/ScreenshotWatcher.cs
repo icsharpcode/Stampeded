@@ -39,6 +39,13 @@ static class ScreenshotWatcher
 					App.Workspace?.CloseReview();
 				if (lines.Contains("callgraph") && Documents.DiffDocumentView.ActiveView is { } active)
 					active.ShowCallGraphCommand();
+				// open-range:<base>:<head> - opens a local review, for testing without a PR.
+				foreach (var command in lines.Where(l => l.StartsWith("open-range:", StringComparison.Ordinal)))
+				{
+					var parts = command.Split(':', 3);
+					if (parts.Length == 3)
+						App.Workspace?.OpenLocalRangeAsync(parts[1].Trim(), parts[2].Trim()).HandleExceptions();
+				}
 				if (lines.Contains("sbs"))
 					App.Workspace?.OpenSideBySideAsync().HandleExceptions();
 				if (lines.Contains("vscode"))
