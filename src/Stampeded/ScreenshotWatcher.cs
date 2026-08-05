@@ -1,6 +1,8 @@
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using Avalonia.Media.Imaging;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
 
 using Stampeded.Core.Infra;
 
@@ -41,6 +43,31 @@ static class ScreenshotWatcher
 					App.Workspace?.OpenAffectedFixturesInILSpyAsync().HandleExceptions();
 				foreach (var pane in lines.Where(l => l.StartsWith("pane:", StringComparison.Ordinal)))
 					App.Workspace?.Factory?.ShowPane(pane["pane:".Length..].Trim());
+				// check:<control-name> - checks a named toggle/radio, so mode-dependent UI
+				// can be captured.
+				foreach (var command in lines.Where(l => l.StartsWith("check:", StringComparison.Ordinal)))
+				{
+					if (window.GetVisualDescendants().OfType<ToggleButton>()
+						.FirstOrDefault(t => t.Name == command["check:".Length..].Trim()) is { } toggle)
+					{
+						toggle.IsChecked = true;
+					}
+				}
+				// select:<list-name>:<index> - drives a named ListBox's selection, so
+				// selection-dependent UI can be captured.
+				foreach (var command in lines.Where(l => l.StartsWith("select:", StringComparison.Ordinal)))
+				{
+					var parts = command.Split(':', 3);
+					// A UserControl keeps its own name scope, so the window cannot resolve
+					// these names directly; walk the visual tree instead.
+					if (parts.Length == 3 && int.TryParse(parts[2], out int index)
+						&& window.GetVisualDescendants().OfType<ListBox>()
+							.FirstOrDefault(l => l.Name == parts[1].Trim()) is { } list
+						&& index < list.ItemCount)
+					{
+						list.SelectedIndex = index;
+					}
+				}
 				foreach (var command in lines.Where(l => l.StartsWith("goto:", StringComparison.Ordinal)))
 				{
 					var parts = command.Split(':', 3);

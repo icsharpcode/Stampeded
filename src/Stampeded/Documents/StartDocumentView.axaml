@@ -19,6 +19,27 @@
       <Setter Property="Padding" Value="4,0,0,0" />
       <Setter Property="VerticalContentAlignment" Value="Center" />
     </Style>
+    <!-- Per-row shortcuts for the common actions. They keep their space at all times so
+         showing them never reflows the row, and only the hovered or selected row reveals
+         them: these lists run to dozens of entries. The context menu stays the full set. -->
+    <Style Selector="StackPanel.rowactions">
+      <Setter Property="Opacity" Value="0" />
+      <Setter Property="IsHitTestVisible" Value="False" />
+    </Style>
+    <Style Selector="ListBoxItem:pointerover StackPanel.rowactions">
+      <Setter Property="Opacity" Value="1" />
+      <Setter Property="IsHitTestVisible" Value="True" />
+    </Style>
+    <Style Selector="ListBoxItem:selected StackPanel.rowactions">
+      <Setter Property="Opacity" Value="1" />
+      <Setter Property="IsHitTestVisible" Value="True" />
+    </Style>
+    <Style Selector="StackPanel.rowactions > Button">
+      <Setter Property="FontSize" Value="10" />
+      <Setter Property="Padding" Value="5,1" />
+      <Setter Property="MinHeight" Value="0" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
   </UserControl.Styles>
   <Grid ColumnDefinitions="1*,8,2*,8,2*" Margin="8">
     <DockPanel Grid.Column="0">
@@ -28,7 +49,7 @@
         <Button Content="Open from URL..." HorizontalAlignment="Stretch" Click="OnOpenFromUrl" />
       </StackPanel>
       <ListBox x:Name="RecentList" ItemsSource="{Binding Recents}" DoubleTapped="OnRecentDoubleTapped"
-               FontSize="12" />
+               FontSize="12" ScrollViewer.HorizontalScrollBarVisibility="Disabled" />
     </DockPanel>
     <DockPanel Grid.Column="2">
       <TextBlock DockPanel.Dock="Top" Classes="colhead" Text="{Binding State.PrColumnHeader}" />
@@ -36,7 +57,8 @@
         <Button Content="Open" Click="OnPrOpen" FontWeight="SemiBold" />
         <Button Content="Refresh" Click="OnPrRefresh" />
       </StackPanel>
-      <ListBox x:Name="PrListBox" ItemsSource="{Binding PrList.Items}" DoubleTapped="OnPrDoubleTapped">
+      <ListBox x:Name="PrListBox" ItemsSource="{Binding PrList.Items}" DoubleTapped="OnPrDoubleTapped"
+               ScrollViewer.HorizontalScrollBarVisibility="Disabled">
         <ListBox.ContextMenu>
           <ContextMenu>
             <MenuItem Header="Open Review (double-click)" Click="OnPrOpen" />
@@ -58,6 +80,11 @@
                   <TextBlock Text="●" Foreground="#D29922" IsVisible="{Binding ChecksPending}" />
                   <TextBlock Text="●" Foreground="#F85149" IsVisible="{Binding ChecksFailed}" />
                 </Panel>
+                <StackPanel DockPanel.Dock="Right" Classes="rowactions" Orientation="Horizontal" Spacing="4">
+                  <Button Content="Review" FontWeight="SemiBold" Click="OnRowPrReview"
+                          ToolTip.Tip="Open this pull request for review" />
+                  <Button Content="GitHub" Click="OnRowPrGitHub" ToolTip.Tip="Open this pull request in the browser" />
+                </StackPanel>
                 <TextBlock DockPanel.Dock="Right" Text="draft" FontSize="10" Opacity="0.8"
                            VerticalAlignment="Center" IsVisible="{Binding IsDraft}" />
                 <TextBlock FontWeight="SemiBold" TextTrimming="CharacterEllipsis">
@@ -88,7 +115,8 @@
       <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Spacing="6" Margin="0,4,0,0">
         <Button Content="Open" Click="OnBranchOpen" FontWeight="SemiBold" />
       </StackPanel>
-      <ListBox x:Name="BranchList" ItemsSource="{Binding Branches}" DoubleTapped="OnBranchDoubleTapped">
+      <ListBox x:Name="BranchList" ItemsSource="{Binding Branches}" DoubleTapped="OnBranchDoubleTapped"
+               ScrollViewer.HorizontalScrollBarVisibility="Disabled">
         <ListBox.ContextMenu>
           <ContextMenu>
             <MenuItem Header="Open Review (double-click)" Click="OnBranchOpen" />
@@ -107,6 +135,16 @@
           <DataTemplate x:DataType="docs:BranchRow">
             <StackPanel Margin="2">
               <DockPanel>
+                <StackPanel DockPanel.Dock="Right" Classes="rowactions" Orientation="Horizontal" Spacing="4">
+                  <Button Content="Review" FontWeight="SemiBold" Click="OnRowBranchReview"
+                          ToolTip.Tip="Open this for review" />
+                  <Button Content="Rebase" Click="OnRowBranchRebase" IsVisible="{Binding IsBranch}"
+                          ToolTip.Tip="Rebase onto the default base in a throwaway worktree; your checkout is untouched and a conflict leaves the branch as it was" />
+                  <Button Content="Branch..." Click="OnRowStashBranch" IsVisible="{Binding IsStash}"
+                          ToolTip.Tip="Point a new branch at this stash; the stash is kept and nothing is checked out" />
+                  <Button Content="PR" Click="OnRowBranchPrGitHub" IsVisible="{Binding HasPrTag}"
+                          ToolTip.Tip="Open this branch's pull request in the browser" />
+                </StackPanel>
                 <TextBlock DockPanel.Dock="Right" FontSize="10" Opacity="0.8" VerticalAlignment="Center"
                            Foreground="#3794FF" Text="{Binding PrTag}" IsVisible="{Binding HasPrTag}"
                            ToolTip.Tip="This branch has an open PR; '(differs)' means the local head is not what the PR shows" />

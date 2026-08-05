@@ -30,6 +30,8 @@ public sealed partial class PrepareItem(string label) : ObservableObject
 public sealed record BranchRow(BranchInfo Info, string PrTag, int? PrNumber = null, bool IsStash = false)
 {
 	public bool HasPrTag => PrTag.Length > 0;
+
+	public bool IsBranch => !IsStash;
 }
 
 public sealed partial class StartState : ObservableObject

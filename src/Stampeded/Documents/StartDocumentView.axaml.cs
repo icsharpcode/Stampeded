@@ -63,7 +63,13 @@ public partial class StartDocumentView : UserControl
 
 	async Task PromptBranchNameAsync()
 	{
-		if (Vm is not { } vm || BranchList.SelectedItem is not BranchRow { IsStash: true } row)
+		if (BranchList.SelectedItem is BranchRow { IsStash: true } row)
+			await PromptBranchNameForAsync(row);
+	}
+
+	async Task PromptBranchNameForAsync(BranchRow row)
+	{
+		if (Vm is not { } vm)
 			return;
 		if (TopLevel.GetTopLevel(this) is not Window owner)
 			return;
@@ -72,6 +78,44 @@ public partial class StartDocumentView : UserControl
 			"Create", "stash/my-work").ShowDialog<string?>(owner);
 		if (!string.IsNullOrWhiteSpace(name))
 			vm.CreateBranchFromStash(row, name);
+	}
+
+	static T? RowOf<T>(object? sender) where T : class => (sender as Control)?.DataContext as T;
+
+	void OnRowPrReview(object? sender, RoutedEventArgs e)
+	{
+		if (Vm is { } vm && RowOf<PrSummary>(sender) is { } pr)
+			vm.OpenPr(pr);
+	}
+
+	void OnRowPrGitHub(object? sender, RoutedEventArgs e)
+	{
+		if (Vm is { } vm && RowOf<PrSummary>(sender) is { } pr)
+			vm.OpenPrOnGitHub(pr);
+	}
+
+	void OnRowBranchReview(object? sender, RoutedEventArgs e)
+	{
+		if (Vm is { } vm && RowOf<BranchRow>(sender) is { } row)
+			vm.OpenBranch(row);
+	}
+
+	void OnRowBranchRebase(object? sender, RoutedEventArgs e)
+	{
+		if (Vm is { } vm && RowOf<BranchRow>(sender) is { } row)
+			vm.RebaseBranch(row);
+	}
+
+	void OnRowBranchPrGitHub(object? sender, RoutedEventArgs e)
+	{
+		if (Vm is { } vm && RowOf<BranchRow>(sender) is { } row)
+			vm.OpenBranchPrOnGitHub(row);
+	}
+
+	void OnRowStashBranch(object? sender, RoutedEventArgs e)
+	{
+		if (RowOf<BranchRow>(sender) is { IsStash: true } row)
+			PromptBranchNameForAsync(row).HandleExceptions();
 	}
 
 	void OnPrOpenOnGitHub(object? sender, RoutedEventArgs e)
