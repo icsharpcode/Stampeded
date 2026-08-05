@@ -39,6 +39,10 @@ public sealed class MapNode : SharpTreeNode
 	public override object? Icon => icon;
 	public override object Foreground => foreground;
 
+	public override object ToolTip => Entry is { } entry
+		? $"{entry.Kind}: {entry.Display}\n{entry.RelPath}:{entry.Line}"
+		: title;
+
 	public override void ActivateItem(Stampeded.Core.TreeView.PlatformAbstractions.IPlatformRoutedEventArgs e)
 	{
 		Activated?.Invoke(this);

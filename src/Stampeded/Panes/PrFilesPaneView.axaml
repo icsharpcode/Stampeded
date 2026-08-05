@@ -23,7 +23,7 @@
     </ListBox.ContextMenu>
     <ListBox.ItemTemplate>
       <DataTemplate x:DataType="panes:FileEntry">
-        <DockPanel Margin="2,0">
+        <DockPanel Margin="2,0" ToolTip.Tip="{Binding Display}">
           <CheckBox DockPanel.Dock="Right" IsChecked="{Binding IsViewed}" Padding="0"
                     ToolTip.Tip="Viewed (v toggles and advances)" />
           <TextBlock DockPanel.Dock="Right" Margin="4,0" FontSize="10" VerticalAlignment="Center"
@@ -36,8 +36,7 @@
                      Foreground="#3794FF" Text="{Binding SinceBadge}"
                      ToolTip.Tip="Touched since your last pass (viewed flag was invalidated)" />
           <TextBlock DockPanel.Dock="Left" Width="14" FontWeight="Bold" Text="{Binding Marker}" />
-          <TextBlock Text="{Binding Display}" TextTrimming="PathSegmentEllipsis"
-                     ToolTip.Tip="{Binding Display}" />
+          <TextBlock Text="{Binding Display}" TextTrimming="PathSegmentEllipsis" />
         </DockPanel>
       </DataTemplate>
     </ListBox.ItemTemplate>
