@@ -9,12 +9,19 @@
         <ResourceDictionary x:Key="Light">
           <SolidColorBrush x:Key="Stampeded.EditorBackground" Color="#FFFFFF" />
           <SolidColorBrush x:Key="Stampeded.EditorSelectionBrush" Color="#007ACC" Opacity="0.3" />
+          <SolidColorBrush x:Key="Stampeded.TreeFocusFill" Color="#33007ACC" />
+          <SolidColorBrush x:Key="Stampeded.TreeFocusBorder" Color="#005A9E" />
         </ResourceDictionary>
         <ResourceDictionary x:Key="Dark">
           <SolidColorBrush x:Key="Stampeded.EditorBackground" Color="#1E1E1E" />
           <SolidColorBrush x:Key="Stampeded.EditorSelectionBrush" Color="#3794FF" Opacity="0.35" />
+          <SolidColorBrush x:Key="Stampeded.TreeFocusFill" Color="#40007ACC" />
+          <SolidColorBrush x:Key="Stampeded.TreeFocusBorder" Color="#4A90D9" />
         </ResourceDictionary>
       </ResourceDictionary.ThemeDictionaries>
+      <ResourceDictionary.MergedDictionaries>
+        <ResourceInclude Source="avares://Stampeded/Controls/TreeView/SharpTreeView.axaml" />
+      </ResourceDictionary.MergedDictionaries>
     </ResourceDictionary>
   </Application.Resources>
   <Application.Styles>
