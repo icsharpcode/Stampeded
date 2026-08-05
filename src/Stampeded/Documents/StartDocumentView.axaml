@@ -3,7 +3,8 @@
              xmlns:docs="using:Stampeded.Documents"
              xmlns:gh="using:Stampeded.Core.GitHub"
              x:Class="Stampeded.Documents.StartDocumentView"
-             x:DataType="docs:StartDocumentViewModel">
+             x:DataType="docs:StartDocumentViewModel"
+             FontSize="14">
   <UserControl.Styles>
     <Style Selector="TextBlock.colhead">
       <Setter Property="FontWeight" Value="SemiBold" />
@@ -35,7 +36,7 @@
       <Setter Property="IsHitTestVisible" Value="True" />
     </Style>
     <Style Selector="StackPanel.rowactions > Button">
-      <Setter Property="FontSize" Value="10" />
+      <Setter Property="FontSize" Value="11" />
       <Setter Property="Padding" Value="5,1" />
       <Setter Property="MinHeight" Value="0" />
       <Setter Property="VerticalAlignment" Value="Center" />
@@ -49,7 +50,7 @@
         <Button Content="Open from URL..." HorizontalAlignment="Stretch" Click="OnOpenFromUrl" />
       </StackPanel>
       <ListBox x:Name="RecentList" ItemsSource="{Binding Recents}" DoubleTapped="OnRecentDoubleTapped"
-               FontSize="12" ScrollViewer.HorizontalScrollBarVisibility="Disabled" />
+               FontSize="13" ScrollViewer.HorizontalScrollBarVisibility="Disabled" />
     </DockPanel>
     <DockPanel Grid.Column="2">
       <TextBlock DockPanel.Dock="Top" Classes="colhead" Text="{Binding State.PrColumnHeader}" />
@@ -85,13 +86,13 @@
                           ToolTip.Tip="Open this pull request for review" />
                   <Button Content="GitHub" Click="OnRowPrGitHub" ToolTip.Tip="Open this pull request in the browser" />
                 </StackPanel>
-                <TextBlock DockPanel.Dock="Right" Text="draft" FontSize="10" Opacity="0.8"
+                <TextBlock DockPanel.Dock="Right" Text="draft" FontSize="11" Opacity="0.8"
                            VerticalAlignment="Center" IsVisible="{Binding IsDraft}" />
                 <TextBlock FontWeight="SemiBold" TextTrimming="CharacterEllipsis">
                   <Run Text="{Binding NumberDisplay}" /> <Run Text="{Binding Title}" />
                 </TextBlock>
               </DockPanel>
-              <TextBlock Opacity="0.6" FontSize="11" Margin="14,0,0,0">
+              <TextBlock Opacity="0.6" FontSize="12" Margin="14,0,0,0">
                 <Run Text="{Binding Author.Login}" /> · <Run Text="{Binding HeadRefName}" />
               </TextBlock>
             </StackPanel>
@@ -109,7 +110,7 @@
                      IsCheckedChanged="OnRefKindChanged"
                      ToolTip.Tip="Review a stash as the diff between the commit it was taken on and the stashed state" />
       </StackPanel>
-      <TextBlock DockPanel.Dock="Bottom" Margin="0,4,0,0" FontSize="11" Opacity="0.85" TextWrapping="Wrap"
+      <TextBlock DockPanel.Dock="Bottom" Margin="0,4,0,0" FontSize="12" Opacity="0.85" TextWrapping="Wrap"
                  Text="{Binding State.Status}"
                  IsVisible="{Binding State.Status, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
       <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Spacing="6" Margin="0,4,0,0">
@@ -148,18 +149,18 @@
                 <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="4"
                             VerticalAlignment="Center" IsVisible="{Binding HasSync}"
                             ToolTip.Tip="{Binding SyncTip}">
-                  <TextBlock Text="●" FontSize="10" VerticalAlignment="Center"
+                  <TextBlock Text="●" FontSize="11" VerticalAlignment="Center"
                              Foreground="{Binding SyncBrush}" />
-                  <TextBlock Text="{Binding SyncText}" FontSize="10" VerticalAlignment="Center"
+                  <TextBlock Text="{Binding SyncText}" FontSize="11" VerticalAlignment="Center"
                              Foreground="{Binding SyncBrush}" />
                 </StackPanel>
-                <TextBlock DockPanel.Dock="Right" FontSize="10" Opacity="0.8" VerticalAlignment="Center"
+                <TextBlock DockPanel.Dock="Right" FontSize="11" Opacity="0.8" VerticalAlignment="Center"
                            Margin="0,0,6,0" Foreground="#3794FF" Text="{Binding PrTag}"
                            IsVisible="{Binding HasPrTag}"
                            ToolTip.Tip="This branch has an open pull request" />
                 <TextBlock FontWeight="SemiBold" Text="{Binding Info.Name}" TextTrimming="CharacterEllipsis" />
               </DockPanel>
-              <TextBlock Opacity="0.6" FontSize="11" TextTrimming="CharacterEllipsis">
+              <TextBlock Opacity="0.6" FontSize="12" TextTrimming="CharacterEllipsis">
                 <Run Text="{Binding Info.Date}" /> · <Run Text="{Binding Info.Subject}" />
               </TextBlock>
             </StackPanel>
