@@ -11,10 +11,21 @@ using Stampeded.Themes;
 
 namespace Stampeded.Diff;
 
+/// <summary>Which blob's line numbers a gutter shows.</summary>
+public enum DiffLineNumberColumns
+{
+	/// <summary>Both columns, for the unified diff where one document carries both sides.</summary>
+	Both,
+	/// <summary>The old blob only, for the left pane of a side-by-side view.</summary>
+	Old,
+	/// <summary>The new blob only, for the right pane of a side-by-side view.</summary>
+	New,
+}
+
 /// <summary>
-/// Two-column line-number gutter for the unified diff: old-blob number, new-blob number,
-/// and a 3px change strip at the right edge. A line missing on one side leaves that
-/// column blank (the nullable-line-number idea from Aehnlich's CustomLineNumberMargin).
+/// Line-number gutter for a diff: old-blob number, new-blob number, and a 3px change
+/// strip at the right edge. A line missing on the shown side leaves the column blank (the
+/// nullable-line-number idea from Aehnlich's CustomLineNumberMargin).
 /// </summary>
 public sealed class DiffLineNumberMargin : AbstractMargin
 {
@@ -30,6 +41,12 @@ public sealed class DiffLineNumberMargin : AbstractMargin
 
 	public IReadOnlyList<DiffLineTag>? Tags { get; set; }
 
+	public DiffLineNumberColumns Columns { get; set; } = DiffLineNumberColumns.Both;
+
+	bool ShowsOld => Columns is DiffLineNumberColumns.Both or DiffLineNumberColumns.Old;
+	bool ShowsNew => Columns is DiffLineNumberColumns.Both or DiffLineNumberColumns.New;
+	int ColumnCount => Columns == DiffLineNumberColumns.Both ? 2 : 1;
+
 	double digitWidth;
 	int digits = 4;
 
@@ -43,7 +60,7 @@ public sealed class DiffLineNumberMargin : AbstractMargin
 				maxLine = Math.Max(maxLine, Math.Max(tag.OldLine, tag.NewLine));
 		}
 		digits = Math.Max(3, maxLine.ToString(CultureInfo.InvariantCulture).Length);
-		return new Size(2 * digits * digitWidth + ColumnGap * 2 + StripWidth + RightPadding, 0);
+		return new Size(ColumnCount * (digits * digitWidth + ColumnGap) + StripWidth + RightPadding, 0);
 	}
 
 	FormattedText Measure(string text) => Format(text, Brushes.Gray);
@@ -71,15 +88,18 @@ public sealed class DiffLineNumberMargin : AbstractMargin
 			var tag = tags[lineNumber - 1];
 			double top = visualLine.VisualTop - textView.VerticalOffset;
 
-			if (tag.OldLine > 0)
+			// With one column shown it occupies the first slot, so a side-by-side pane
+			// gutters only its own blob's numbers.
+			if (ShowsOld && tag.OldLine > 0)
 			{
 				var ft = Format(tag.OldLine.ToString(CultureInfo.InvariantCulture), numberBrush);
 				context.DrawText(ft, new Point(col1Right - ft.Width, top));
 			}
-			if (tag.NewLine > 0)
+			if (ShowsNew && tag.NewLine > 0)
 			{
 				var ft = Format(tag.NewLine.ToString(CultureInfo.InvariantCulture), numberBrush);
-				context.DrawText(ft, new Point(col2Right - ft.Width, top));
+				double right = Columns == DiffLineNumberColumns.Both ? col2Right : col1Right;
+				context.DrawText(ft, new Point(right - ft.Width, top));
 			}
 			var strip = tag.Kind switch {
 				DiffLineKind.Added => AddedStrip,

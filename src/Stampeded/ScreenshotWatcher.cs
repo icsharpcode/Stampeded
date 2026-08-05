@@ -37,6 +37,8 @@ static class ScreenshotWatcher
 					Documents.DiffDocumentView.ActiveView?.CommentAtCaretCommand();
 				if (lines.Contains("close-review"))
 					App.Workspace?.CloseReview();
+				if (lines.Contains("sbs"))
+					App.Workspace?.OpenSideBySideAsync().HandleExceptions();
 				if (lines.Contains("vscode"))
 					App.Workspace?.OpenInVsCodeAsync(oldSide: false).HandleExceptions();
 				if (lines.Contains("ilspy-fixtures"))

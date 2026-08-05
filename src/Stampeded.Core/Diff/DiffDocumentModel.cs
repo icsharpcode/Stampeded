@@ -31,7 +31,31 @@ public sealed record SideBySideModel(
 	string LeftText,
 	string RightText,
 	IReadOnlyList<DiffLineTag> LeftTags,
-	IReadOnlyList<DiffLineTag> RightTags);
+	IReadOnlyList<DiffLineTag> RightTags)
+{
+	/// <summary>
+	/// One pane's blob text with the filler rows removed, plus the document line each of
+	/// its lines came from. Parsing needs the text without the padding that keeps the two
+	/// panes aligned; the map carries results back to document positions.
+	/// </summary>
+	public (string Text, IReadOnlyList<int> SideToDocLine) GetSideText(bool oldSide)
+	{
+		var docLines = (oldSide ? LeftText : RightText).Split('\n');
+		var tags = oldSide ? LeftTags : RightTags;
+		var sideLines = new List<string>();
+		var sideToDoc = new List<int>();
+		for (int i = 0; i < tags.Count && i < docLines.Length; i++)
+		{
+			int sideLine = oldSide ? tags[i].OldLine : tags[i].NewLine;
+			if (sideLine > 0)
+			{
+				sideLines.Add(docLines[i]);
+				sideToDoc.Add(i + 1);
+			}
+		}
+		return (string.Join('\n', sideLines), sideToDoc);
+	}
+}
 
 /// <summary>
 /// The unified-diff document: the full NEW file text with REMOVED lines interleaved as

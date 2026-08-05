@@ -22,9 +22,6 @@ sealed record TokenRef(bool OldSide, int Line, int Column);
 
 public partial class DiffDocumentView : UserControl
 {
-	// Unchanged context kept visible around each hunk when folding the rest.
-	const int FoldContext = 3;
-
 	static readonly Color OccurrenceColor = Color.Parse("#5A86C691");
 	static readonly Color DefinitionOccurrenceColor = Color.Parse("#7A86C691");
 
@@ -675,70 +672,16 @@ public partial class DiffDocumentView : UserControl
 	void InstallFoldings(DiffDocumentModel m)
 	{
 		foldingManager ??= FoldingManager.Install(Editor.TextArea);
-		var foldings = new List<NewFolding>();
-		int runStart = -1; // 0-based tag index of the current context run
-		for (int i = 0; i <= m.Tags.Count; i++)
+		var ranges = Diff.DiffFolding.UnchangedRuns(m.Tags, m.Hunks.Count > 0);
+		if (viewModel is { } vm && vm.File.Path.EndsWith(".cs", StringComparison.OrdinalIgnoreCase))
 		{
-			bool context = i < m.Tags.Count && m.Tags[i].Kind == DiffLineKind.Context;
-			if (context && runStart < 0)
-				runStart = i;
-			else if (!context && runStart >= 0)
-			{
-				AddFolding(m, foldings, runStart, i - 1);
-				runStart = -1;
-			}
+			bool oldSide = vm.File.Kind == Core.Diff.FileChangeKind.Deleted;
+			var (sideText, sideToDocLine) = m.GetSideText(oldSide);
+			ranges.AddRange(Diff.DiffFolding.Members(sideText, sideToDocLine));
 		}
-		AddMemberFoldings(m, foldings);
+		var foldings = Diff.FoldInstaller.ToFoldings(Editor.Document, ranges);
 		foldingManager.Clear();
-		foldingManager.UpdateFoldings(foldings.OrderBy(f => f.StartOffset).ToList(), -1);
-	}
-
-	/// <summary>IDE-style folds for types, methods, properties and events. The diff
-	/// document itself is not valid C# (removed lines interleave), so the side text is
-	/// reconstructed from the line map, parsed, and the regions mapped back.</summary>
-	void AddMemberFoldings(DiffDocumentModel m, List<NewFolding> foldings)
-	{
-		if (viewModel is null || !viewModel.File.Path.EndsWith(".cs", StringComparison.OrdinalIgnoreCase))
-			return;
-		bool oldSide = viewModel.File.Kind == Core.Diff.FileChangeKind.Deleted;
-		var (sideText, sideToDocLine) = m.GetSideText(oldSide);
-		if (sideToDocLine.Count == 0)
-			return;
-		foreach (var region in Core.Roslyn.MemberFolding.Compute(sideText))
-		{
-			if (region.StartLine > sideToDocLine.Count || region.EndLine > sideToDocLine.Count)
-				continue;
-			int docStart = sideToDocLine[region.StartLine - 1];
-			int docEnd = sideToDocLine[region.EndLine - 1];
-			if (docEnd <= docStart)
-				continue;
-			// Fold from the end of the header line so the signature stays visible.
-			foldings.Add(new NewFolding(
-				Editor.Document.GetLineByNumber(docStart).EndOffset,
-				Editor.Document.GetLineByNumber(docEnd).EndOffset) {
-				Name = " ... ",
-			});
-		}
-	}
-
-	void AddFolding(DiffDocumentModel m, List<NewFolding> foldings, int firstTag, int lastTag)
-	{
-		// A source view (identity model) has no hunks; keep it entirely unfolded.
-		if (m.Hunks.Count == 0)
-			return;
-		// Keep FoldContext lines visible on each side; at the document edges the whole
-		// run may fold except the context adjoining the hunk.
-		int foldFirst = firstTag == 0 ? firstTag : firstTag + FoldContext;
-		int foldLast = lastTag == m.Tags.Count - 1 ? lastTag : lastTag - FoldContext;
-		int hidden = foldLast - foldFirst + 1;
-		if (hidden < 2)
-			return;
-		var startLine = Editor.Document.GetLineByNumber(foldFirst + 1);
-		var endLine = Editor.Document.GetLineByNumber(foldLast + 1);
-		foldings.Add(new NewFolding(startLine.Offset, endLine.EndOffset) {
-			Name = $"... {hidden} unchanged lines",
-			DefaultClosed = true,
-		});
+		foldingManager.UpdateFoldings(foldings, -1);
 	}
 
 	void OnEditorKeyDown(object? sender, KeyEventArgs e)

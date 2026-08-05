@@ -2,6 +2,7 @@ using Avalonia.Controls;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 
+using AvaloniaEdit.Folding;
 using AvaloniaEdit.Search;
 
 using Stampeded.Core.Diff;
@@ -20,6 +21,9 @@ public partial class SideBySideDocumentView : UserControl
 	readonly DiffLineNumberMargin rightMargin = new();
 	IReadOnlyList<DiffLineTag>? leftTags;
 	IReadOnlyList<DiffLineTag>? rightTags;
+	FoldingManager? leftFolding;
+	FoldingManager? rightFolding;
+	bool syncingFolds;
 	bool syncing;
 	bool scrollWired;
 	int wireAttempts;
@@ -31,8 +35,12 @@ public partial class SideBySideDocumentView : UserControl
 		SearchPanel.Install(Right);
 		Left.TextArea.TextView.BackgroundRenderers.Add(new DiffLineBackgroundRenderer(() => leftTags));
 		Right.TextArea.TextView.BackgroundRenderers.Add(new DiffLineBackgroundRenderer(() => rightTags));
+		leftMargin.Columns = DiffLineNumberColumns.Old;
+		rightMargin.Columns = DiffLineNumberColumns.New;
 		Left.TextArea.LeftMargins.Insert(0, leftMargin);
 		Right.TextArea.LeftMargins.Insert(0, rightMargin);
+		Left.TextArea.TextView.VisualLinesChanged += (_, _) => MirrorFolds(leftFolding, rightFolding);
+		Right.TextArea.TextView.VisualLinesChanged += (_, _) => MirrorFolds(rightFolding, leftFolding);
 	}
 
 	protected override void OnAttachedToVisualTree(Avalonia.VisualTreeAttachmentEventArgs e)
@@ -91,5 +99,55 @@ public partial class SideBySideDocumentView : UserControl
 		rightMargin.Tags = vm.Pair.RightTags;
 		leftMargin.InvalidateMeasure();
 		rightMargin.InvalidateMeasure();
+		InstallFoldings(vm);
+	}
+
+	/// <summary>
+	/// Both panes fold over the same document lines. They have to: the panes are kept in
+	/// step by copying the scroll offset, which is only exact while they render the same
+	/// number of lines, so a fold on one side must collapse the other side's matching rows.
+	/// </summary>
+	void InstallFoldings(SideBySideDocumentViewModel vm)
+	{
+		leftFolding ??= FoldingManager.Install(Left.TextArea);
+		rightFolding ??= FoldingManager.Install(Right.TextArea);
+		var tags = vm.Pair.LeftTags;
+		bool hasChanges = tags.Any(t => t.Kind != DiffLineKind.Context);
+		var ranges = DiffFolding.UnchangedRuns(tags, hasChanges);
+		if (vm.File.Path.EndsWith(".cs", StringComparison.OrdinalIgnoreCase))
+		{
+			// Member regions come from the side the file still has, and are applied to both
+			// panes: corresponding lines share a row, so the range holds on either side.
+			bool oldSide = vm.File.Kind == FileChangeKind.Deleted;
+			var (sideText, sideToDocLine) = vm.Pair.GetSideText(oldSide);
+			ranges.AddRange(DiffFolding.Members(sideText, sideToDocLine));
+		}
+		leftFolding.Clear();
+		rightFolding.Clear();
+		leftFolding.UpdateFoldings(FoldInstaller.ToFoldings(Left.Document, ranges), -1);
+		rightFolding.UpdateFoldings(FoldInstaller.ToFoldings(Right.Document, ranges), -1);
+	}
+
+	/// <summary>Copies collapse state across, matching sections by position in the ordered
+	/// list: both panes were given the same ranges, so index i means the same rows.</summary>
+	void MirrorFolds(FoldingManager? source, FoldingManager? target)
+	{
+		if (syncingFolds || source is null || target is null)
+			return;
+		syncingFolds = true;
+		try
+		{
+			var from = source.AllFoldings.ToList();
+			var to = target.AllFoldings.ToList();
+			for (int i = 0; i < from.Count && i < to.Count; i++)
+			{
+				if (to[i].IsFolded != from[i].IsFolded)
+					to[i].IsFolded = from[i].IsFolded;
+			}
+		}
+		finally
+		{
+			syncingFolds = false;
+		}
 	}
 }
