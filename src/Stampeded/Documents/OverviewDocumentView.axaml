@@ -123,7 +123,7 @@
         <md:MarkdownScrollViewer Markdown="{Binding State.Description}" MaxHeight="240" />
       </Expander>
 
-      <Expander Classes="block" IsExpanded="False" IsVisible="{Binding State.CommitsHeader, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+      <Expander Classes="block" IsExpanded="{Binding State.CommitsExpanded}" IsVisible="{Binding State.CommitsHeader, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
         <Expander.Header>
           <DockPanel>
             <TextBlock Classes="sectiontitle" Text="Commits" />
@@ -136,7 +136,8 @@
             <ListBox.ItemTemplate>
               <DataTemplate x:DataType="docs:CommitLine">
                 <StackPanel Orientation="Horizontal">
-                  <TextBlock Classes="mono" Opacity="0.7" Width="96" Text="{Binding ShortSha}" Margin="12,0,0,0" />
+                  <TextBlock Classes="mono" Width="96" Margin="12,0,0,0" Text="{Binding ShortSha}"
+                             Foreground="{Binding ShaBrush}" />
                   <TextBlock Classes="mono" Width="56" TextAlignment="Right" Foreground="#2EA043" Text="{Binding Added}" />
                   <TextBlock Classes="mono" Width="52" TextAlignment="Right" Foreground="#F85149" Text="{Binding Removed}" Margin="0,0,10,0" />
                   <TextBlock Classes="mono" Opacity="0.9" Text="{Binding Subject}" TextTrimming="CharacterEllipsis" />

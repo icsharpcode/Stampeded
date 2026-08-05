@@ -12,7 +12,15 @@ using Stampeded.Core.Infra;
 
 namespace Stampeded.Documents;
 
-public sealed record CommitLine(string ShortSha, string Added, string Removed, string Subject);
+public sealed record CommitLine(string ShortSha, string Added, string Removed, string Subject)
+{
+	/// <summary>The pending working-tree row rather than a commit.</summary>
+	public bool IsUncommitted { get; init; }
+
+	public IBrush ShaBrush => IsUncommitted
+		? new SolidColorBrush(Color.Parse("#D29922"))
+		: Brushes.Gray;
+}
 
 public sealed record FileCostRow(string Marker, string Added, string Removed, string Minutes, string Churn, string Path);
 
@@ -69,6 +77,11 @@ public sealed partial class OverviewState : ObservableObject
 
 	[ObservableProperty]
 	string workingTreeLine = "";
+
+	/// <summary>Commits are reference material and start folded, unless there is
+	/// uncommitted work - which is the one entry worth arriving on.</summary>
+	[ObservableProperty]
+	bool commitsExpanded;
 
 	[ObservableProperty]
 	string toolStatus = "";
@@ -206,6 +219,12 @@ public class OverviewDocumentViewModel : Document
 			return;
 		try
 		{
+			// Uncommitted work leads the list: it sits on top of every commit below it, and
+			// it is the part nobody else can see yet.
+			var uncommitted = await LoadUncommittedLineAsync();
+			State.CommitsExpanded = uncommitted is not null;
+			if (uncommitted is not null)
+				CommitLines.Add(uncommitted);
 			var commits = await workspace.Git.LogAsync($"{baseSha}..{headSha}", null, follow: false, limit: 20);
 			var stats = await LoadCommitStatsAsync(baseSha, headSha);
 			foreach (var commit in commits.Take(8))
@@ -215,7 +234,12 @@ public class OverviewDocumentViewModel : Document
 			}
 			if (commits.Count > 8)
 				CommitLines.Add(new CommitLine("", "", "", $"... and {commits.Count - 8} more (Commits pane)"));
-			State.CommitsHeader = commits.Count == 0 ? "" : $"{commits.Count} commit(s)";
+			State.CommitsHeader = (commits.Count, uncommitted) switch {
+				(0, null) => "",
+				(0, _) => "uncommitted only",
+				(_, null) => $"{commits.Count} commit(s)",
+				_ => $"{commits.Count} commit(s) + uncommitted",
+			};
 		}
 		catch (ToolFailedException)
 		{
@@ -382,9 +406,31 @@ public class OverviewDocumentViewModel : Document
 			workspace.OpenOnGitHubAsync(pr.Number).HandleExceptions();
 	}
 
+	/// <summary>The working tree as a pending entry above the commits, when the review's
+	/// head is a checkout rather than a commit. Null when there is nothing uncommitted.</summary>
+	async Task<CommitLine?> LoadUncommittedLineAsync()
+	{
+		if (workspace.DirtyWorktreePath is not { } dirty)
+			return null;
+		var files = await workspace.Git.DiffWorkingTreeAsync(dirty, "HEAD");
+		if (files.Count == 0)
+			return null;
+		int added = 0, removed = 0;
+		foreach (var line in files.SelectMany(f => f.Hunks).SelectMany(h => h.Lines))
+		{
+			if (line.Kind == Core.Diff.PatchLineKind.Added)
+				added++;
+			else if (line.Kind == Core.Diff.PatchLineKind.Removed)
+				removed++;
+		}
+		return new CommitLine("uncommitted", $"+{added}", $"-{removed}",
+			$"{files.Count} file(s) not committed, in {dirty}") { IsUncommitted = true };
+	}
+
 	public void OpenCommit(CommitLine line)
 	{
-		if (line.ShortSha.Length > 0)
+		// The working-tree entry names no commit, so there is nothing to open on GitHub.
+		if (line.ShortSha.Length > 0 && !line.IsUncommitted)
 			workspace.OpenCommitOnGitHubAsync(line.ShortSha).HandleExceptions();
 	}
 
