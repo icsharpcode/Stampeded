@@ -157,10 +157,22 @@ namespace Stampeded.Controls.TreeView
 
 		void OnSelectionChanged(object? sender, SelectionChangedEventArgs e)
 		{
-			foreach (SharpTreeNode node in e.RemovedItems)
-				node.IsSelected = false;
-			foreach (SharpTreeNode node in e.AddedItems)
-				node.IsSelected = true;
+			// Either list can be null, and can hold nulls, when the selection changes
+			// because the tree's items went away rather than because the user picked
+			// something - swapping Root, or the pane's content being torn down.
+			SetSelected(e.RemovedItems, false);
+			SetSelected(e.AddedItems, true);
+
+			static void SetSelected(System.Collections.IList? items, bool selected)
+			{
+				if (items is null)
+					return;
+				foreach (var item in items)
+				{
+					if (item is SharpTreeNode node)
+						node.IsSelected = selected;
+				}
+			}
 		}
 
 		void OnDoubleTapped(object? sender, Avalonia.Interactivity.RoutedEventArgs e)

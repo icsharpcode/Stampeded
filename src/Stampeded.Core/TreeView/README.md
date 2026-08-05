@@ -39,3 +39,7 @@ expansion rather than up front.
   through `RichNodeText`, which is not ported. The change-tinted trees (Structure, Map)
   need per-node colour. A node that sets none binds null, which would blank the label, so
   the binding falls back to the theme foreground.
+- `SharpTreeView.OnSelectionChanged` guards against null item lists. Upstream dereferences
+  them directly, which is safe while a tree's root outlives its pane; here the root is
+  replaced whenever the active document changes, and a selection change raised during that
+  teardown carries no lists. Worth reporting upstream - the bug is latent there too.
