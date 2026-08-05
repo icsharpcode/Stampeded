@@ -7,11 +7,12 @@
     <TextBlock DockPanel.Dock="Bottom" Margin="6,4" Opacity="0.7" TextWrapping="Wrap"
                Text="{Binding State.Status}" />
     <Grid ColumnDefinitions="3*,4,2*">
-      <ListBox Grid.Column="0" x:Name="List" ItemsSource="{Binding Commits}"
+      <ListBox Grid.Column="0" x:Name="CommitList" ItemsSource="{Binding Commits}"
                SelectionChanged="OnCommitSelected" FontFamily="monospace" FontSize="12">
         <ListBox.ItemTemplate>
           <DataTemplate x:DataType="panes:CommitRow">
-            <TextBlock Text="{Binding Display}" TextTrimming="CharacterEllipsis" />
+            <TextBlock Text="{Binding Display}" TextTrimming="CharacterEllipsis"
+                       Foreground="{Binding Foreground, TargetNullValue={DynamicResource ThemeForegroundBrush}}" />
           </DataTemplate>
         </ListBox.ItemTemplate>
       </ListBox>

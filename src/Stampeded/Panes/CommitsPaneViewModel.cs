@@ -2,6 +2,8 @@ using System.Collections.ObjectModel;
 
 using CommunityToolkit.Mvvm.ComponentModel;
 
+using Avalonia.Media;
+
 using Dock.Model.Mvvm.Controls;
 
 using Stampeded.Core.Git;
@@ -15,21 +17,31 @@ public sealed partial class CommitsState : ObservableObject
 	string status = "Open a review to list its commits.";
 }
 
-public sealed record CommitRow(CommitInfo Commit)
+public sealed record CommitRow(CommitInfo Commit, bool IsUncommitted = false)
 {
 	public string Display
 	{
 		get
 		{
+			if (IsUncommitted)
+				return $"uncommitted   {Commit.Subject}";
 			string author = Commit.Author.Length > 14 ? Commit.Author[..14] : Commit.Author;
 			return $"{Commit.ShortSha}  {Commit.Date}  {author,-14}  {Commit.Subject}";
 		}
 	}
+
+	/// <summary>Null for a commit, so the row keeps the theme's colour.</summary>
+	public IBrush? Foreground => IsUncommitted ? Pending : null;
+
+	static readonly IBrush Pending = new SolidColorBrush(Color.Parse("#D29922"));
 }
 
+/// <summary>A file within a commit, or - when the sha is empty - within the working tree.</summary>
 public sealed record CommitFileRow(string Sha, char Status, string Path)
 {
 	public string Display => $"{Status}  {Path}";
+
+	public bool IsUncommitted => Sha.Length == 0;
 }
 
 /// <summary>
@@ -60,10 +72,24 @@ public class CommitsPaneViewModel : Tool
 		State.Status = "Loading commits...";
 		try
 		{
+			// The working tree leads the list when the review's head is one: it sits on top
+			// of every commit below it.
+			if (workspace.DirtyWorktreePath is { } dirty)
+			{
+				var pending = await workspace.Git.DiffWorkingTreeAsync(dirty, "HEAD");
+				if (pending.Count > 0)
+				{
+					Commits.Add(new CommitRow(
+						new CommitInfo("", "uncommitted", "", "", $"{pending.Count} file(s) not committed"),
+						IsUncommitted: true));
+				}
+			}
 			var commits = await workspace.Git.LogAsync($"{baseSha}..{headSha}", null, follow: false, limit: 200);
 			foreach (var commit in commits)
 				Commits.Add(new CommitRow(commit));
-			State.Status = $"{commits.Count} commit(s) in the review range. Select one to see its files.";
+			State.Status = $"{commits.Count} commit(s) in the review range"
+				+ (Commits.Count > commits.Count ? ", plus uncommitted work" : "")
+				+ ". Select one to see its files.";
 		}
 		catch (ToolFailedException ex)
 		{
@@ -73,7 +99,29 @@ public class CommitsPaneViewModel : Tool
 
 	public void SelectCommit(CommitRow row)
 	{
-		LoadFilesAsync(row.Commit).HandleExceptions();
+		if (row.IsUncommitted)
+			LoadUncommittedFilesAsync().HandleExceptions();
+		else
+			LoadFilesAsync(row.Commit).HandleExceptions();
+	}
+
+	async Task LoadUncommittedFilesAsync()
+	{
+		CommitFiles.Clear();
+		if (workspace.DirtyWorktreePath is not { } dirty)
+			return;
+		var files = await workspace.Git.DiffWorkingTreeAsync(dirty, "HEAD");
+		foreach (var file in files)
+		{
+			char status = file.Kind switch {
+				Core.Diff.FileChangeKind.Added => 'A',
+				Core.Diff.FileChangeKind.Deleted => 'D',
+				Core.Diff.FileChangeKind.Renamed => 'R',
+				_ => 'M',
+			};
+			CommitFiles.Add(new CommitFileRow("", status, file.Path));
+		}
+		State.Status = $"Uncommitted in {dirty}  -  {files.Count} file(s); double-click to open.";
 	}
 
 	async Task LoadFilesAsync(CommitInfo commit)
@@ -95,6 +143,11 @@ public class CommitsPaneViewModel : Tool
 
 	public void OpenFile(CommitFileRow row)
 	{
-		workspace.OpenHistoricalDiffAsync(row.Sha, row.Path).HandleExceptions();
+		// Uncommitted files have no commit to diff against a parent; the review's own diff
+		// of that file already shows the working tree.
+		if (row.IsUncommitted)
+			workspace.NavigateToFileLineAsync(row.Path, 1, oldSide: false, record: true).HandleExceptions();
+		else
+			workspace.OpenHistoricalDiffAsync(row.Sha, row.Path).HandleExceptions();
 	}
 }

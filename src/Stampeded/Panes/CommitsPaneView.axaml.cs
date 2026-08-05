@@ -12,7 +12,7 @@ public partial class CommitsPaneView : UserControl
 
 	void OnCommitSelected(object? sender, SelectionChangedEventArgs e)
 	{
-		if (DataContext is CommitsPaneViewModel vm && List.SelectedItem is CommitRow row)
+		if (DataContext is CommitsPaneViewModel vm && CommitList.SelectedItem is CommitRow row)
 			vm.SelectCommit(row);
 	}
 
