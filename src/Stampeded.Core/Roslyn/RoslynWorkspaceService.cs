@@ -501,6 +501,42 @@ public sealed class RoslynWorkspaceService : IDisposable
 		return symbol;
 	}
 
+	/// <summary>
+	/// The symbol at a column, falling back to any identifier on the same line. A caret
+	/// sits wherever it was left - often in the indentation - and a command aimed at "the
+	/// symbol here" should still find the one the line is about.
+	/// </summary>
+	public async Task<ISymbol?> GetSymbolOnLineAsync(
+		string repoRelativePath, int line, int preferredColumn, CancellationToken ct)
+	{
+		var document = GetDocument(ToAbsolutePath(repoRelativePath));
+		if (document is null)
+			return null;
+		var text = await document.GetTextAsync(ct);
+		if (line < 1 || line > text.Lines.Count)
+			return null;
+		var semanticModel = await document.GetSemanticModelAsync(ct);
+		var root = await document.GetSyntaxRootAsync(ct);
+		if (semanticModel is null || root is null)
+			return null;
+		var textLine = text.Lines[line - 1];
+		var positions = new List<int>();
+		int preferred = textLine.Start + preferredColumn - 1;
+		if (preferredColumn >= 1 && preferred < textLine.End)
+			positions.Add(preferred);
+		foreach (var token in root.DescendantTokens(TextSpan.FromBounds(textLine.Start, textLine.End)))
+		{
+			if (token.IsKind(Microsoft.CodeAnalysis.CSharp.SyntaxKind.IdentifierToken))
+				positions.Add(token.SpanStart);
+		}
+		foreach (int position in positions)
+		{
+			if (await SymbolFinder.FindSymbolAtPositionAsync(semanticModel, position, workspace!, ct) is { } symbol)
+				return symbol;
+		}
+		return null;
+	}
+
 	public SymbolLocation? GetDefinitionLocation(ISymbol symbol)
 	{
 		var location = symbol.OriginalDefinition.Locations.FirstOrDefault(l => l.IsInSource);
@@ -553,6 +589,81 @@ public sealed class RoslynWorkspaceService : IDisposable
 			.OrderBy(h => h.FilePath, StringComparer.Ordinal)
 			.ThenBy(h => h.Line)
 			.ToList();
+	}
+
+	/// <summary>
+	/// One level of the call hierarchy around a symbol. Callers come from the whole
+	/// solution; callees from the member's own body. Each node carries the declaration
+	/// position of the member it names, which is what lets the tree expand another level.
+	/// </summary>
+	public async Task<IReadOnlyList<CallNode>> GetCallsAsync(ISymbol symbol, CallDirection direction, CancellationToken ct)
+		=> direction == CallDirection.Callers
+			? await GetCallersAsync(symbol, ct)
+			: await GetCalleesAsync(symbol, ct);
+
+	async Task<IReadOnlyList<CallNode>> GetCallersAsync(ISymbol symbol, CancellationToken ct)
+	{
+		if (solution is null)
+			return [];
+		var callers = await SymbolFinder.FindCallersAsync(symbol, solution, ct);
+		var nodes = new List<CallNode>();
+		foreach (var caller in callers)
+		{
+			// Indirect callers reach the symbol through an interface or override; they are
+			// real consequences of a change, so they are kept and not marked apart.
+			int sites = caller.Locations.Count(l => l.IsInSource);
+			nodes.Add(ToNode(caller.CallingSymbol, Math.Max(1, sites)));
+		}
+		return Order(nodes);
+	}
+
+	async Task<IReadOnlyList<CallNode>> GetCalleesAsync(ISymbol symbol, CancellationToken ct)
+	{
+		var counts = new Dictionary<ISymbol, int>(SymbolEqualityComparer.Default);
+		foreach (var reference in symbol.DeclaringSyntaxReferences)
+		{
+			var syntax = await reference.GetSyntaxAsync(ct);
+			var document = solution?.GetDocument(syntax.SyntaxTree);
+			if (document is null)
+				continue;
+			var semanticModel = await document.GetSemanticModelAsync(ct);
+			if (semanticModel is null)
+				continue;
+			foreach (var node in syntax.DescendantNodes())
+			{
+				// Invocations and constructions are the calls a reader cares about;
+				// property and field accesses would bury them.
+				if (node is not (Microsoft.CodeAnalysis.CSharp.Syntax.InvocationExpressionSyntax
+					or Microsoft.CodeAnalysis.CSharp.Syntax.ObjectCreationExpressionSyntax))
+				{
+					continue;
+				}
+				if (semanticModel.GetSymbolInfo(node, ct).Symbol is not { } target)
+					continue;
+				counts[target.OriginalDefinition] = counts.GetValueOrDefault(target.OriginalDefinition) + 1;
+			}
+		}
+		return Order([.. counts.Select(pair => ToNode(pair.Key, pair.Value))]);
+	}
+
+	static IReadOnlyList<CallNode> Order(List<CallNode> nodes)
+		=> nodes
+			.DistinctBy(n => (n.ContainingType, n.Display, n.FilePath, n.Line))
+			.OrderBy(n => n.ContainingType, StringComparer.Ordinal)
+			.ThenBy(n => n.Display, StringComparer.Ordinal)
+			.ToList();
+
+	static CallNode ToNode(ISymbol symbol, int callSites)
+	{
+		var location = symbol.OriginalDefinition.Locations.FirstOrDefault(l => l.IsInSource);
+		var lineSpan = location?.GetLineSpan();
+		return new CallNode(
+			symbol.ToDisplayString(SymbolDisplayFormat.CSharpShortErrorMessageFormat),
+			symbol.ContainingType?.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat) ?? "",
+			location?.SourceTree?.FilePath,
+			(lineSpan?.StartLinePosition.Line ?? 0) + 1,
+			(lineSpan?.StartLinePosition.Character ?? 0) + 1,
+			callSites);
 	}
 
 	public async Task<string?> GetHoverTextAsync(string repoRelativePath, int position, CancellationToken ct)

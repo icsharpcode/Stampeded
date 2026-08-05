@@ -10,6 +10,7 @@
           <MenuItem Header="Go to Definition" InputGesture="F12" Click="OnCtxGoToDefinition" />
           <MenuItem Header="Find References" InputGesture="Shift+F12" Click="OnCtxFindReferences" />
           <MenuItem Header="Highlight Occurrences" Click="OnCtxHighlightOccurrences" />
+          <MenuItem Header="Show Call Graph" Click="OnCtxCallGraph" />
           <Separator />
           <MenuItem Header="Next Hunk" InputGesture="N" Click="OnCtxNextHunk" />
           <MenuItem Header="Previous Hunk" InputGesture="P" Click="OnCtxPrevHunk" />

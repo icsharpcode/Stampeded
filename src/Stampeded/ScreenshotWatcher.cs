@@ -37,6 +37,8 @@ static class ScreenshotWatcher
 					Documents.DiffDocumentView.ActiveView?.CommentAtCaretCommand();
 				if (lines.Contains("close-review"))
 					App.Workspace?.CloseReview();
+				if (lines.Contains("callgraph") && Documents.DiffDocumentView.ActiveView is { } active)
+					active.ShowCallGraphCommand();
 				if (lines.Contains("sbs"))
 					App.Workspace?.OpenSideBySideAsync().HandleExceptions();
 				if (lines.Contains("vscode"))

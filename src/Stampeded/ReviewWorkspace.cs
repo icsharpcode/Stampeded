@@ -1083,6 +1083,63 @@ public sealed class ReviewWorkspace(string repoPath)
 		ReferencesAvailable?.Invoke(symbol.Name + (oldSide ? " (base)" : ""), items);
 	}
 
+	/// <summary>Root of a call graph: the symbol at a blob position, named for display.</summary>
+	public sealed record CallRoot(string Display, string RelPath, int Line, int Column, bool OldSide);
+
+	public event Action<CallRoot>? CallGraphRequested;
+
+	public event Action<string>? CallGraphFailed;
+
+	/// <summary>Asks the call-graph pane to root itself at a blob position.</summary>
+	public async Task RequestCallGraphAsync(string relPath, int line, int column, bool oldSide)
+	{
+		var sem = SemanticsFor(oldSide);
+		if (!IsReady(sem))
+		{
+			CallGraphFailed?.Invoke("Semantics are not loaded yet, so calls cannot be resolved.");
+			return;
+		}
+		var symbol = await sem!.GetSymbolOnLineAsync(relPath, line, column, CancellationToken.None);
+		if (symbol is null)
+		{
+			CallGraphFailed?.Invoke($"No symbol found on {System.IO.Path.GetFileName(relPath)}:{line}.");
+			return;
+		}
+		CallGraphRequested?.Invoke(new CallRoot(
+			symbol.ToDisplayString(Microsoft.CodeAnalysis.SymbolDisplayFormat.CSharpShortErrorMessageFormat),
+			relPath, line, column, oldSide));
+	}
+
+	/// <summary>One level of the call hierarchy at a blob position. Paths come back
+	/// repo-relative, and nodes outside the worktree (or without source) cannot be
+	/// expanded further.</summary>
+	public async Task<IReadOnlyList<CallGraphItem>> GetCallsAsync(
+		string relPath, int line, int column, bool oldSide, CallDirection direction)
+	{
+		var sem = SemanticsFor(oldSide);
+		if (!IsReady(sem))
+			return [];
+		var symbol = await sem!.GetSymbolOnLineAsync(relPath, line, column, CancellationToken.None);
+		if (symbol is null)
+			return [];
+		var nodes = await sem.GetCallsAsync(symbol, direction, CancellationToken.None);
+		return nodes
+			.Select(n => new CallGraphItem(n, n.FilePath is null ? null : sem.ToRelativePath(n.FilePath), oldSide))
+			.ToList();
+	}
+
+	/// <summary>A call-graph node paired with the repo-relative path it lives in.</summary>
+	public sealed record CallGraphItem(CallNode Node, string? RelPath, bool OldSide)
+	{
+		public bool CanExpand => RelPath is { Length: > 0 };
+
+		public string Display => Node.CallSites > 1 ? $"{Node.Display}  ({Node.CallSites}x)" : Node.Display;
+
+		public string Detail => RelPath is { Length: > 0 } path
+			? $"{Node.ContainingType}  -  {path}:{Node.Line}"
+			: $"{Node.ContainingType}  -  no source";
+	}
+
 	/// <summary>Occurrences of the symbol at the given blob position within its own file.</summary>
 	public async Task<IReadOnlyList<SemanticToken>> FindOccurrencesAsync(string relPath, int line, int column, bool oldSide)
 	{

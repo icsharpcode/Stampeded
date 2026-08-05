@@ -23,6 +23,7 @@ public class ViewLocator : IDataTemplate
 		[typeof(ExplorerPaneViewModel)] = () => new Panes.ExplorerPaneView(),
 		[typeof(PrFilesPaneViewModel)] = () => new Panes.PrFilesPaneView(),
 		[typeof(ReferencesPaneViewModel)] = () => new Panes.ReferencesPaneView(),
+		[typeof(CallGraphPaneViewModel)] = () => new Panes.CallGraphPaneView(),
 		[typeof(ChangeMapPaneViewModel)] = () => new Panes.ChangeMapPaneView(),
 		[typeof(StructurePaneViewModel)] = () => new Panes.StructurePaneView(),
 		[typeof(FileBrowserPaneViewModel)] = () => new Panes.FileBrowserPaneView(),

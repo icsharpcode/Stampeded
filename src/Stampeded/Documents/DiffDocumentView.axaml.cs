@@ -499,6 +499,17 @@ public partial class DiffDocumentView : UserControl
 	}
 	void OnCtxCopy(object? s, RoutedEventArgs e) => Editor.Copy();
 
+	void OnCtxCallGraph(object? s, RoutedEventArgs e) => ShowCallGraphCommand();
+
+	public void ShowCallGraphCommand()
+	{
+		if (CaretBlobPosition() is { } pos)
+		{
+			App.Workspace?.Factory?.ShowPane("CallGraph");
+			App.Workspace?.RequestCallGraphAsync(pos.RelPath, pos.Line, pos.Column, pos.OldSide).HandleExceptions();
+		}
+	}
+
 	/// <summary>Opens VS Code on the worktree of the caret's side (base for removed lines,
 	/// head otherwise) at the caret position, for stepping through the reviewed revision
 	/// with a real debugger.</summary>
