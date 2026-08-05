@@ -35,6 +35,10 @@ static class ScreenshotWatcher
 					Documents.DiffDocumentView.ActiveView?.CommentAtCaretCommand();
 				if (lines.Contains("close-review"))
 					App.Workspace?.CloseReview();
+				if (lines.Contains("vscode"))
+					App.Workspace?.OpenInVsCodeAsync(oldSide: false).HandleExceptions();
+				if (lines.Contains("ilspy-fixtures"))
+					App.Workspace?.OpenAffectedFixturesInILSpyAsync().HandleExceptions();
 				foreach (var pane in lines.Where(l => l.StartsWith("pane:", StringComparison.Ordinal)))
 					App.Workspace?.Factory?.ShowPane(pane["pane:".Length..].Trim());
 				foreach (var command in lines.Where(l => l.StartsWith("goto:", StringComparison.Ordinal)))

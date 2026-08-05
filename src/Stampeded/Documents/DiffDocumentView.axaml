@@ -17,6 +17,7 @@
           <MenuItem Header="History of Selection" Click="OnCtxHistoryOfSelection" />
           <MenuItem Header="Next Uncovered Added Line" InputGesture="U" Click="OnCtxNextUncovered" />
           <MenuItem Header="Comment Here" InputGesture="C" Click="OnCtxComment" />
+          <MenuItem Header="Debug Here in VS Code" Click="OnCtxDebugInVsCode" />
           <Separator />
           <MenuItem Header="Copy" InputGesture="Ctrl+C" Click="OnCtxCopy" />
         </ContextMenu>

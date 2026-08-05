@@ -501,6 +501,16 @@ public partial class DiffDocumentView : UserControl
 	}
 	void OnCtxCopy(object? s, RoutedEventArgs e) => Editor.Copy();
 
+	/// <summary>Opens VS Code on the worktree of the caret's side (base for removed lines,
+	/// head otherwise) at the caret position, for stepping through the reviewed revision
+	/// with a real debugger.</summary>
+	void OnCtxDebugInVsCode(object? s, RoutedEventArgs e)
+	{
+		if (CaretBlobPosition() is not { } pos)
+			return;
+		App.Workspace?.OpenInVsCodeAsync(pos.OldSide, pos.RelPath, pos.Line).HandleExceptions();
+	}
+
 	void OnPointerPressedForContextMenu(object? sender, PointerPressedEventArgs e)
 	{
 		// Right-click moves the caret to the click point first, so the context-menu

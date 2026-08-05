@@ -17,6 +17,10 @@ public partial class OverviewDocumentView : UserControl
 
 	void OnOpenPr(object? sender, RoutedEventArgs e) => Vm?.OpenPrOnGitHub();
 
+	void OnOpenVsCode(object? sender, RoutedEventArgs e) => Vm?.OpenInVsCode();
+
+	void OnOpenFixtures(object? sender, RoutedEventArgs e) => Vm?.OpenFixturesInIlspy();
+
 	void OnCommitDoubleTapped(object? sender, TappedEventArgs e)
 	{
 		if (Vm is { } vm && CommitsList.SelectedItem is CommitLine line)

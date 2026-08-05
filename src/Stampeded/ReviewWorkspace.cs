@@ -726,6 +726,111 @@ public sealed class ReviewWorkspace(string repoPath)
 	public Task OpenOnGitHubAsync(int number)
 		=> ExternalTool.RunAsync("gh", ["pr", "view", number.ToString(), "--web"], RepoPath);
 
+	/// <summary>Opens the head (or base) worktree in VS Code, optionally at a file:line,
+	/// for full IDE debugging of the reviewed revision. The source clone's .vscode is
+	/// linked into the worktree so the user's own launch configs work there.</summary>
+	public async Task OpenInVsCodeAsync(bool oldSide, string? relPath = null, int? line = null)
+	{
+		string? root = oldSide ? BaseWorktreePath : WorktreePath;
+		if (root is null)
+		{
+			StatusMessage?.Invoke("No worktree yet - open a review first.");
+			return;
+		}
+		LinkVsCodeConfig(root);
+		List<string> args = [root];
+		if (relPath is not null && line is not null)
+			args.AddRange(["--goto", $"{Path.Combine(root, relPath)}:{line}"]);
+		await ExternalTool.RunAsync("code", args, root);
+		StatusMessage?.Invoke($"VS Code opened on the {(oldSide ? "base" : "head")} worktree.");
+	}
+
+	void LinkVsCodeConfig(string worktreeDir)
+	{
+		string source = Path.Combine(RepoPath, ".vscode");
+		string target = Path.Combine(worktreeDir, ".vscode");
+		if (!Directory.Exists(source) || Directory.Exists(target) || File.Exists(target))
+			return;
+		try
+		{
+			Directory.CreateSymbolicLink(target, source);
+		}
+		catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+		{
+			CliLog.Write("vscode", $"could not link .vscode: {ex.Message}");
+		}
+	}
+
+	/// <summary>True for repos with ILSpy's decompiler test-case layout; gates the
+	/// fixtures-in-ILSpy action.</summary>
+	public bool HasDecompilerTestCases
+		=> Directory.Exists(Path.Combine(RepoPath, "ICSharpCode.Decompiler.Tests", "TestCases"));
+
+	/// <summary>ILSpy-specific: opens the compiled fixture assemblies of every test case
+	/// this change touches in the ILSpy UI built from the review head, so the reviewer can
+	/// inspect the new decompilation interactively. Fixture assemblies are compiled next
+	/// to their sources by the decompiler test suite, so a test run must have happened in
+	/// the head worktree first.</summary>
+	public async Task OpenAffectedFixturesInILSpyAsync()
+	{
+		if (WorktreePath is not { } root)
+		{
+			StatusMessage?.Invoke("No head worktree yet - open a review first.");
+			return;
+		}
+		var fixtures = FixtureAssemblies.AffectedFixtures(Files.Select(f => f.Path));
+		var assemblies = new List<string>();
+		foreach (var (relDir, name) in fixtures)
+		{
+			string dir = Path.Combine(root, relDir);
+			if (!Directory.Exists(dir))
+				continue;
+			assemblies.AddRange(Directory.EnumerateFiles(dir)
+				.Where(f => FixtureAssemblies.IsAssemblyOf(name, Path.GetFileName(f)))
+				.Order());
+		}
+		if (fixtures.Count == 0)
+		{
+			StatusMessage?.Invoke("This change touches no decompiler test cases.");
+			return;
+		}
+		if (assemblies.Count == 0)
+		{
+			StatusMessage?.Invoke(
+				"No compiled fixture assemblies found - run the decompiler tests first; they compile fixtures next to their sources.");
+			return;
+		}
+		string apphost = Path.Combine(root, "ILSpy", "bin", "Debug", "net10.0",
+			OperatingSystem.IsWindows() ? "ILSpy.exe" : "ILSpy");
+		if (!File.Exists(apphost))
+		{
+			StatusMessage?.Invoke("Building ILSpy from the review head (first time only)...");
+			try
+			{
+				// Pruning stays off, matching ILSpy's restore.ps1: its core libraries
+				// restore in locked mode and fail against a pruned package graph.
+				await ExternalTool.RunAsync("dotnet",
+					["build", "ILSpy/ILSpy.csproj", "-p:RestoreEnablePackagePruning=false"],
+					root, env: new Dictionary<string, string> { ["OPENSSL_ENABLE_SHA1_SIGNATURES"] = "1" });
+			}
+			catch (ToolFailedException ex)
+			{
+				StatusMessage?.Invoke($"ILSpy build failed: {ex.Message}");
+				return;
+			}
+		}
+		var psi = new System.Diagnostics.ProcessStartInfo(apphost) {
+			WorkingDirectory = root,
+			UseShellExecute = false,
+		};
+		psi.Environment["OPENSSL_ENABLE_SHA1_SIGNATURES"] = "1";
+		foreach (var assembly in assemblies)
+			psi.ArgumentList.Add(assembly);
+		System.Diagnostics.Process.Start(psi);
+		StatusMessage?.Invoke(
+			$"Opened {assemblies.Count} assembly(ies) of {fixtures.Count} affected fixture(s) in the head-built ILSpy.");
+	}
+
 	/// <summary>The start page document; owns the preparation overlay state. One instance
 	/// for the workspace's lifetime - it is closed while a review is open and re-added on
 	/// Close Review, keeping its subscriptions and the overlay binding intact.</summary>

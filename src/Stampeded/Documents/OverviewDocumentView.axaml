@@ -31,6 +31,11 @@
         <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="6">
           <Button Content="Open on GitHub" FontSize="11" Click="OnOpenPr"
                   ToolTip.Tip="Open this PR in the browser" />
+          <Button Content="VS Code" FontSize="11" Click="OnOpenVsCode"
+                  ToolTip.Tip="Open the head worktree in VS Code for building and debugging this revision" />
+          <Button Content="Fixtures in ILSpy" FontSize="11" Click="OnOpenFixtures"
+                  IsVisible="{Binding State.HasFixtureTools}"
+                  ToolTip.Tip="Open the compiled test-case assemblies this change affects in the ILSpy built from the review head (run the decompiler tests first)" />
           <Button Content="Bounce..." FontSize="11" Click="OnBounce"
                   ToolTip.Tip="Draft a decline-with-reason review comment" />
           <Button Content="Review record" FontSize="11" Click="OnRecord"
@@ -41,6 +46,9 @@
         <TextBlock FontWeight="SemiBold" FontSize="17" Text="{Binding State.Title}"
                    TextTrimming="CharacterEllipsis" />
       </DockPanel>
+      <TextBlock Classes="statusline" Foreground="#D29922" Margin="0,4,0,0" TextWrapping="Wrap"
+                 Text="{Binding State.ToolStatus}"
+                 IsVisible="{Binding State.ToolStatus, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
       <TextBlock Classes="statusline" Opacity="0.95" Margin="0,6,0,0" TextWrapping="Wrap"
                  Text="{Binding State.Estimate}"
                  IsVisible="{Binding State.Estimate, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />

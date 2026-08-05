@@ -63,6 +63,12 @@ public sealed partial class OverviewState : ObservableObject
 
 	[ObservableProperty]
 	string sweepHeader = "Consequence sweep: waiting for the change map.";
+
+	[ObservableProperty]
+	string toolStatus = "";
+
+	[ObservableProperty]
+	bool hasFixtureTools;
 }
 
 /// <summary>
@@ -105,8 +111,14 @@ public class OverviewDocumentViewModel : Document
 			RunSweepOnceAsync().HandleExceptions();
 		});
 		workspace.TestResultsChanged += () => Dispatcher.UIThread.Post(RebuildTests);
+		workspace.StatusMessage += message => Dispatcher.UIThread.Post(() => State.ToolStatus = message);
+		State.HasFixtureTools = workspace.HasDecompilerTestCases;
 		RebuildAll();
 	}
+
+	public void OpenInVsCode() => workspace.OpenInVsCodeAsync(oldSide: false).HandleExceptions();
+
+	public void OpenFixturesInIlspy() => workspace.OpenAffectedFixturesInILSpyAsync().HandleExceptions();
 
 	void RebuildAll()
 	{

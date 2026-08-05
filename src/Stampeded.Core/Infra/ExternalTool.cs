@@ -30,13 +30,18 @@ public static class ExternalTool
 	/// <summary>Runs a CLI tool, throwing <see cref="ToolFailedException"/> (with stderr) on a
 	/// non-zero exit; returns stdout. Cancellation kills the process tree (CliWrap).</summary>
 	public static async Task<string> RunAsync(
-		string exe, IReadOnlyList<string> args, string workingDir, CancellationToken ct = default)
+		string exe, IReadOnlyList<string> args, string workingDir, CancellationToken ct = default,
+		IReadOnlyDictionary<string, string>? env = null)
 	{
 		var watch = System.Diagnostics.Stopwatch.StartNew();
 		var result = await CliWrap.Cli.Wrap(exe)
 			.WithArguments(args)
 			.WithWorkingDirectory(workingDir)
-			.WithEnvironmentVariables(StripMsBuildLocatorVariables)
+			.WithEnvironmentVariables(builder => {
+				StripMsBuildLocatorVariables(builder);
+				foreach (var (key, value) in env ?? System.Collections.Immutable.ImmutableDictionary<string, string>.Empty)
+					builder.Set(key, value);
+			})
 			.WithValidation(CommandResultValidation.None)
 			.ExecuteBufferedAsync(ct);
 		string argsText = string.Join(' ', args);
