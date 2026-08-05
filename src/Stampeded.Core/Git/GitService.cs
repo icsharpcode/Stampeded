@@ -5,8 +5,10 @@ namespace Stampeded.Core.Git;
 
 /// <summary>
 /// Git access for one local clone, via the git CLI. Never touches the user's working
-/// tree or index: everything reads from the object database (fetch, merge-base, diff,
-/// show), so an open review cannot disturb whatever the user has checked out.
+/// tree or index: reads come from the object database (fetch, merge-base, diff, show),
+/// and the operations that write (branch creation, rebase) touch refs only, running any
+/// checkout they need in a throwaway worktree. An open review cannot disturb whatever
+/// the user has checked out.
 /// </summary>
 public sealed class GitService(string repoPath)
 {
@@ -93,6 +95,64 @@ public sealed class GitService(string repoPath)
 		=> GitLogParser.ParseBranches(await RunAsync(ct,
 			"for-each-ref", "refs/heads", "--sort=-committerdate",
 			"--format=%(refname:short)%09%(objectname)%09%(committerdate:short)%09%(subject)"));
+
+	/// <summary>The stashes, in the same tab-separated shape as the branch listing so both
+	/// go through one parser. A stash's own commit holds the stashed working tree, and its
+	/// first parent is the commit it was taken on - so <c>sha^..sha</c> is exactly what
+	/// `git stash show` reports, and a stash reviews as an ordinary local range.</summary>
+	public async Task<IReadOnlyList<BranchInfo>> ListStashesAsync(CancellationToken ct = default)
+		=> GitLogParser.ParseBranches(await RunAsync(ct,
+			"stash", "list", "--format=%gd%x09%H%x09%cs%x09%gs"));
+
+	/// <summary>Points a new branch at an existing commit. Used to give a stash a durable
+	/// name: the stash itself is left in place, and nothing is checked out or applied
+	/// (unlike `git stash branch`, which would rewrite the user's working tree).</summary>
+	public Task CreateBranchAsync(string name, string startPoint, CancellationToken ct = default)
+		=> RunAsync(ct, "branch", name, startPoint);
+
+	/// <summary>
+	/// Rebases a local branch onto another ref in a throwaway worktree, leaving the user's
+	/// checkout alone. Returns the branch's SHA from before the rebase, which is the
+	/// recovery point if the result is unwanted. On conflict the rebase is aborted, so the
+	/// branch is left exactly as it was, and the conflict is reported as a failure.
+	/// Git itself refuses when the branch is checked out somewhere, and that message is
+	/// passed through unchanged.
+	/// </summary>
+	public async Task<string> RebaseBranchAsync(string branch, string onto, CancellationToken ct = default)
+	{
+		string before = await RevParseAsync(branch, ct);
+		string dir = Path.Combine(Path.GetTempPath(), "stampeded-rebase-" + Guid.NewGuid().ToString("N")[..8]);
+		await RunAsync(ct, "worktree", "add", "--quiet", dir, branch);
+		try
+		{
+			await ExternalTool.RunAsync("git", ["rebase", onto], dir, ct);
+			return before;
+		}
+		catch (ToolFailedException)
+		{
+			try
+			{
+				await ExternalTool.RunAsync("git", ["rebase", "--abort"], dir, ct);
+			}
+			catch (ToolFailedException)
+			{
+				// Nothing to abort (the rebase failed before starting); the branch is
+				// untouched either way, so the original failure is what matters.
+			}
+			throw;
+		}
+		finally
+		{
+			try
+			{
+				await RunAsync(CancellationToken.None, "worktree", "remove", "--force", dir);
+			}
+			catch (ToolFailedException)
+			{
+				await RunAsync(CancellationToken.None, "worktree", "prune");
+			}
+		}
+	}
 
 	/// <summary>The review base for local branches: origin's default branch when known,
 	/// else origin/master.</summary>

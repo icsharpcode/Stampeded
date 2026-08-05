@@ -690,6 +690,23 @@ public sealed class ReviewWorkspace(string repoPath)
 		CliLog.Write("action", $"historical diff {sha[..9]} {path}");
 	}
 
+	/// <summary>Rebases a PR onto its target branch (server-side) without opening a
+	/// review, for acting on a PR from the start page. Rewrites the PR branch - explicit
+	/// user action only.</summary>
+	public async Task RebasePrAsync(int number)
+	{
+		using var busy = Busy.Begin($"Rebasing #{number}");
+		try
+		{
+			await GitHub.UpdateBranchAsync(number);
+			StatusMessage?.Invoke($"#{number} rebased onto its target branch.");
+		}
+		catch (ToolFailedException ex)
+		{
+			StatusMessage?.Invoke($"Rebase of #{number} failed: {ex.Message}");
+		}
+	}
+
 	/// <summary>Rebases the current PR onto its target branch (server-side), then reopens
 	/// the review on the new head. Rewrites the PR branch - explicit user action only.</summary>
 	public async Task RebaseCurrentPrOnTargetAsync()

@@ -24,9 +24,10 @@ public sealed partial class PrepareItem(string label) : ObservableObject
 	bool done;
 }
 
-/// <summary>A local branch on the start page, annotated with its associated PR when one
-/// exists - including whether the local head differs from what the PR is showing.</summary>
-public sealed record BranchRow(BranchInfo Info, string PrTag, int? PrNumber = null)
+/// <summary>A local branch or a stash on the start page. Branches are annotated with
+/// their associated PR when one exists - including whether the local head differs from
+/// what the PR is showing.</summary>
+public sealed record BranchRow(BranchInfo Info, string PrTag, int? PrNumber = null, bool IsStash = false)
 {
 	public bool HasPrTag => PrTag.Length > 0;
 }
@@ -37,7 +38,17 @@ public sealed partial class StartState : ObservableObject
 	string prColumnHeader = "Pull Requests";
 
 	[ObservableProperty]
-	string branchColumnHeader = "Branches";
+	string branchesLabel = "Branches";
+
+	[ObservableProperty]
+	string stashesLabel = "Stashes";
+
+	/// <summary>Whether the third column lists stashes instead of branches.</summary>
+	[ObservableProperty]
+	bool showStashes;
+
+	[ObservableProperty]
+	string status = "";
 
 	/// <summary>True while a review is opening: the preparation checklist overlays the
 	/// window and the overview opens once the load-bearing signals are in.</summary>
@@ -63,6 +74,7 @@ public class StartDocumentViewModel : Document
 	public PrListPaneViewModel PrList { get; }
 
 	IReadOnlyList<BranchInfo> rawBranches = [];
+	IReadOnlyList<BranchInfo> rawStashes = [];
 	string defaultBase = "origin/master";
 
 	public StartDocumentViewModel(ReviewWorkspace workspace)
@@ -92,6 +104,11 @@ public class StartDocumentViewModel : Document
 		workspace.ChecksLoaded += () => Dispatcher.UIThread.Post(UpdatePreparation);
 		workspace.ChurnChanged += () => Dispatcher.UIThread.Post(UpdatePreparation);
 		workspace.CommentsChanged += () => Dispatcher.UIThread.Post(UpdatePreparation);
+		workspace.StatusMessage += message => Dispatcher.UIThread.Post(() => State.Status = message);
+		State.PropertyChanged += (_, e) => {
+			if (e.PropertyName == nameof(StartState.ShowStashes))
+				AnnotateBranches();
+		};
 		LoadStartPageAsync().HandleExceptions();
 	}
 
@@ -101,17 +118,36 @@ public class StartDocumentViewModel : Document
 		{
 			defaultBase = await workspace.Git.GetDefaultBaseAsync();
 			rawBranches = await workspace.Git.ListBranchesAsync();
+			rawStashes = await workspace.Git.ListStashesAsync();
 		}
 		catch (ToolFailedException)
 		{
 			// Not a repo or no origin; the start page simply shows no branches.
 		}
 		AnnotateBranches();
-		State.BranchColumnHeader = $"Branches ({rawBranches.Count})";
+	}
+
+	/// <summary>Re-reads branches and stashes after an operation changed them.</summary>
+	async Task ReloadRefsAsync()
+	{
+		rawBranches = await workspace.Git.ListBranchesAsync();
+		rawStashes = await workspace.Git.ListStashesAsync();
+		AnnotateBranches();
 	}
 
 	void AnnotateBranches()
 	{
+		// Both counts stay visible whichever list is showing: the pair of options is the
+		// column header, so it also reports what the other option holds.
+		State.BranchesLabel = $"Branches ({rawBranches.Count})";
+		State.StashesLabel = $"Stashes ({rawStashes.Count})";
+		if (State.ShowStashes)
+		{
+			Branches.Clear();
+			foreach (var stash in rawStashes)
+				Branches.Add(new BranchRow(stash, "", null, IsStash: true));
+			return;
+		}
 		var prsByBranch = PrList.Items
 			.GroupBy(p => p.HeadRefName, StringComparer.Ordinal)
 			.ToDictionary(g => g.Key, g => g.First(), StringComparer.Ordinal);
@@ -142,10 +178,72 @@ public class StartDocumentViewModel : Document
 		workspace.OpenPrAsync(number).HandleExceptions();
 	}
 
-	public void OpenBranch(BranchInfo branch)
+	public void OpenBranch(BranchRow row)
 	{
 		BeginPreparation();
-		workspace.OpenLocalRangeAsync(defaultBase, branch.Name).HandleExceptions();
+		// A stash reviews as the range from the commit it was taken on to the stash
+		// commit itself, which is exactly the stashed change.
+		var (baseRef, head) = row.IsStash
+			? ($"{row.Info.Sha}^", row.Info.Sha)
+			: (defaultBase, row.Info.Name);
+		workspace.OpenLocalRangeAsync(baseRef, head).HandleExceptions();
+	}
+
+	/// <summary>Gives a stash a durable name by pointing a new branch at its commit. The
+	/// stash stays in the stash list and no working tree is touched, so this is safe to
+	/// do while the stash is still wanted where it is.</summary>
+	public void CreateBranchFromStash(BranchRow row, string name)
+	{
+		if (!row.IsStash || string.IsNullOrWhiteSpace(name))
+			return;
+		CreateAsync().HandleExceptions();
+
+		async Task CreateAsync()
+		{
+			try
+			{
+				await workspace.Git.CreateBranchAsync(name.Trim(), row.Info.Sha);
+				await ReloadRefsAsync();
+				State.Status = $"Created branch '{name.Trim()}' at {row.Info.Name} (the stash is unchanged).";
+			}
+			catch (ToolFailedException ex)
+			{
+				State.Status = $"Could not create the branch: {ex.Message}";
+			}
+		}
+	}
+
+	/// <summary>Rebases a local branch onto the default base in a throwaway worktree. On
+	/// conflict the branch is left untouched; on success the pre-rebase SHA is reported so
+	/// the old state can be recovered.</summary>
+	public void RebaseBranch(BranchRow row)
+	{
+		if (row.IsStash)
+			return;
+		RebaseAsync().HandleExceptions();
+
+		async Task RebaseAsync()
+		{
+			State.Status = $"Rebasing {row.Info.Name} onto {defaultBase}...";
+			try
+			{
+				string before = await workspace.Git.RebaseBranchAsync(row.Info.Name, defaultBase);
+				await ReloadRefsAsync();
+				State.Status = $"Rebased {row.Info.Name} onto {defaultBase}. Previous head was {before[..9]} "
+					+ $"(recover with: git branch -f {row.Info.Name} {before[..9]}).";
+			}
+			catch (ToolFailedException ex)
+			{
+				State.Status = $"Rebase of {row.Info.Name} failed, branch left unchanged: {ex.Message}";
+			}
+		}
+	}
+
+	/// <summary>Rebases a PR branch onto its target, server-side via the GitHub API.</summary>
+	public void RebasePr(BranchRow row)
+	{
+		if (row.PrNumber is { } number)
+			workspace.RebasePrAsync(number).HandleExceptions();
 	}
 
 	public void OpenRecent(string path) => App.OpenRepositoryAsync(path).HandleExceptions();

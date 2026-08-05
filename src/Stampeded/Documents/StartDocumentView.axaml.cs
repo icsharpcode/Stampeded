@@ -34,7 +34,44 @@ public partial class StartDocumentView : UserControl
 	void OpenSelectedBranch()
 	{
 		if (Vm is { } vm && BranchList.SelectedItem is BranchRow row)
-			vm.OpenBranch(row.Info);
+			vm.OpenBranch(row);
+	}
+
+	/// <summary>Avalonia's negated binding is one-way, so a radio pair cannot round-trip
+	/// a single bool through it; the group's selection is applied to the view model
+	/// here instead.</summary>
+	void OnRefKindChanged(object? sender, RoutedEventArgs e)
+	{
+		if (Vm is { } vm)
+			vm.State.ShowStashes = StashesMode.IsChecked == true;
+	}
+
+	void OnRebaseBranch(object? sender, RoutedEventArgs e)
+	{
+		if (Vm is { } vm && BranchList.SelectedItem is BranchRow row)
+			vm.RebaseBranch(row);
+	}
+
+	void OnRebasePr(object? sender, RoutedEventArgs e)
+	{
+		if (Vm is { } vm && BranchList.SelectedItem is BranchRow row)
+			vm.RebasePr(row);
+	}
+
+	void OnCreateBranchFromStash(object? sender, RoutedEventArgs e)
+		=> PromptBranchNameAsync().HandleExceptions();
+
+	async Task PromptBranchNameAsync()
+	{
+		if (Vm is not { } vm || BranchList.SelectedItem is not BranchRow { IsStash: true } row)
+			return;
+		if (TopLevel.GetTopLevel(this) is not Window owner)
+			return;
+		string? name = await new TextPromptWindow("Create branch from stash",
+			$"New branch pointing at {row.Info.Name} ({row.Info.Subject}). The stash is kept and nothing is checked out.",
+			"Create", "stash/my-work").ShowDialog<string?>(owner);
+		if (!string.IsNullOrWhiteSpace(name))
+			vm.CreateBranchFromStash(row, name);
 	}
 
 	void OnPrOpenOnGitHub(object? sender, RoutedEventArgs e)
@@ -76,7 +113,9 @@ public partial class StartDocumentView : UserControl
 	{
 		if (TopLevel.GetTopLevel(this) is not Window owner)
 			return;
-		string? url = await new UrlPromptWindow().ShowDialog<string?>(owner);
+		string? url = await new TextPromptWindow("Open from URL",
+			"GitHub repository or pull request URL (also accepts owner/repo). A repository not cloned yet is cloned via gh into ~/Projects.",
+			"Open", "https://github.com/owner/repo/pull/123").ShowDialog<string?>(owner);
 		if (!string.IsNullOrWhiteSpace(url))
 			await App.OpenFromUrlAsync(url);
 	}

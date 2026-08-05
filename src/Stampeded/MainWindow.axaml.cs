@@ -37,7 +37,9 @@ public partial class MainWindow : Window
 
 	async Task PromptUrlAsync()
 	{
-		string? url = await new UrlPromptWindow().ShowDialog<string?>(this);
+		string? url = await new TextPromptWindow("Open from URL",
+			"GitHub repository or pull request URL (also accepts owner/repo). A repository not cloned yet is cloned via gh into ~/Projects.",
+			"Open", "https://github.com/owner/repo/pull/123").ShowDialog<string?>(this);
 		if (!string.IsNullOrWhiteSpace(url))
 			await App.OpenFromUrlAsync(url);
 	}
