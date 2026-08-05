@@ -145,9 +145,18 @@
                   <Button Content="PR" Click="OnRowBranchPrGitHub" IsVisible="{Binding HasPrTag}"
                           ToolTip.Tip="Open this branch's pull request in the browser" />
                 </StackPanel>
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="4"
+                            VerticalAlignment="Center" IsVisible="{Binding HasSync}"
+                            ToolTip.Tip="{Binding SyncTip}">
+                  <TextBlock Text="●" FontSize="10" VerticalAlignment="Center"
+                             Foreground="{Binding SyncBrush}" />
+                  <TextBlock Text="{Binding SyncText}" FontSize="10" VerticalAlignment="Center"
+                             Foreground="{Binding SyncBrush}" />
+                </StackPanel>
                 <TextBlock DockPanel.Dock="Right" FontSize="10" Opacity="0.8" VerticalAlignment="Center"
-                           Foreground="#3794FF" Text="{Binding PrTag}" IsVisible="{Binding HasPrTag}"
-                           ToolTip.Tip="This branch has an open PR; '(differs)' means the local head is not what the PR shows" />
+                           Margin="0,0,6,0" Foreground="#3794FF" Text="{Binding PrTag}"
+                           IsVisible="{Binding HasPrTag}"
+                           ToolTip.Tip="This branch has an open pull request" />
                 <TextBlock FontWeight="SemiBold" Text="{Binding Info.Name}" TextTrimming="CharacterEllipsis" />
               </DockPanel>
               <TextBlock Opacity="0.6" FontSize="11" TextTrimming="CharacterEllipsis">

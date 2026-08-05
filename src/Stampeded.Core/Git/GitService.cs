@@ -96,6 +96,25 @@ public sealed class GitService(string repoPath)
 			"for-each-ref", "refs/heads", "--sort=-committerdate",
 			"--format=%(refname:short)%09%(objectname)%09%(committerdate:short)%09%(subject)"));
 
+	/// <summary>How a local branch stands against another commit, or null when that commit
+	/// is not in the local object database - which is the normal case for a pull request
+	/// head that was never fetched.</summary>
+	public async Task<BranchSync?> GetSyncStateAsync(string local, string remote, CancellationToken ct = default)
+	{
+		try
+		{
+			string output = await RunAsync(ct, "rev-list", "--left-right", "--count", $"{local}...{remote}");
+			var parts = output.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
+			return parts.Length == 2 && int.TryParse(parts[0], out int ahead) && int.TryParse(parts[1], out int behind)
+				? BranchSync.From(ahead, behind)
+				: null;
+		}
+		catch (ToolFailedException)
+		{
+			return null;
+		}
+	}
+
 	/// <summary>The stashes, in the same tab-separated shape as the branch listing so both
 	/// go through one parser. A stash's own commit holds the stashed working tree, and its
 	/// first parent is the commit it was taken on - so <c>sha^..sha</c> is exactly what

@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 
+using Avalonia.Media;
 using Avalonia.Threading;
 
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -27,11 +28,33 @@ public sealed partial class PrepareItem(string label) : ObservableObject
 /// <summary>A local branch or a stash on the start page. Branches are annotated with
 /// their associated PR when one exists - including whether the local head differs from
 /// what the PR is showing.</summary>
-public sealed record BranchRow(BranchInfo Info, string PrTag, int? PrNumber = null, bool IsStash = false)
+public sealed record BranchRow(BranchInfo Info, string PrTag, int? PrNumber = null, bool IsStash = false,
+	BranchSync? Sync = null)
 {
 	public bool HasPrTag => PrTag.Length > 0;
 
 	public bool IsBranch => !IsStash;
+
+	public bool HasSync => Sync is not null;
+
+	public string SyncText => Sync?.Display ?? "";
+
+	public string SyncTip => Sync?.Explanation ?? "";
+
+	public IBrush SyncBrush => Sync?.State switch {
+		BranchSyncState.InSync => SyncBrushes.InSync,
+		BranchSyncState.Ahead or BranchSyncState.Behind => SyncBrushes.Partial,
+		BranchSyncState.Diverged => SyncBrushes.Diverged,
+		_ => SyncBrushes.Unknown,
+	};
+}
+
+static class SyncBrushes
+{
+	public static readonly IBrush InSync = new SolidColorBrush(Color.Parse("#2EA043"));
+	public static readonly IBrush Partial = new SolidColorBrush(Color.Parse("#D29922"));
+	public static readonly IBrush Diverged = new SolidColorBrush(Color.Parse("#F85149"));
+	public static readonly IBrush Unknown = new SolidColorBrush(Color.Parse("#8B949E"));
 }
 
 public sealed partial class StartState : ObservableObject
@@ -77,6 +100,9 @@ public class StartDocumentViewModel : Document
 
 	IReadOnlyList<BranchInfo> rawBranches = [];
 	IReadOnlyList<BranchInfo> rawStashes = [];
+	// Filled asynchronously for branches whose head is not the PR's; equality itself is
+	// free from the two SHAs, only "by how much" costs a git call.
+	readonly Dictionary<string, BranchSync> syncByBranch = [];
 	string defaultBase = "origin/master";
 
 	public StartDocumentViewModel(ReviewWorkspace workspace)
@@ -159,17 +185,47 @@ public class StartDocumentViewModel : Document
 		{
 			string tag = "";
 			int? prNumber = null;
+			BranchSync? sync = null;
 			if (prsByBranch.TryGetValue(branch.Name, out var pr))
 			{
-				bool differs = pr.HeadRefOid is { Length: > 0 } oid
-					&& !string.Equals(oid, branch.Sha, StringComparison.OrdinalIgnoreCase);
-				tag = differs ? $"PR #{pr.Number} (differs)" : $"PR #{pr.Number}";
+				tag = $"PR #{pr.Number}";
 				prNumber = pr.Number;
+				sync = pr.HeadRefOid is { Length: > 0 } oid
+					? string.Equals(oid, branch.Sha, StringComparison.OrdinalIgnoreCase)
+						? BranchSync.InSync
+						: syncByBranch.GetValueOrDefault(branch.Name, BranchSync.Unfetched)
+					: null;
 			}
-			rows.Add(new BranchRow(branch, tag, prNumber));
+			rows.Add(new BranchRow(branch, tag, prNumber, IsStash: false, sync));
 		}
 		foreach (var row in rows.OrderBy(r => r.HasPrTag ? 0 : 1))
 			Branches.Add(row);
+		RefreshSyncStatesAsync(prsByBranch).HandleExceptions();
+	}
+
+	/// <summary>Measures how far the branches that do not match their PR head have drifted.
+	/// Only those need a git call, and only once each: a branch whose head equals the PR's
+	/// is already known to be in sync.</summary>
+	async Task RefreshSyncStatesAsync(Dictionary<string, PrSummary> prsByBranch)
+	{
+		bool changed = false;
+		foreach (var branch in rawBranches)
+		{
+			if (!prsByBranch.TryGetValue(branch.Name, out var pr)
+				|| pr.HeadRefOid is not { Length: > 0 } oid
+				|| string.Equals(oid, branch.Sha, StringComparison.OrdinalIgnoreCase)
+				|| syncByBranch.ContainsKey(branch.Name))
+			{
+				continue;
+			}
+			if (await workspace.Git.GetSyncStateAsync(branch.Sha, oid) is { } sync)
+			{
+				syncByBranch[branch.Name] = sync;
+				changed = true;
+			}
+		}
+		if (changed)
+			AnnotateBranches();
 	}
 
 	public void OpenPr(PrSummary pr) => OpenPrNumber(pr.Number);
