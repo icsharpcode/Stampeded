@@ -20,25 +20,24 @@
       <Setter Property="Padding" Value="4,0,0,0" />
       <Setter Property="VerticalContentAlignment" Value="Center" />
     </Style>
-    <!-- Per-row shortcuts for the common actions. They keep their space at all times so
-         showing them never reflows the row, and only the hovered or selected row reveals
-         them: these lists run to dozens of entries. The context menu stays the full set. -->
+    <!-- Per-row shortcuts for the common actions, revealed on the hovered or selected row
+         only: these lists run to dozens of entries. They sit inboard of the always-visible
+         status, so claiming their space only re-trims the title on the one row and never
+         changes its height. The context menu stays the full set. -->
     <Style Selector="StackPanel.rowactions">
-      <Setter Property="Opacity" Value="0" />
-      <Setter Property="IsHitTestVisible" Value="False" />
+      <Setter Property="IsVisible" Value="False" />
     </Style>
     <Style Selector="ListBoxItem:pointerover StackPanel.rowactions">
-      <Setter Property="Opacity" Value="1" />
-      <Setter Property="IsHitTestVisible" Value="True" />
+      <Setter Property="IsVisible" Value="True" />
     </Style>
     <Style Selector="ListBoxItem:selected StackPanel.rowactions">
-      <Setter Property="Opacity" Value="1" />
-      <Setter Property="IsHitTestVisible" Value="True" />
+      <Setter Property="IsVisible" Value="True" />
     </Style>
     <Style Selector="StackPanel.rowactions > Button">
-      <Setter Property="FontSize" Value="11" />
-      <Setter Property="Padding" Value="5,1" />
+      <Setter Property="FontSize" Value="10" />
+      <Setter Property="Padding" Value="4,0" />
       <Setter Property="MinHeight" Value="0" />
+      <Setter Property="MinWidth" Value="0" />
       <Setter Property="VerticalAlignment" Value="Center" />
     </Style>
   </UserControl.Styles>
@@ -81,13 +80,14 @@
                   <TextBlock Text="●" Foreground="#D29922" IsVisible="{Binding ChecksPending}" />
                   <TextBlock Text="●" Foreground="#F85149" IsVisible="{Binding ChecksFailed}" />
                 </Panel>
-                <StackPanel DockPanel.Dock="Right" Classes="rowactions" Orientation="Horizontal" Spacing="4">
+                <TextBlock DockPanel.Dock="Right" Text="draft" FontSize="11" Opacity="0.8"
+                           VerticalAlignment="Center" IsVisible="{Binding IsDraft}" />
+                <StackPanel DockPanel.Dock="Right" Classes="rowactions" Orientation="Horizontal"
+                            Spacing="4" Margin="6,0">
                   <Button Content="Review" FontWeight="SemiBold" Click="OnRowPrReview"
                           ToolTip.Tip="Open this pull request for review" />
                   <Button Content="GitHub" Click="OnRowPrGitHub" ToolTip.Tip="Open this pull request in the browser" />
                 </StackPanel>
-                <TextBlock DockPanel.Dock="Right" Text="draft" FontSize="11" Opacity="0.8"
-                           VerticalAlignment="Center" IsVisible="{Binding IsDraft}" />
                 <TextBlock FontWeight="SemiBold" TextTrimming="CharacterEllipsis">
                   <Run Text="{Binding NumberDisplay}" /> <Run Text="{Binding Title}" />
                 </TextBlock>
@@ -136,16 +136,6 @@
           <DataTemplate x:DataType="docs:BranchRow">
             <StackPanel Margin="2">
               <DockPanel>
-                <StackPanel DockPanel.Dock="Right" Classes="rowactions" Orientation="Horizontal" Spacing="4">
-                  <Button Content="Review" FontWeight="SemiBold" Click="OnRowBranchReview"
-                          ToolTip.Tip="Open this for review" />
-                  <Button Content="Rebase" Click="OnRowBranchRebase" IsVisible="{Binding IsBranch}"
-                          ToolTip.Tip="Rebase onto the default base in a throwaway worktree; your checkout is untouched and a conflict leaves the branch as it was" />
-                  <Button Content="Branch..." Click="OnRowStashBranch" IsVisible="{Binding IsStash}"
-                          ToolTip.Tip="Point a new branch at this stash; the stash is kept and nothing is checked out" />
-                  <Button Content="PR" Click="OnRowBranchPrGitHub" IsVisible="{Binding HasPrTag}"
-                          ToolTip.Tip="Open this branch's pull request in the browser" />
-                </StackPanel>
                 <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="4"
                             VerticalAlignment="Center" IsVisible="{Binding HasSync}"
                             ToolTip.Tip="{Binding SyncTip}">
@@ -158,6 +148,17 @@
                            Margin="0,0,6,0" Foreground="#3794FF" Text="{Binding PrTag}"
                            IsVisible="{Binding HasPrTag}"
                            ToolTip.Tip="This branch has an open pull request" />
+                <StackPanel DockPanel.Dock="Right" Classes="rowactions" Orientation="Horizontal"
+                            Spacing="4" Margin="6,0">
+                  <Button Content="Review" FontWeight="SemiBold" Click="OnRowBranchReview"
+                          ToolTip.Tip="Open this for review" />
+                  <Button Content="Rebase" Click="OnRowBranchRebase" IsVisible="{Binding IsBranch}"
+                          ToolTip.Tip="Rebase onto the default base in a throwaway worktree; your checkout is untouched and a conflict leaves the branch as it was" />
+                  <Button Content="Branch..." Click="OnRowStashBranch" IsVisible="{Binding IsStash}"
+                          ToolTip.Tip="Point a new branch at this stash; the stash is kept and nothing is checked out" />
+                  <Button Content="PR" Click="OnRowBranchPrGitHub" IsVisible="{Binding HasPrTag}"
+                          ToolTip.Tip="Open this branch's pull request in the browser" />
+                </StackPanel>
                 <TextBlock FontWeight="SemiBold" Text="{Binding Info.Name}" TextTrimming="CharacterEllipsis" />
               </DockPanel>
               <TextBlock Opacity="0.6" FontSize="12" TextTrimming="CharacterEllipsis">
