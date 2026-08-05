@@ -11,7 +11,7 @@ using Stampeded.Documents;
 
 namespace Stampeded.Panes;
 
-public sealed record StructureNode(IBrush Foreground, FontWeight Weight, string Title, string RelPath, int BlobLine, bool OldSide)
+public sealed record StructureNode(Avalonia.Media.IImage? Icon, IBrush Foreground, FontWeight Weight, string Title, string RelPath, int BlobLine, bool OldSide)
 {
 	public ObservableCollection<StructureNode> Children { get; } = [];
 }
@@ -90,9 +90,11 @@ public class StructurePaneViewModel : Tool
 		var brush = changedInRange == 0 ? Brushes.Gray
 			: changedInRange >= range ? AddedBrush
 			: ModifiedBrush;
-		var weight = node.Kind == "type" ? FontWeight.SemiBold : FontWeight.Normal;
+		bool isType = node.Kind is "class" or "struct" or "interface" or "record" or "enum";
+		var weight = isType ? FontWeight.SemiBold : FontWeight.Normal;
 		var result = new StructureNode(
-			changedInRange == 0 && node.Kind == "type" ? Brushes.Gray : brush,
+			Images.ForOutlineKind(node.Kind),
+			changedInRange == 0 && isType ? Brushes.Gray : brush,
 			weight, node.Title, relPath, node.StartLine, oldSide);
 		foreach (var child in node.Children)
 			result.Children.Add(Convert(child, relPath, oldSide, changed));

@@ -36,32 +36,32 @@ public static class DocumentOutline
 					nodes.AddRange(OutlineMembers(ns.Members, text));
 					break;
 				case TypeDeclarationSyntax type:
-					nodes.Add(Node("type", $"{type.Keyword.ValueText} {type.Identifier.ValueText}{type.TypeParameterList}",
+					nodes.Add(Node(type.Keyword.ValueText, $"{type.Keyword.ValueText} {type.Identifier.ValueText}{type.TypeParameterList}",
 						type, text, OutlineMembers(type.Members, text)));
 					break;
 				case EnumDeclarationSyntax enumDecl:
-					nodes.Add(Node("type", $"enum {enumDecl.Identifier.ValueText}", enumDecl, text, []));
+					nodes.Add(Node("enum", $"enum {enumDecl.Identifier.ValueText}", enumDecl, text, []));
 					break;
 				case MethodDeclarationSyntax method:
 					nodes.Add(Node("method", $"{method.Identifier.ValueText}({Parameters(method.ParameterList)})", method, text, []));
 					break;
 				case ConstructorDeclarationSyntax ctor:
-					nodes.Add(Node("method", $"{ctor.Identifier.ValueText}({Parameters(ctor.ParameterList)})", ctor, text, []));
+					nodes.Add(Node("ctor", $"{ctor.Identifier.ValueText}({Parameters(ctor.ParameterList)})", ctor, text, []));
 					break;
 				case DestructorDeclarationSyntax dtor:
 					nodes.Add(Node("method", $"~{dtor.Identifier.ValueText}()", dtor, text, []));
 					break;
 				case OperatorDeclarationSyntax op:
-					nodes.Add(Node("method", $"operator {op.OperatorToken.ValueText}({Parameters(op.ParameterList)})", op, text, []));
+					nodes.Add(Node("operator", $"operator {op.OperatorToken.ValueText}({Parameters(op.ParameterList)})", op, text, []));
 					break;
 				case ConversionOperatorDeclarationSyntax conv:
-					nodes.Add(Node("method", $"{conv.ImplicitOrExplicitKeyword.ValueText} operator {conv.Type}", conv, text, []));
+					nodes.Add(Node("operator", $"{conv.ImplicitOrExplicitKeyword.ValueText} operator {conv.Type}", conv, text, []));
 					break;
 				case PropertyDeclarationSyntax property:
 					nodes.Add(Node("property", property.Identifier.ValueText, property, text, []));
 					break;
 				case IndexerDeclarationSyntax indexer:
-					nodes.Add(Node("property", $"this[{Parameters(indexer.ParameterList)}]", indexer, text, []));
+					nodes.Add(Node("indexer", $"this[{Parameters(indexer.ParameterList)}]", indexer, text, []));
 					break;
 				case EventDeclarationSyntax eventDecl:
 					nodes.Add(Node("event", eventDecl.Identifier.ValueText, eventDecl, text, []));

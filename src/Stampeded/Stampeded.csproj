@@ -12,10 +12,12 @@
     <PackageReference Include="Dock.Avalonia.Themes.Simple" />
     <PackageReference Include="Dock.Model.Mvvm" />
     <PackageReference Include="CommunityToolkit.Mvvm" />
+    <PackageReference Include="Svg.Controls.Skia.Avalonia" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Stampeded.Core\Stampeded.Core.csproj" />
   </ItemGroup>
   <ItemGroup>
+    <AvaloniaResource Include="Assets/**/*.svg" />
   </ItemGroup>
 </Project>

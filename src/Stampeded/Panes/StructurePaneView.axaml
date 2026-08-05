@@ -14,8 +14,11 @@
     <TreeView x:Name="Tree" ItemsSource="{Binding Roots}" DoubleTapped="OnDoubleTapped" FontSize="12">
       <TreeView.ItemTemplate>
         <TreeDataTemplate DataType="panes:StructureNode" ItemsSource="{Binding Children}">
-          <TextBlock Text="{Binding Title}" Foreground="{Binding Foreground}"
-                     FontWeight="{Binding Weight}" TextTrimming="CharacterEllipsis" />
+          <StackPanel Orientation="Horizontal">
+            <Image Source="{Binding Icon}" Width="16" Height="16" Margin="0,0,4,0" />
+            <TextBlock Text="{Binding Title}" Foreground="{Binding Foreground}"
+                       FontWeight="{Binding Weight}" TextTrimming="CharacterEllipsis" />
+          </StackPanel>
         </TreeDataTemplate>
       </TreeView.ItemTemplate>
     </TreeView>

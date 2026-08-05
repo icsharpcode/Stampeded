@@ -15,9 +15,10 @@ public sealed partial class ChangeMapState : ObservableObject
 	string status = "The change map lists changed members once semantics are loaded.";
 }
 
-public sealed class MapNode(string title, IBrush? foreground, ReviewWorkspace.ChangeMapEntry? entry)
+public sealed class MapNode(string title, IBrush? foreground, ReviewWorkspace.ChangeMapEntry? entry, IImage? icon)
 {
 	public string Title { get; } = title;
+	public IImage? Icon { get; } = icon;
 	public IBrush Foreground { get; } = foreground ?? Brushes.Gray;
 	public ReviewWorkspace.ChangeMapEntry? Entry { get; } = entry;
 	public ObservableCollection<MapNode> Children { get; } = [];
@@ -57,12 +58,12 @@ public class ChangeMapPaneViewModel : Tool
 		var map = workspace.ChangeMap;
 		foreach (var projectGroup in map.GroupBy(e => e.Project))
 		{
-			var projectNode = new MapNode(projectGroup.Key, null, null);
+			var projectNode = new MapNode(projectGroup.Key, null, null, Images.Assembly);
 			foreach (var fileGroup in projectGroup.GroupBy(e => e.RelPath))
 			{
-				var fileNode = new MapNode(Path.GetFileName(fileGroup.Key), null, null);
+				var fileNode = new MapNode(Path.GetFileName(fileGroup.Key), null, null, Images.Document);
 				foreach (var entry in fileGroup.OrderBy(e => e.Line))
-					fileNode.Children.Add(new MapNode(entry.Display, BrushFor(entry.Kind), entry));
+					fileNode.Children.Add(new MapNode(entry.Display, BrushFor(entry.Kind), entry, Images.ForMemberKind(entry.MemberKind)));
 				projectNode.Children.Add(fileNode);
 			}
 			Roots.Add(projectNode);

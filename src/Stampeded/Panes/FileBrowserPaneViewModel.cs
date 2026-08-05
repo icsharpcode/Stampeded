@@ -25,6 +25,7 @@ public sealed class FsNode(string absPath, bool isDirectory)
 	public string AbsPath { get; } = absPath;
 	public bool IsDirectory { get; } = isDirectory;
 	public string Title { get; } = Path.GetFileName(absPath);
+	public Avalonia.Media.IImage Icon => IsDirectory ? Images.FolderClosed : Images.Document;
 
 	// Populated on first access so the tree lazily enumerates one level ahead of what
 	// is visible instead of walking the whole worktree up front.

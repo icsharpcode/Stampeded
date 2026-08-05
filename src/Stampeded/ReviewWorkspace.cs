@@ -1167,7 +1167,7 @@ public sealed class ReviewWorkspace(string repoPath)
 
 	#region Change map
 
-	public sealed record ChangeMapEntry(string RelPath, string Project, string Kind, string Display, int Line, bool OldSide);
+	public sealed record ChangeMapEntry(string RelPath, string Project, string Kind, string Display, int Line, bool OldSide, string MemberKind = "");
 
 	public IReadOnlyList<ChangeMapEntry> ChangeMap { get; private set; } = [];
 	public event Action? ChangeMapChanged;
@@ -1201,7 +1201,7 @@ public sealed class ReviewWorkspace(string repoPath)
 			foreach (var member in headMembers)
 			{
 				string kind = baseDisplays.Contains(member.Display) ? "Modified" : "Added";
-				entries.Add(new ChangeMapEntry(file.Path, project, kind, member.Display, member.FirstLine, false));
+				entries.Add(new ChangeMapEntry(file.Path, project, kind, member.Display, member.FirstLine, false, member.Kind));
 			}
 			if (baseSem is not null
 				&& removedLinesByFile.TryGetValue(file.OldPath, out var removed) && removed.Count > 0)
@@ -1213,7 +1213,7 @@ public sealed class ReviewWorkspace(string repoPath)
 				foreach (var member in baseMembers)
 				{
 					if (!headDisplays.Contains(member.Display))
-						entries.Add(new ChangeMapEntry(file.OldPath, project, "Removed", member.Display, member.FirstLine, true));
+						entries.Add(new ChangeMapEntry(file.OldPath, project, "Removed", member.Display, member.FirstLine, true, member.Kind));
 				}
 			}
 		}

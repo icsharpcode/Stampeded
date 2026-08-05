@@ -459,11 +459,22 @@ public sealed class RoslynWorkspaceService : IDisposable
 			}
 			else
 			{
-				members[display] = new ChangedMember(display, member.Kind.ToString(), line);
+				members[display] = new ChangedMember(display, MemberKindOf(member), line);
 			}
 		}
 		return members.Values.OrderBy(m => m.FirstLine).ToList();
 	}
+
+	/// <summary>Icon-grade member kind: named types report their TypeKind (Class, Struct,
+	/// Interface, Enum, Delegate), methods split off Constructor and Operator; everything
+	/// else is its SymbolKind (Method, Property, Field, Event).</summary>
+	static string MemberKindOf(ISymbol member) => member switch {
+		INamedTypeSymbol type => type.TypeKind.ToString(),
+		IMethodSymbol { MethodKind: MethodKind.Constructor or MethodKind.StaticConstructor } => "Constructor",
+		IMethodSymbol { MethodKind: MethodKind.UserDefinedOperator or MethodKind.Conversion } => "Operator",
+		IPropertySymbol { IsIndexer: true } => "Indexer",
+		_ => member.Kind.ToString(),
+	};
 
 	/// <summary>Absolute text position for a 1-based (line, column) in a worktree file.</summary>
 	public async Task<int?> GetPositionAsync(string repoRelativePath, int line, int column, CancellationToken ct)
