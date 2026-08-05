@@ -6,7 +6,11 @@
   <DockPanel>
     <CheckBox DockPanel.Dock="Top" Margin="6,2" FontSize="11" Content="Tests first (read the spec before the code)"
               IsChecked="{Binding TestsFirst}" />
-    <ListBox x:Name="List" ItemsSource="{Binding Files}" DoubleTapped="OnDoubleTapped">
+    <!-- Rows must fit the pane: an overflowing row scrolled its trailing badges and the
+         viewed checkbox out of reach. Paths give up whole directory segments instead, so
+         the file name - the part being identified - always survives. -->
+    <ListBox x:Name="List" ItemsSource="{Binding Files}" DoubleTapped="OnDoubleTapped"
+             ScrollViewer.HorizontalScrollBarVisibility="Disabled">
     <ListBox.ContextMenu>
       <ContextMenu>
         <MenuItem Header="Open Diff (double-click)" Click="OnOpenClicked" />
@@ -32,7 +36,8 @@
                      Foreground="#3794FF" Text="{Binding SinceBadge}"
                      ToolTip.Tip="Touched since your last pass (viewed flag was invalidated)" />
           <TextBlock DockPanel.Dock="Left" Width="14" FontWeight="Bold" Text="{Binding Marker}" />
-          <TextBlock Text="{Binding Display}" TextTrimming="CharacterEllipsis" />
+          <TextBlock Text="{Binding Display}" TextTrimming="PathSegmentEllipsis"
+                     ToolTip.Tip="{Binding Display}" />
         </DockPanel>
       </DataTemplate>
     </ListBox.ItemTemplate>
