@@ -482,6 +482,15 @@ public partial class DiffDocumentView : UserControl
 
 	void OnCtxGoToDefinition(object? s, RoutedEventArgs e) => GoToDefinitionCommand();
 	void OnCtxFindReferences(object? s, RoutedEventArgs e) => FindReferencesCommand();
+	/// <summary>Places the caret and highlights occurrences there, for driving checks.</summary>
+	public void HighlightAtCommand(int line, int column)
+	{
+		if (line > 0)
+			Editor.TextArea.Caret.Line = line;
+		Editor.TextArea.Caret.Column = column;
+		HighlightOccurrencesAtCaretAsync().HandleExceptions();
+	}
+
 	void OnCtxHighlightOccurrences(object? s, RoutedEventArgs e) => HighlightOccurrencesCommand();
 	void OnCtxNextHunk(object? s, RoutedEventArgs e) => JumpToHunk(1);
 	void OnCtxPrevHunk(object? s, RoutedEventArgs e) => JumpToHunk(-1);

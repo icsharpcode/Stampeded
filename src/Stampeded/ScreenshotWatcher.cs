@@ -46,6 +46,15 @@ static class ScreenshotWatcher
 					if (parts.Length == 3)
 						App.Workspace?.OpenLocalRangeAsync(parts[1].Trim(), parts[2].Trim()).HandleExceptions();
 				}
+				foreach (var command in lines.Where(l => l.StartsWith("highlight:", StringComparison.Ordinal)))
+				{
+					var parts = command.Split(':', 3);
+					if (parts.Length == 3 && int.TryParse(parts[1], out int hl) && int.TryParse(parts[2], out int col)
+						&& Documents.DiffDocumentView.ActiveView is { } view)
+					{
+						view.HighlightAtCommand(hl, col);
+					}
+				}
 				if (lines.Contains("overview"))
 					App.Workspace?.OpenOverview();
 				if (lines.Contains("commit-scope"))

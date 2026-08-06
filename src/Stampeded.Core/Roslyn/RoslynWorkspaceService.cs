@@ -38,6 +38,7 @@ public sealed class RoslynWorkspaceService : IDisposable
 {
 	Workspace? workspace;
 	Solution? solution;
+	Solution? loadedSolution;
 	Dictionary<string, DocumentId>? documentsByPath;
 	string worktreePath = "";
 
@@ -95,7 +96,7 @@ public sealed class RoslynWorkspaceService : IDisposable
 				if (loaded.Projects.Any(p => p.Documents.Any()))
 				{
 					workspace = msbuild;
-					solution = loaded;
+					solution = loadedSolution = loaded;
 					IndexDocuments();
 					SetState(SemanticState.Ready, Path.GetFileName(sln));
 					return;
@@ -217,7 +218,7 @@ public sealed class RoslynWorkspaceService : IDisposable
 			project = project.AddDocument(Path.GetFileName(file), SourceText.From(File.ReadAllText(file)), filePath: file).Project;
 		}
 		workspace = adhoc;
-		solution = project.Solution;
+		solution = loadedSolution = project.Solution;
 		IndexDocuments();
 		SetState(SemanticState.SyntaxOnly);
 	}
@@ -245,6 +246,29 @@ public sealed class RoslynWorkspaceService : IDisposable
 			}
 		}
 	}
+
+	/// <summary>
+	/// Substitutes the text of some files, so that every position-based answer - symbols,
+	/// occurrences, quick info, classification - describes the revision being displayed
+	/// rather than the one that was loaded. Positions are offsets into a specific text;
+	/// reading one commit of a file that later commits change makes those two different
+	/// texts, and the whole stack has to agree on which one it is talking about.
+	/// </summary>
+	public void SetTextOverlay(IReadOnlyDictionary<string, string> textByRelativePath)
+	{
+		if (loadedSolution is null || documentsByPath is null)
+			return;
+		var overlaid = loadedSolution;
+		foreach (var (relativePath, text) in textByRelativePath)
+		{
+			if (documentsByPath.TryGetValue(ToAbsolutePath(relativePath), out var id))
+				overlaid = overlaid.WithDocumentText(id, SourceText.From(text));
+		}
+		solution = overlaid;
+	}
+
+	/// <summary>Back to the revision this workspace was loaded for.</summary>
+	public void ClearTextOverlay() => solution = loadedSolution;
 
 	Document? GetDocument(string absolutePath)
 	{
@@ -742,7 +766,7 @@ public sealed class RoslynWorkspaceService : IDisposable
 	{
 		workspace?.Dispose();
 		workspace = null;
-		solution = null;
+		solution = loadedSolution = null;
 		SetState(SemanticState.NotLoaded);
 	}
 }

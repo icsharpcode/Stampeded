@@ -821,6 +821,7 @@ public sealed class ReviewWorkspace(string repoPath)
 		Files = await Git.DiffAsync(parent, commit.Sha);
 		IndexAddedLines(Files);
 		Store.OpenCommitScope(Path.GetFileName(RepoPath), commit.Sha);
+		await ApplyScopeOverlaysAsync();
 		ResetChangeMap();
 		CloseDocumentsExceptStart();
 		CliLog.Write("action", $"commit scope {index + 1}/{ScopeCommits.Count} {commit.ShortSha}");
@@ -833,12 +834,38 @@ public sealed class ReviewWorkspace(string repoPath)
 		ComputeChangeMapAsync().HandleExceptions();
 	}
 
+	/// <summary>
+	/// Points the semantic workspaces at the revision being displayed. They stay loaded
+	/// for the review's head - reloading one per commit would mean a checkout and a
+	/// solution load each step - so the files this commit touches are overlaid instead,
+	/// which is what makes positions, symbols and occurrences agree with the text shown.
+	/// </summary>
+	async Task ApplyScopeOverlaysAsync()
+	{
+		if (CommitScope is not { } commit || BaseSha is not { } parent)
+			return;
+		var head = new Dictionary<string, string>(StringComparer.Ordinal);
+		var origin = new Dictionary<string, string>(StringComparer.Ordinal);
+		foreach (var file in Files.Where(f => !f.IsBinary))
+		{
+			if (file.Kind != FileChangeKind.Deleted)
+				head[file.NewPath] = await Git.ShowFileAsync(commit.Sha, file.NewPath);
+			if (file.Kind != FileChangeKind.Added)
+				origin[file.OldPath] = await Git.ShowFileAsync(parent, file.OldPath);
+		}
+		Semantics?.SetTextOverlay(head);
+		BaseSemantics?.SetTextOverlay(origin);
+		SemanticsChanged?.Invoke();
+	}
+
 	/// <summary>Back to reading the whole change at once.</summary>
 	public async Task ExitCommitScopeAsync()
 	{
 		if (fullRange is not { } range)
 			return;
 		CommitScope = null;
+		Semantics?.ClearTextOverlay();
+		BaseSemantics?.ClearTextOverlay();
 		BaseSha = range.Base;
 		HeadSha = range.Head;
 		fullRange = null;
