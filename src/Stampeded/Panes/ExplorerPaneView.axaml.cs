@@ -33,6 +33,8 @@ public partial class ExplorerPaneView : UserControl
 
 	ExplorerPaneViewModel? Vm => DataContext as ExplorerPaneViewModel;
 
+	void OnEnterCommitScope(object? sender, Avalonia.Interactivity.RoutedEventArgs e) => Vm?.EnterCommitScope();
+
 	void OnPreviousCommit(object? sender, Avalonia.Interactivity.RoutedEventArgs e) => Vm?.StepCommit(-1);
 
 	void OnNextCommit(object? sender, Avalonia.Interactivity.RoutedEventArgs e) => Vm?.StepCommit(1);

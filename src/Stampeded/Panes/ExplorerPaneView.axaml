@@ -15,16 +15,22 @@
     <!-- While stepping, the commit is what the list below contains, so the stepper sits
          with it rather than somewhere the reader has to go back to. -->
     <Border Grid.Row="0" Padding="6,3" BorderThickness="0,0,0,1" BorderBrush="#803794FF"
-            IsVisible="{Binding InCommitScope}">
+            IsVisible="{Binding HasReview}">
       <StackPanel Spacing="3">
         <TextBlock FontSize="11" FontWeight="SemiBold" TextWrapping="Wrap"
                    Text="{Binding CommitScopeLine}" />
         <StackPanel Orientation="Horizontal" Spacing="4">
+          <Button Content="Commit by commit" FontSize="10" Padding="6,1" Click="OnEnterCommitScope"
+                  IsVisible="{Binding !InCommitScope}"
+                  ToolTip.Tip="Read the change one commit at a time, in the order it was written" />
           <Button Content="Prev" FontSize="10" Padding="6,1" Click="OnPreviousCommit"
+                  IsVisible="{Binding InCommitScope}"
                   ToolTip.Tip="Previous commit (Ctrl+[ in a diff)" />
           <Button Content="Next" FontSize="10" Padding="6,1" FontWeight="SemiBold" Click="OnNextCommit"
+                  IsVisible="{Binding InCommitScope}"
                   ToolTip.Tip="Next commit (Ctrl+] in a diff)" />
-          <Button Content="Whole change" FontSize="10" Padding="6,1" Click="OnExitCommitScope" />
+          <Button Content="Whole change" FontSize="10" Padding="6,1" Click="OnExitCommitScope"
+                  IsVisible="{Binding InCommitScope}" />
         </StackPanel>
       </StackPanel>
     </Border>

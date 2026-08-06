@@ -22,8 +22,13 @@ public partial class ExplorerPaneViewModel : Tool
 	[ObservableProperty]
 	bool inCommitScope;
 
+	/// <summary>The bar states the reading scope whenever a review is open, so the choice
+	/// is visible from where the files are rather than only once it has been made.</summary>
 	[ObservableProperty]
-	string commitScopeLine = "";
+	bool hasReview;
+
+	[ObservableProperty]
+	string commitScopeLine = "Whole change";
 
 	public ExplorerPaneViewModel(ReviewWorkspace workspace)
 	{
@@ -31,16 +36,20 @@ public partial class ExplorerPaneViewModel : Tool
 		Files = new PrFilesPaneViewModel(workspace);
 		Browser = new FileBrowserPaneViewModel(workspace);
 		workspace.CommitScopeChanged += () => Dispatcher.UIThread.Post(UpdateCommitScope);
+		workspace.ReviewChanged += () => Dispatcher.UIThread.Post(UpdateCommitScope);
 		UpdateCommitScope();
 	}
 
 	void UpdateCommitScope()
 	{
+		HasReview = workspace.HeadSha is not null;
 		InCommitScope = workspace.CommitScope is not null;
 		CommitScopeLine = workspace.CommitScope is { } commit
 			? $"Commit {workspace.CommitScopeIndex + 1} of {workspace.ScopeCommits.Count}: {commit.Subject}"
-			: "";
+			: "Whole change";
 	}
+
+	public void EnterCommitScope() => workspace.EnterCommitScopeAsync().HandleExceptions();
 
 	public void StepCommit(int direction) => workspace.StepCommitScopeAsync(direction).HandleExceptions();
 
