@@ -120,14 +120,18 @@ public sealed class CallBucketNode : SharpTreeNode
 	}
 }
 
-/// <summary>One call, at the line it happens on.</summary>
+/// <summary>One call: the place the member above it calls its parent, with the source
+/// line, so a member that calls the target several times can be opened at the right one
+/// rather than at its own signature.</summary>
 public sealed class CallSiteNode(CallGraphPaneViewModel owner, ReviewWorkspace.CallSiteItem site) : SharpTreeNode
 {
 	public ReviewWorkspace.CallSiteItem Site { get; } = site;
 
 	public override object Text => $"{Site.RelPath}:{Site.Line}   {Site.Preview}";
 
-	public override object Icon => Images.Field;
+	public override object Icon => Images.ViewCode;
+
+	public override object ToolTip => $"Call at {Site.RelPath}:{Site.Line}";
 
 	public override void ActivateItem(IPlatformRoutedEventArgs e)
 	{

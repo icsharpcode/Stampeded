@@ -114,6 +114,7 @@ static class ScreenshotWatcher
 						&& index < list.ItemCount)
 					{
 						list.SelectedIndex = index;
+						list.ScrollIntoView(index);
 					}
 				}
 				foreach (var command in lines.Where(l => l.StartsWith("goto:", StringComparison.Ordinal)))
