@@ -14,6 +14,11 @@ public sealed partial class CallGraphState : ObservableObject
 {
 	[ObservableProperty]
 	string status = "Right-click a symbol in a diff and choose Show Call Graph.";
+
+	/// <summary>Limits each level to members the review itself changes - the ones a change
+	/// here can actually collide with.</summary>
+	[ObservableProperty]
+	bool changedOnly;
 }
 
 /// <summary>
@@ -104,9 +109,11 @@ public sealed class CallBucketNode : SharpTreeNode
 					Children.Add(new CallMemberNode(owner, call));
 				if (Children.Count == 0)
 				{
-					Children.Add(new PlaceholderNode(direction == CallDirection.Callers
-						? "(no callers in this solution)"
-						: "(no calls out)"));
+					Children.Add(new PlaceholderNode(owner.State.ChangedOnly
+						? "(none among the members this review changes)"
+						: direction == CallDirection.Callers
+							? "(no callers in this solution)"
+							: "(no calls out)"));
 				}
 			});
 		}
@@ -143,6 +150,7 @@ public sealed class PlaceholderNode(string text) : SharpTreeNode
 public partial class CallGraphPaneViewModel : Tool
 {
 	readonly ReviewWorkspace workspace;
+	ReviewWorkspace.CallRoot? currentRoot;
 
 	public CallGraphState State { get; } = new();
 
@@ -159,23 +167,35 @@ public partial class CallGraphPaneViewModel : Tool
 			State.Status = message;
 		});
 		workspace.ReviewChanged += () => Dispatcher.UIThread.Post(() => {
+			currentRoot = null;
 			Root = null;
 			State.Status = "Right-click a symbol in a diff and choose Show Call Graph.";
 		});
+		// Children are fetched once per node, so changing what counts as a child has to
+		// start the tree over.
+		State.PropertyChanged += (_, e) => {
+			if (e.PropertyName == nameof(CallGraphState.ChangedOnly) && currentRoot is { } root)
+				SetRoot(root);
+		};
 	}
 
-	internal Task<IReadOnlyList<ReviewWorkspace.CallGraphItem>> GetCallsAsync(
+	internal async Task<IReadOnlyList<ReviewWorkspace.CallGraphItem>> GetCallsAsync(
 		ReviewWorkspace.CallGraphItem item, CallDirection direction)
-		=> item.RelPath is { Length: > 0 } relPath
-			? workspace.GetCallsAsync(relPath, item.Node.Line, item.Node.Column, item.OldSide, direction)
-			: Task.FromResult<IReadOnlyList<ReviewWorkspace.CallGraphItem>>([]);
+	{
+		if (item.RelPath is not { Length: > 0 } relPath)
+			return [];
+		var calls = await workspace.GetCallsAsync(
+			relPath, item.Node.Line, item.Node.Column, item.OldSide, direction);
+		return State.ChangedOnly ? [.. calls.Where(c => c.IsChanged)] : calls;
+	}
 
 	void SetRoot(ReviewWorkspace.CallRoot value)
 	{
+		currentRoot = value;
 		State.Status = $"{value.Display}: expand either direction, at any level. Double-click to jump.";
 		var item = new ReviewWorkspace.CallGraphItem(
 			new CallNode(value.Display, "", value.RelPath, value.Line, value.Column, []),
-			value.RelPath, value.OldSide, []);
+			value.RelPath, value.OldSide, IsChanged: false, []);
 		var node = new CallMemberNode(this, item);
 		var hidden = new PlaceholderNode("");
 		hidden.Children.Add(node);

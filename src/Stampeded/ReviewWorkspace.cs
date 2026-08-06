@@ -1318,6 +1318,7 @@ public sealed class ReviewWorkspace(string repoPath)
 				n,
 				n.FilePath is null ? null : sem.ToRelativePath(n.FilePath),
 				oldSide,
+				IsChangedMember(n.FilePath is null ? null : sem.ToRelativePath(n.FilePath), n.Display),
 				[.. n.Sites
 					.Select(s => (Rel: sem.ToRelativePath(s.FilePath), Site: s))
 					.Where(x => x.Rel is not null)
@@ -1325,11 +1326,18 @@ public sealed class ReviewWorkspace(string repoPath)
 			.ToList();
 	}
 
+	/// <summary>Whether this member is one the review changes. The change map names
+	/// members in the same display format, so they compare directly.</summary>
+	public bool IsChangedMember(string? relPath, string display)
+		=> relPath is { Length: > 0 }
+			&& ChangeMap.Any(e => e.RelPath == relPath && e.Display == display);
+
 	/// <summary>One call, at a repo-relative position.</summary>
 	public sealed record CallSiteItem(string RelPath, int Line, string Preview, bool OldSide);
 
 	/// <summary>A call-graph node paired with the repo-relative paths it lives at.</summary>
-	public sealed record CallGraphItem(CallNode Node, string? RelPath, bool OldSide, IReadOnlyList<CallSiteItem> Sites)
+	public sealed record CallGraphItem(
+		CallNode Node, string? RelPath, bool OldSide, bool IsChanged, IReadOnlyList<CallSiteItem> Sites)
 	{
 		public bool CanExpand => RelPath is { Length: > 0 };
 

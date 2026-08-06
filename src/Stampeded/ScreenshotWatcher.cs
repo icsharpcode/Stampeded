@@ -55,6 +55,26 @@ static class ScreenshotWatcher
 						view.HighlightAtCommand(hl, col);
 					}
 				}
+				foreach (var command in lines.Where(l => l.StartsWith("expand:", StringComparison.Ordinal)))
+				{
+					var parts = command.Split(':', 3);
+					if (parts.Length == 3 && int.TryParse(parts[2], out int row)
+						&& window.GetVisualDescendants().OfType<Controls.TreeView.SharpTreeView>()
+							.FirstOrDefault(t => t.Name == parts[1].Trim()) is { } tree
+						&& tree.ItemsSource is System.Collections.IList flat && row < flat.Count
+						&& flat[row] is Core.TreeView.SharpTreeNode node)
+					{
+						node.IsExpanded = true;
+					}
+				}
+				if (lines.Contains("changed-only"))
+				{
+					if (window.GetVisualDescendants().OfType<CheckBox>()
+						.FirstOrDefault(c => c.Content as string == "Only members this review changes") is { } box)
+					{
+						box.IsChecked = box.IsChecked != true;
+					}
+				}
 				if (lines.Contains("overview"))
 					App.Workspace?.OpenOverview();
 				if (lines.Contains("commit-scope"))

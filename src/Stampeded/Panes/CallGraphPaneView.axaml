@@ -5,12 +5,16 @@
              x:Class="Stampeded.Panes.CallGraphPaneView"
              x:DataType="panes:CallGraphPaneViewModel">
   <DockPanel>
+    <CheckBox DockPanel.Dock="Top" Margin="6,3,6,0" FontSize="11"
+              Content="Only members this review changes"
+              IsChecked="{Binding State.ChangedOnly}"
+              ToolTip.Tip="Hide callers and callees the review leaves alone, so what is left is what this change can collide with" />
     <TextBlock DockPanel.Dock="Bottom" Margin="6,4" Opacity="0.7" TextWrapping="Wrap" FontSize="11"
                Text="{Binding State.Status}" />
     <!-- SharpTreeView flattens the hierarchy into one virtualized list, so depth costs an
          indent rather than a nested container per level - a call tree can recurse as far
          as the reader keeps expanding. -->
-    <tv:SharpTreeView x:Name="Tree" Root="{Binding Root}" ShowRoot="False" ShowLines="True"
+    <tv:SharpTreeView x:Name="CallTree" Root="{Binding Root}" ShowRoot="False" ShowLines="True"
                       FontSize="12" />
   </DockPanel>
 </UserControl>
