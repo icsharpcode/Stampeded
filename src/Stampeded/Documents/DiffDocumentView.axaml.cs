@@ -490,6 +490,12 @@ public partial class DiffDocumentView : UserControl
 
 	void OnCtxNextUncovered(object? s, RoutedEventArgs e) => JumpToNextUncovered();
 
+	void OnCtxNextCommit(object? s, RoutedEventArgs e)
+		=> App.Workspace?.StepCommitScopeAsync(1).HandleExceptions();
+
+	void OnCtxPrevCommit(object? s, RoutedEventArgs e)
+		=> App.Workspace?.StepCommitScopeAsync(-1).HandleExceptions();
+
 	void OnCtxHistoryOfSelection(object? s, RoutedEventArgs e)
 	{
 		string text = Editor.SelectedText;
@@ -706,6 +712,14 @@ public partial class DiffDocumentView : UserControl
 				break;
 			case (Key.P, KeyModifiers.None):
 				JumpToHunk(-1);
+				e.Handled = true;
+				break;
+			case (Key.OemCloseBrackets, KeyModifiers.Control):
+				App.Workspace?.StepCommitScopeAsync(1).HandleExceptions();
+				e.Handled = true;
+				break;
+			case (Key.OemOpenBrackets, KeyModifiers.Control):
+				App.Workspace?.StepCommitScopeAsync(-1).HandleExceptions();
 				e.Handled = true;
 				break;
 			case (Key.OemCloseBrackets, KeyModifiers.None):

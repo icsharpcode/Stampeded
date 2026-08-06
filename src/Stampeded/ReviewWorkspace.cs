@@ -1121,8 +1121,19 @@ public sealed class ReviewWorkspace(string repoPath)
 		bool viewed = !Store.IsViewed(file.Path);
 		Store.SetViewed(file.Path, viewed);
 		ViewedChanged?.Invoke(file.Path, viewed);
-		if (viewed)
-			await OpenAdjacentFileAsync(1);
+		if (!viewed)
+			return;
+		if (CommitScope is not null && Files.All(f => Store.IsViewed(f.Path)))
+		{
+			if (CommitScopeIndex + 1 < ScopeCommits.Count)
+			{
+				await StepCommitScopeAsync(1);
+				return;
+			}
+			StatusMessage?.Invoke("Last commit read. 'Whole change' reviews the change as one diff.");
+			return;
+		}
+		await OpenAdjacentFileAsync(1);
 	}
 
 	public void SetViewed(string path, bool viewed)

@@ -30,4 +30,12 @@ public partial class ExplorerPaneView : UserControl
 		FilesSection.RevealFile(path);
 		BrowserSection.RevealAsync(path).HandleExceptions();
 	}
+
+	ExplorerPaneViewModel? Vm => DataContext as ExplorerPaneViewModel;
+
+	void OnPreviousCommit(object? sender, Avalonia.Interactivity.RoutedEventArgs e) => Vm?.StepCommit(-1);
+
+	void OnNextCommit(object? sender, Avalonia.Interactivity.RoutedEventArgs e) => Vm?.StepCommit(1);
+
+	void OnExitCommitScope(object? sender, Avalonia.Interactivity.RoutedEventArgs e) => Vm?.ExitCommitScope();
 }
