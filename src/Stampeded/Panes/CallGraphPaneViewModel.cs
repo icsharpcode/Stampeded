@@ -87,11 +87,19 @@ public sealed class CallBucketNode : SharpTreeNode
 		LazyLoading = true;
 	}
 
-	public override object Text => direction == CallDirection.Callers
-		? $"Calls to '{item.Node.Display}'"
-		: $"Calls from '{item.Node.Display}'";
+	int? loadedCount;
 
-	public override object Icon => direction == CallDirection.Callers ? Images.SubTypes : Images.SuperTypes;
+	// The member is named on the row above; repeating its signature here says nothing.
+	public override object Text
+	{
+		get
+		{
+			string label = direction == CallDirection.Callers ? "Incoming calls" : "Outgoing calls";
+			return loadedCount is { } count ? $"{label}  ({count})" : label;
+		}
+	}
+
+	public override object Icon => direction == CallDirection.Callers ? Images.SuperTypes : Images.SubTypes;
 
 	protected override void LoadChildren()
 	{
@@ -107,6 +115,8 @@ public sealed class CallBucketNode : SharpTreeNode
 				Children.Clear();
 				foreach (var call in calls)
 					Children.Add(new CallMemberNode(owner, call));
+				loadedCount = calls.Count;
+				RaisePropertyChanged(nameof(Text));
 				if (Children.Count == 0)
 				{
 					Children.Add(new PlaceholderNode(owner.State.ChangedOnly
