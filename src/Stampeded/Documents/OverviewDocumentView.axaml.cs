@@ -19,6 +19,14 @@ public partial class OverviewDocumentView : UserControl
 
 	void OnOpenVsCode(object? sender, RoutedEventArgs e) => Vm?.OpenInVsCode();
 
+	void OnEnterCommitScope(object? sender, RoutedEventArgs e) => Vm?.EnterCommitScope();
+
+	void OnPreviousCommit(object? sender, RoutedEventArgs e) => Vm?.StepCommitScope(-1);
+
+	void OnNextCommit(object? sender, RoutedEventArgs e) => Vm?.StepCommitScope(1);
+
+	void OnExitCommitScope(object? sender, RoutedEventArgs e) => Vm?.ExitCommitScope();
+
 	void OnRefreshChecks(object? sender, RoutedEventArgs e) => Vm?.RefreshChecks();
 
 	void OnOpenFixtures(object? sender, RoutedEventArgs e) => Vm?.OpenFixturesInIlspy();

@@ -81,6 +81,16 @@ public sealed partial class OverviewState : ObservableObject
 	[ObservableProperty]
 	bool commitsExpanded;
 
+	/// <summary>True while the change is being read one commit at a time.</summary>
+	[ObservableProperty]
+	bool inCommitScope;
+
+	[ObservableProperty]
+	string commitScopeLine = "";
+
+	[ObservableProperty]
+	bool canEnterCommitScope;
+
 	[ObservableProperty]
 	string toolStatus = "";
 
@@ -129,6 +139,7 @@ public class OverviewDocumentViewModel : Document
 		});
 		workspace.TestResultsChanged += () => Dispatcher.UIThread.Post(RebuildTests);
 		workspace.StatusMessage += message => Dispatcher.UIThread.Post(() => State.ToolStatus = message);
+		workspace.CommitScopeChanged += () => Dispatcher.UIThread.Post(RebuildCommitScope);
 		State.HasFixtureTools = workspace.HasDecompilerTestCases;
 		RebuildAll();
 	}
@@ -157,6 +168,7 @@ public class OverviewDocumentViewModel : Document
 		State.Description = workspace.CurrentPr?.Body is { Length: > 0 } body
 			? body.ReplaceLineEndings("\n")
 			: "(no description)";
+		RebuildCommitScope();
 		RebuildLinkedIssues();
 		RebuildFiles();
 		RebuildChecks();
@@ -165,6 +177,22 @@ public class OverviewDocumentViewModel : Document
 		OnChangeMap();
 		LoadCommitsAsync().HandleExceptions();
 	}
+
+	void RebuildCommitScope()
+	{
+		State.CanEnterCommitScope = workspace.CanEnterCommitScope;
+		State.InCommitScope = workspace.CommitScope is not null;
+		State.CommitScopeLine = workspace.CommitScope is { } commit
+			? $"Commit {workspace.CommitScopeIndex + 1} of {workspace.ScopeCommits.Count}:  "
+				+ $"{commit.ShortSha}  {commit.Subject}"
+			: "";
+	}
+
+	public void EnterCommitScope() => workspace.EnterCommitScopeAsync().HandleExceptions();
+
+	public void StepCommitScope(int direction) => workspace.StepCommitScopeAsync(direction).HandleExceptions();
+
+	public void ExitCommitScope() => workspace.ExitCommitScopeAsync().HandleExceptions();
 
 	void RebuildLinkedIssues()
 	{

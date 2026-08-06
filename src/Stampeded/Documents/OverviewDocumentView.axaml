@@ -45,6 +45,10 @@
           <Button Content="Fixtures in ILSpy" FontSize="11" Click="OnOpenFixtures"
                   IsVisible="{Binding State.HasFixtureTools}"
                   ToolTip.Tip="Open the compiled test-case assemblies this change affects in the ILSpy built from the review head (run the decompiler tests first)" />
+          <Button Content="Commit by commit" FontSize="11" Click="OnEnterCommitScope"
+                  IsVisible="{Binding !State.InCommitScope}"
+                  IsEnabled="{Binding State.CanEnterCommitScope}"
+                  ToolTip.Tip="Read the change one commit at a time, in the order it was written" />
           <Button Content="Bounce..." FontSize="11" Click="OnBounce"
                   ToolTip.Tip="Draft a decline-with-reason review comment" />
           <Button Content="Review record" FontSize="11" Click="OnRecord"
@@ -55,6 +59,21 @@
         <TextBlock FontWeight="SemiBold" FontSize="17" Text="{Binding State.Title}"
                    TextTrimming="CharacterEllipsis" />
       </DockPanel>
+      <!-- The commit stepper takes over the top of the page while it is on: it is the
+           scope everything below refers to. -->
+      <Border Margin="0,6,0,0" Padding="8,4" CornerRadius="3" BorderThickness="1"
+              BorderBrush="#803794FF" IsVisible="{Binding State.InCommitScope}">
+        <DockPanel>
+          <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="6">
+            <Button Content="Previous" FontSize="11" Click="OnPreviousCommit" />
+            <Button Content="Next" FontSize="11" FontWeight="SemiBold" Click="OnNextCommit" />
+            <Button Content="Whole change" FontSize="11" Click="OnExitCommitScope"
+                    ToolTip.Tip="Stop stepping and review the change as one diff again" />
+          </StackPanel>
+          <TextBlock Classes="statusline" FontWeight="SemiBold" VerticalAlignment="Center"
+                     TextTrimming="CharacterEllipsis" Text="{Binding State.CommitScopeLine}" />
+        </DockPanel>
+      </Border>
       <TextBlock Classes="statusline" Foreground="#D29922" Margin="0,4,0,0" TextWrapping="Wrap"
                  Text="{Binding State.WorkingTreeLine}"
                  IsVisible="{Binding State.WorkingTreeLine, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />

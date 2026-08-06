@@ -43,6 +43,11 @@ public sealed class ReviewStateStore
 	public void Open(string repoKey, int prNumber, string headSha)
 		=> OpenFile($"{Sanitize(repoKey)}_pr{prNumber}.json", headSha);
 
+	/// <summary>State for reading one commit on its own. Keyed by the commit, so having
+	/// read a file in one commit says nothing about the next commit's change to it.</summary>
+	public void OpenCommitScope(string repoKey, string commitSha)
+		=> OpenFile($"{Sanitize(repoKey)}_commit_{commitSha[..9]}.json", commitSha);
+
 	/// <summary>State for a local base..head review (no PR); keyed by the range text.</summary>
 	public void OpenLocal(string repoKey, string rangeKey, string headSha)
 		=> OpenFile($"{Sanitize(repoKey)}_local_{Sanitize(rangeKey)}.json", headSha);

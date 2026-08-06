@@ -764,6 +764,104 @@ public sealed class ReviewWorkspace(string repoPath)
 		return null;
 	}
 
+	#region Per-commit reading
+
+	/// <summary>
+	/// The commit being read on its own, when the change is being worked through one
+	/// commit at a time instead of as a single diff. A well-made series is the author's
+	/// own decomposition of the change, and following it is usually easier than reading
+	/// every logic change at once.
+	/// </summary>
+	public CommitInfo? CommitScope { get; private set; }
+
+	/// <summary>The commits of the review, oldest first - the order they were written in.</summary>
+	public IReadOnlyList<CommitInfo> ScopeCommits { get; private set; } = [];
+
+	public int CommitScopeIndex { get; private set; }
+
+	(string Base, string Head)? fullRange;
+
+	public event Action? CommitScopeChanged;
+
+	public bool CanEnterCommitScope => HeadSha is not null && DirtyWorktreePath is null;
+
+	/// <summary>Reads the review one commit at a time, starting at the oldest.</summary>
+	public async Task EnterCommitScopeAsync(int index = 0)
+	{
+		if (BaseSha is not { } baseSha || HeadSha is not { } headSha)
+			return;
+		if (ScopeCommits.Count == 0)
+		{
+			var commits = await Git.LogAsync($"{baseSha}..{headSha}", null, follow: false, limit: 200);
+			// Oldest first: the series is meant to be read in the order it was written.
+			ScopeCommits = [.. commits.Reverse()];
+		}
+		if (ScopeCommits.Count == 0)
+		{
+			StatusMessage?.Invoke("This review has no commits to step through.");
+			return;
+		}
+		fullRange ??= (baseSha, headSha);
+		await ApplyCommitScopeAsync(Math.Clamp(index, 0, ScopeCommits.Count - 1));
+	}
+
+	public Task StepCommitScopeAsync(int direction)
+		=> CommitScope is null
+			? Task.CompletedTask
+			: ApplyCommitScopeAsync(Math.Clamp(CommitScopeIndex + direction, 0, ScopeCommits.Count - 1));
+
+	async Task ApplyCommitScopeAsync(int index)
+	{
+		var commit = ScopeCommits[index];
+		CommitScopeIndex = index;
+		CommitScope = commit;
+		string parent = await ResolveAsync($"{commit.Sha}^", CancellationToken.None);
+		BaseSha = parent;
+		HeadSha = commit.Sha;
+		Files = await Git.DiffAsync(parent, commit.Sha);
+		IndexAddedLines(Files);
+		Store.OpenCommitScope(Path.GetFileName(RepoPath), commit.Sha);
+		ResetChangeMap();
+		CloseDocumentsExceptStart();
+		CliLog.Write("action", $"commit scope {index + 1}/{ScopeCommits.Count} {commit.ShortSha}");
+		ReviewChanged?.Invoke();
+		CommitScopeChanged?.Invoke();
+		OpenOverview();
+		OpenUnviewedFilesAsync().HandleExceptions();
+		// The semantic workspaces stay on the review's head: they describe where the code
+		// ends up, which is the right frame for navigating out of a commit being read.
+		ComputeChangeMapAsync().HandleExceptions();
+	}
+
+	/// <summary>Back to reading the whole change at once.</summary>
+	public async Task ExitCommitScopeAsync()
+	{
+		if (fullRange is not { } range)
+			return;
+		CommitScope = null;
+		BaseSha = range.Base;
+		HeadSha = range.Head;
+		fullRange = null;
+		Files = DirtyWorktreePath is { } dirty
+			? await Git.DiffWorkingTreeAsync(dirty, range.Base)
+			: await Git.DiffAsync(range.Base, range.Head);
+		IndexAddedLines(Files);
+		if (CurrentPr is { } pr)
+			Store.Open(Path.GetFileName(RepoPath), pr.Number, range.Head);
+		else
+			Store.OpenLocal(Path.GetFileName(RepoPath), $"{range.Base[..9]}..{range.Head[..9]}", range.Head);
+		ResetChangeMap();
+		CloseDocumentsExceptStart();
+		CliLog.Write("action", "commit scope off");
+		ReviewChanged?.Invoke();
+		CommitScopeChanged?.Invoke();
+		OpenOverview();
+		OpenUnviewedFilesAsync().HandleExceptions();
+		ComputeChangeMapAsync().HandleExceptions();
+	}
+
+	#endregion
+
 	/// <summary>Stops background work and releases the Roslyn workspaces; called when the
 	/// app switches to another repository and this instance is abandoned.</summary>
 	public void Shutdown()
@@ -924,6 +1022,9 @@ public sealed class ReviewWorkspace(string repoPath)
 		BaseSemantics?.Dispose();
 		BaseSemantics = null;
 		CurrentPr = null;
+		CommitScope = null;
+		ScopeCommits = [];
+		fullRange = null;
 		DirtyWorktreePath = null;
 		UncommittedFileCount = 0;
 		BaseSha = null;

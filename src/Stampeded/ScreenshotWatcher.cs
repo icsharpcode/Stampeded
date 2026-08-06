@@ -46,6 +46,14 @@ static class ScreenshotWatcher
 					if (parts.Length == 3)
 						App.Workspace?.OpenLocalRangeAsync(parts[1].Trim(), parts[2].Trim()).HandleExceptions();
 				}
+				if (lines.Contains("overview"))
+					App.Workspace?.OpenOverview();
+				if (lines.Contains("commit-scope"))
+					App.Workspace?.EnterCommitScopeAsync().HandleExceptions();
+				if (lines.Contains("commit-next"))
+					App.Workspace?.StepCommitScopeAsync(1).HandleExceptions();
+				if (lines.Contains("commit-exit"))
+					App.Workspace?.ExitCommitScopeAsync().HandleExceptions();
 				if (lines.Contains("sbs"))
 					App.Workspace?.OpenSideBySideAsync().HandleExceptions();
 				if (lines.Contains("vscode"))
