@@ -612,12 +612,10 @@ public partial class DiffDocumentView : UserControl
 
 		var headSem = ws.SemanticsFor(oldSide: false);
 		var baseSem = ws.SemanticsFor(oldSide: true);
-		var headTokens = headSem is { State: SemanticState.Ready or SemanticState.SyntaxOnly }
-			? await headSem.GetSemanticTokensAsync(vm.File.Path, CancellationToken.None)
-			: [];
+		var headTokens = await TokensForSideAsync(headSem, vm.File.Path, m, oldSide: false);
 		bool hasRemoved = m.Tags.Any(t => t.Kind == DiffLineKind.Removed);
-		var baseTokens = hasRemoved && baseSem is { State: SemanticState.Ready or SemanticState.SyntaxOnly }
-			? await baseSem.GetSemanticTokensAsync(vm.File.OldPath, CancellationToken.None)
+		var baseTokens = hasRemoved
+			? await TokensForSideAsync(baseSem, vm.File.OldPath, m, oldSide: true)
 			: [];
 		if (model != m || viewModel != vm)
 			return; // document changed while we were computing
@@ -633,6 +631,35 @@ public partial class DiffDocumentView : UserControl
 		Editor.TextArea.TextView.LineTransformers.Add(semanticColorizer);
 		referenceGenerator.References = segments;
 		Editor.TextArea.TextView.Redraw();
+	}
+
+	/// <summary>
+	/// Tokens for one side of the diff. Token positions are offsets into the text they
+	/// were computed from, so the loaded workspace's are only usable when it holds the
+	/// revision on screen - which it does not when a single commit of a file is being
+	/// read and later commits change it. The displayed text is then classified on its
+	/// own: less knowledgeable, but aligned with what is actually shown.
+	/// </summary>
+	static async Task<IReadOnlyList<SemanticToken>> TokensForSideAsync(
+		RoslynWorkspaceService? semantics, string relPath, DiffDocumentModel model, bool oldSide)
+	{
+		var (displayed, _) = model.GetSideText(oldSide);
+		if (displayed.Length == 0)
+			return [];
+		if (semantics is { State: SemanticState.Ready or SemanticState.SyntaxOnly }
+			&& await semantics.GetDocumentTextAsync(relPath, CancellationToken.None) is { } loaded
+			&& Same(loaded, displayed))
+		{
+			return await semantics.GetSemanticTokensAsync(relPath, CancellationToken.None);
+		}
+		return semantics is { State: SemanticState.Ready or SemanticState.SyntaxOnly }
+			? await semantics.GetSemanticTokensForTextAsync(relPath, displayed, CancellationToken.None)
+			: [];
+
+		static bool Same(string a, string b) => string.Equals(
+			a.ReplaceLineEndings("\n").TrimEnd('\n'),
+			b.ReplaceLineEndings("\n").TrimEnd('\n'),
+			StringComparison.Ordinal);
 	}
 
 	void AddTokens(RichTextModel rich, TextSegmentCollection<ReferenceSegment> segments,

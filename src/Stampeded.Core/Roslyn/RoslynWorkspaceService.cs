@@ -289,8 +289,25 @@ public sealed class RoslynWorkspaceService : IDisposable
 	public async Task<IReadOnlyList<SemanticToken>> GetSemanticTokensAsync(string repoRelativePath, CancellationToken ct)
 	{
 		var document = GetDocument(ToAbsolutePath(repoRelativePath));
-		if (document is null)
-			return [];
+		return document is null ? [] : await ClassifyAsync(document, ct);
+	}
+
+	/// <summary>
+	/// Classifies a revision of a file that this workspace does not hold - one commit of a
+	/// file that later commits change. The loaded document is forked with the given text,
+	/// so the project's references and its other files still stand behind it and names
+	/// still resolve; only this file's content differs. Positions are exact for the text
+	/// given, which is what applying them to the view requires.
+	/// </summary>
+	public async Task<IReadOnlyList<SemanticToken>> GetSemanticTokensForTextAsync(
+		string repoRelativePath, string text, CancellationToken ct)
+	{
+		var document = GetDocument(ToAbsolutePath(repoRelativePath));
+		return document is null ? [] : await ClassifyAsync(document.WithText(SourceText.From(text)), ct);
+	}
+
+	static async Task<IReadOnlyList<SemanticToken>> ClassifyAsync(Document document, CancellationToken ct)
+	{
 		var text = await document.GetTextAsync(ct);
 		var classified = await Classifier.GetClassifiedSpansAsync(document, new TextSpan(0, text.Length), ct);
 		var tokens = new List<SemanticToken>();
@@ -314,6 +331,19 @@ public sealed class RoslynWorkspaceService : IDisposable
 	}
 
 	/// <summary>IDE-style quick info (signature, docs, ...) as plain text sections.</summary>
+	/// <summary>
+	/// This workspace's copy of a file. Token positions only mean anything against the
+	/// exact text they were computed from, so a caller displaying some other revision has
+	/// to check before using them.
+	/// </summary>
+	public async Task<string?> GetDocumentTextAsync(string repoRelativePath, CancellationToken ct)
+	{
+		var document = GetDocument(ToAbsolutePath(repoRelativePath));
+		if (document is null)
+			return null;
+		return (await document.GetTextAsync(ct)).ToString();
+	}
+
 	public async Task<string?> GetQuickInfoAsync(string repoRelativePath, int position, CancellationToken ct)
 	{
 		var document = GetDocument(ToAbsolutePath(repoRelativePath));

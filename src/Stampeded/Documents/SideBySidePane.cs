@@ -30,6 +30,7 @@ sealed class SideBySidePane
 
 	RichTextColorizer? colorizer;
 	IReadOnlyList<DiffLineTag> tags = [];
+	string pairText = "";
 	string relPath = "";
 	string dockableId = "";
 	Point? clickStart;
@@ -58,6 +59,7 @@ sealed class SideBySidePane
 	public void SetDocument(SideBySideDocumentViewModel vm)
 	{
 		tags = oldSide ? vm.Pair.LeftTags : vm.Pair.RightTags;
+		pairText = vm.Pair.GetSideText(oldSide).Text;
 		relPath = oldSide ? vm.File.OldPath : vm.File.Path;
 		dockableId = vm.Id ?? "";
 		blobToDocLine.Clear();
@@ -89,6 +91,16 @@ sealed class SideBySidePane
 		if (semantics is not { State: SemanticState.Ready or SemanticState.SyntaxOnly })
 			return;
 		var expectedTags = tags;
+		// Token positions are offsets into the text they were computed from; against any
+		// other revision of the file they paint the wrong spans.
+		if (await semantics.GetDocumentTextAsync(relPath, CancellationToken.None) is not { } loaded
+			|| !string.Equals(
+				loaded.ReplaceLineEndings("\n").TrimEnd('\n'),
+				pairText.ReplaceLineEndings("\n").TrimEnd('\n'),
+				StringComparison.Ordinal))
+		{
+			return;
+		}
 		var tokens = await semantics.GetSemanticTokensAsync(relPath, CancellationToken.None);
 		if (!ReferenceEquals(expectedTags, tags))
 			return; // the pane was pointed at another document while we computed
