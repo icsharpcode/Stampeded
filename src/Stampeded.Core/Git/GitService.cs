@@ -6,12 +6,64 @@ namespace Stampeded.Core.Git;
 /// <summary>A checkout of the repository and the branch it has, if any.</summary>
 public sealed record WorktreeCheckout(string Path, string? Branch);
 
+/// <summary>What pulling origin's copy of a branch did to the local branch.</summary>
+public enum PullOutcome
+{
+	/// <summary>There was no local branch of that name; it now exists at origin's commit.</summary>
+	Created,
+	FastForwarded,
+	AlreadyUpToDate,
+	/// <summary>Both sides have commits the other does not, so no fast-forward exists and
+	/// nothing was changed.</summary>
+	Diverged,
+}
+
+public sealed record PullResult(PullOutcome Outcome, string Sha);
+
+/// <summary>What pushing a branch to origin did, or would have to do.</summary>
+public enum PushOutcome
+{
+	/// <summary>Origin did not have the branch; it does now.</summary>
+	Created,
+	Pushed,
+	/// <summary>Origin's copy was not an ancestor of the local branch - what a rebase leaves
+	/// behind - so it was replaced with --force-with-lease.</summary>
+	ForcePushed,
+	AlreadyUpToDate,
+}
+
+public sealed record PushResult(PushOutcome Outcome, string Sha);
+
+public enum RebaseOutcome
+{
+	Rebased,
+	/// <summary>The merge tool left conflicts unresolved; the rebase is still in progress in
+	/// <see cref="RebaseResult.WorkingDirectory"/>.</summary>
+	Conflicted,
+}
+
+/// <summary>The outcome of a rebase: the branch's SHA from before it, which is the recovery
+/// point if the result is unwanted, and the checkout the rebase ran in when the branch was
+/// already checked out somewhere (null when a throwaway worktree was used). Recovery differs
+/// between the two: a branch no checkout holds is moved with `git branch -f`, which git
+/// refuses for one that is checked out - that one is recovered with `git reset --hard` in the
+/// checkout, so its working tree follows the ref back.</summary>
+public sealed record RebaseResult(string Before, string? Checkout, RebaseOutcome Outcome, string WorkingDirectory)
+{
+	public string RecoveryCommand(string branch)
+		=> Checkout is null
+			? $"git branch -f {branch} {Before[..9]}"
+			: $"git -C {Checkout} reset --hard {Before[..9]}";
+}
+
 /// <summary>
-/// Git access for one local clone, via the git CLI. Never touches the user's working
-/// tree or index: reads come from the object database (fetch, merge-base, diff, show) or,
-/// for a review of uncommitted work, from a checkout's files; the operations that write
-/// (branch creation, rebase) touch refs only, running any checkout they need in a
-/// throwaway worktree. An open review cannot disturb whatever the user has checked out.
+/// Git access for one local clone, via the git CLI. Reads never touch the user's working
+/// tree or index: they come from the object database (fetch, merge-base, diff, show) or,
+/// for a review of uncommitted work, from a checkout's files. The operations that write
+/// (branch creation, rebase) touch refs only, running any checkout they need in a throwaway
+/// worktree - the one exception being a rebase of a branch that a checkout already has,
+/// which has to happen in that checkout (see <see cref="RebaseBranchAsync"/>). So reviewing
+/// cannot disturb what the user has checked out; only an explicit rebase can.
 /// </summary>
 public sealed class GitService(string repoPath)
 {
@@ -38,6 +90,25 @@ public sealed class GitService(string repoPath)
 
 	public async Task<string> RevParseAsync(string reference, CancellationToken ct = default)
 		=> (await RunAsync(ct, "rev-parse", "--verify", reference)).Trim();
+
+	/// <summary>The commit a ref names, or null when there is no such ref.</summary>
+	public async Task<string?> TryRevParseAsync(string reference, CancellationToken ct = default)
+	{
+		try
+		{
+			return await RevParseAsync(reference, ct);
+		}
+		catch (ToolFailedException)
+		{
+			return null;
+		}
+	}
+
+	/// <summary>Updates the remote-tracking refs for every branch on origin. Sync states are
+	/// computed against commits that have to be in the object database, so a branch whose PR
+	/// head was never fetched reads as "differs" until this has run.</summary>
+	public Task FetchAsync(CancellationToken ct = default)
+		=> RunAsync(ct, "fetch", "origin");
 
 	/// <summary>Fetches the PR head into refs/stampeded/pr/N and returns its SHA.</summary>
 	public async Task<string> FetchPrHeadAsync(int number, CancellationToken ct = default)
@@ -189,47 +260,173 @@ public sealed class GitService(string repoPath)
 
 	/// <summary>
 	/// Rebases a local branch onto another ref in a throwaway worktree, leaving the user's
-	/// checkout alone. Returns the branch's SHA from before the rebase, which is the
-	/// recovery point if the result is unwanted. On conflict the rebase is aborted, so the
-	/// branch is left exactly as it was, and the conflict is reported as a failure.
-	/// Git itself refuses when the branch is checked out somewhere, and that message is
-	/// passed through unchanged.
+	/// checkout alone.
+	///
+	/// A branch that a checkout already has is rebased in that checkout instead: git allows
+	/// a branch in only one checkout at a time, so a throwaway worktree cannot have it. That
+	/// moves the checkout's working tree and index along with the ref, which is the point -
+	/// updating the ref behind its back would leave it describing a commit the branch no
+	/// longer points at. Git's own refusals there (uncommitted changes, a rebase already in
+	/// progress) are passed through unchanged.
+	///
+	/// Conflicts open the configured merge tool rather than ending the rebase, and each
+	/// resolved step is continued automatically. What the tool leaves unresolved stays
+	/// unresolved: the rebase is left in progress in <see cref="RebaseResult.WorkingDirectory"/>
+	/// for the user to finish or abort, because discarding it would throw away the
+	/// resolutions they just made.
 	/// </summary>
-	public async Task<string> RebaseBranchAsync(string branch, string onto, CancellationToken ct = default)
+	public async Task<RebaseResult> RebaseBranchAsync(string branch, string onto, CancellationToken ct = default)
 	{
 		string before = await RevParseAsync(branch, ct);
-		string dir = Path.Combine(Path.GetTempPath(), "stampeded-rebase-" + Guid.NewGuid().ToString("N")[..8]);
-		await RunAsync(ct, "worktree", "add", "--quiet", dir, branch);
+		var checkout = await FindCheckoutAsync(branch, ct);
+		string dir = checkout?.Path
+			?? Path.Combine(Path.GetTempPath(), "stampeded-rebase-" + Guid.NewGuid().ToString("N")[..8]);
+		if (checkout is null)
+			await RunAsync(ct, "worktree", "add", "--quiet", dir, branch);
+		bool leaveInPlace = false;
 		try
-		{
-			await ExternalTool.RunAsync("git", ["rebase", onto], dir, ct);
-			return before;
-		}
-		catch (ToolFailedException)
 		{
 			try
 			{
-				await ExternalTool.RunAsync("git", ["rebase", "--abort"], dir, ct);
+				await ExternalTool.RunAsync("git", ["rebase", onto], dir, ct);
 			}
 			catch (ToolFailedException)
 			{
-				// Nothing to abort (the rebase failed before starting); the branch is
-				// untouched either way, so the original failure is what matters.
+				// Without conflicts it never started (a dirty checkout, a bad ref): nothing
+				// is in progress to abort, the branch is untouched, and the failure is the
+				// whole answer.
+				if (!await HasUnmergedFilesAsync(dir, ct))
+					throw;
+				if (!await ResolveConflictsAsync(dir, ct))
+				{
+					leaveInPlace = true;
+					return new RebaseResult(before, checkout?.Path, RebaseOutcome.Conflicted, dir);
+				}
 			}
-			throw;
+			return new RebaseResult(before, checkout?.Path, RebaseOutcome.Rebased, dir);
 		}
 		finally
 		{
-			try
+			if (checkout is null && !leaveInPlace)
 			{
-				await RunAsync(CancellationToken.None, "worktree", "remove", "--force", dir);
-			}
-			catch (ToolFailedException)
-			{
-				await RunAsync(CancellationToken.None, "worktree", "prune");
+				try
+				{
+					await RunAsync(CancellationToken.None, "worktree", "remove", "--force", dir);
+				}
+				catch (ToolFailedException)
+				{
+					await RunAsync(CancellationToken.None, "worktree", "prune");
+				}
 			}
 		}
 	}
+
+	/// <summary>Paths git reports as unmerged - the conflicts a rebase stopped on.</summary>
+	async Task<bool> HasUnmergedFilesAsync(string dir, CancellationToken ct)
+		=> (await ExternalTool.RunAsync("git", ["diff", "--name-only", "--diff-filter=U"], dir, ct)).Trim().Length > 0;
+
+	/// <summary>
+	/// Runs the user's merge tool over each conflicted step and continues the rebase, until
+	/// it finishes or the tool leaves something unresolved (the user closed it without
+	/// deciding, or none is configured). True only when the rebase ran to completion.
+	/// </summary>
+	async Task<bool> ResolveConflictsAsync(string dir, CancellationToken ct)
+	{
+		// A rebase stops once per conflicting commit, so this is a loop, not one pass. The
+		// bound is a backstop against a tool that exits without ever resolving anything.
+		for (int step = 0; step < 50; step++)
+		{
+			try
+			{
+				// -y: git otherwise prompts on a terminal this process does not have.
+				await ExternalTool.RunAsync("git", ["mergetool", "-y"], dir, ct);
+			}
+			catch (ToolFailedException)
+			{
+				return false;
+			}
+			if (await HasUnmergedFilesAsync(dir, ct))
+				return false;
+			bool continued;
+			try
+			{
+				// GIT_EDITOR=true accepts the existing commit message: the rebase is being
+				// driven from a UI with nowhere to show an editor.
+				await ExternalTool.RunAsync("git", ["rebase", "--continue"], dir, ct,
+					env: new Dictionary<string, string> { ["GIT_EDITOR"] = "true" });
+				continued = true;
+			}
+			catch (ToolFailedException)
+			{
+				continued = false;
+			}
+			// Continuing stops again on the next conflicting commit, which is another round;
+			// a failure with nothing unmerged is something this cannot drive.
+			if (continued)
+				return true;
+			if (!await HasUnmergedFilesAsync(dir, ct))
+				return false;
+		}
+		return false;
+	}
+
+	/// <summary>
+	/// Brings origin's copy of a branch into the local repository: creates the local branch
+	/// when it does not exist yet, fast-forwards it when it has fallen behind, and refuses
+	/// when the two have diverged - that case needs a rebase, which is a different decision
+	/// and is offered separately. Never merges, so the branch either moves along its own
+	/// history or is left alone.
+	/// </summary>
+	public async Task<PullResult> PullBranchAsync(string branch, CancellationToken ct = default)
+	{
+		await FetchBranchAsync(branch, ct);
+		string target = await RevParseAsync("FETCH_HEAD", ct);
+		if (await TryRevParseAsync($"refs/heads/{branch}", ct) is not { } local)
+		{
+			await RunAsync(ct, "branch", branch, target);
+			return new PullResult(PullOutcome.Created, target);
+		}
+		if (string.Equals(local, target, StringComparison.OrdinalIgnoreCase))
+			return new PullResult(PullOutcome.AlreadyUpToDate, target);
+		if (await GetMergeBaseAsync(local, target, ct) != local)
+			return new PullResult(PullOutcome.Diverged, target);
+		// Same constraint as a rebase: git allows a branch in one checkout at a time, and a
+		// checkout that has it has to move with it rather than be left behind.
+		if (await FindCheckoutAsync(branch, ct) is { } checkout)
+			await ExternalTool.RunAsync("git", ["merge", "--ff-only", target], checkout.Path, ct);
+		else
+			await RunAsync(ct, "branch", "--force", branch, target);
+		return new PullResult(PullOutcome.FastForwarded, target);
+	}
+
+	/// <summary>
+	/// Pushes a local branch to origin, force-pushing when origin's copy is not an ancestor
+	/// of it - the state a rebase leaves behind, where a plain push can only be rejected.
+	///
+	/// Forcing uses --force-with-lease, so it still refuses when origin has moved since the
+	/// last fetch: it overwrites the commits it knows about, not ones it has never seen.
+	/// Nothing here fetches first, deliberately - that would refresh the very ref the lease
+	/// is compared against and turn the guarantee back into a plain --force.
+	/// </summary>
+	public async Task<PushResult> PushBranchAsync(string branch, CancellationToken ct = default)
+	{
+		string local = await RevParseAsync($"refs/heads/{branch}", ct);
+		string? remote = await TryRevParseAsync($"refs/remotes/origin/{branch}", ct);
+		if (remote is not null && string.Equals(remote, local, StringComparison.OrdinalIgnoreCase))
+			return new PushResult(PushOutcome.AlreadyUpToDate, local);
+		bool fastForward = remote is null || await GetMergeBaseAsync(remote, local, ct) == remote;
+		if (fastForward)
+			await RunAsync(ct, "push", "origin", branch);
+		else
+			await RunAsync(ct, "push", "--force-with-lease", "origin", branch);
+		return new PushResult(
+			remote is null ? PushOutcome.Created : fastForward ? PushOutcome.Pushed : PushOutcome.ForcePushed,
+			local);
+	}
+
+	/// <summary>The checkout that has this branch, if any. A branch can be in only one.</summary>
+	async Task<WorktreeCheckout?> FindCheckoutAsync(string branch, CancellationToken ct)
+		=> (await ListWorktreesAsync(ct)).FirstOrDefault(w => w.Branch == branch);
 
 	/// <summary>The review base for local branches: origin's default branch when known,
 	/// else origin/master.</summary>

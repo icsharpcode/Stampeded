@@ -273,9 +273,9 @@ public class StartDocumentViewModel : Document
 		}
 	}
 
-	/// <summary>Rebases a local branch onto the default base in a throwaway worktree. On
-	/// conflict the branch is left untouched; on success the pre-rebase SHA is reported so
-	/// the old state can be recovered.</summary>
+	/// <summary>Rebases a local branch onto the default base, in a throwaway worktree unless
+	/// a checkout already has the branch. On conflict the branch is left untouched; on success
+	/// the pre-rebase SHA is reported so the old state can be recovered.</summary>
 	public void RebaseBranch(BranchRow row)
 	{
 		if (row.IsStash)
@@ -287,10 +287,14 @@ public class StartDocumentViewModel : Document
 			State.Status = $"Rebasing {row.Info.Name} onto {defaultBase}...";
 			try
 			{
-				string before = await workspace.Git.RebaseBranchAsync(row.Info.Name, defaultBase);
+				var result = await workspace.Git.RebaseBranchAsync(row.Info.Name, defaultBase);
 				await ReloadRefsAsync();
-				State.Status = $"Rebased {row.Info.Name} onto {defaultBase}. Previous head was {before[..9]} "
-					+ $"(recover with: git branch -f {row.Info.Name} {before[..9]}).";
+				State.Status = result.Outcome == RebaseOutcome.Conflicted
+					? $"Rebase of {row.Info.Name} stopped on conflicts the merge tool did not resolve. "
+						+ $"It is still in progress in {result.WorkingDirectory} - finish it with "
+						+ "`git rebase --continue` there, or undo it with `git rebase --abort`."
+					: $"Rebased {row.Info.Name} onto {defaultBase}. Previous head was {result.Before[..9]} "
+						+ $"(recover with: {result.RecoveryCommand(row.Info.Name)}).";
 			}
 			catch (ToolFailedException ex)
 			{
