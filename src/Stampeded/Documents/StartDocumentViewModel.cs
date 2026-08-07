@@ -530,11 +530,7 @@ public class StartDocumentViewModel : Document
 			BranchDeletion deletion;
 			try
 			{
-				// A rebase-merged branch is not an ancestor, so git's own -d check would
-				// refuse it. Forcing is warranted because the equivalence was established
-				// before the button appeared.
-				deletion = await workspace.Git.DeleteBranchAsync(
-					branch, force: row.Merge == MergeState.RebaseMerged);
+				deletion = await workspace.Git.DeleteBranchAsync(branch);
 			}
 			catch (Exception ex) when (ex is ToolFailedException or RefusedException)
 			{

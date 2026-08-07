@@ -119,19 +119,38 @@ public class GitMergeStateTests
 	}
 
 	[Test]
-	public async Task NeedsForceToDeleteARebaseMergedBranch()
+	public async Task DeletesARebaseMergedBranchGitDoesNotRecognise()
 	{
 		await Git("checkout", "--quiet", "-b", "topic");
 		await Commit("topic.txt", "on topic");
 		await Git("checkout", "--quiet", "main");
 		await Replay("topic");
 
-		var git = new GitService(repo);
-		// git's own -d is an ancestry check, so it refuses although the work is in.
-		Assert.That(async () => await git.DeleteBranchAsync("topic"), Throws.InstanceOf<ToolFailedException>());
-		Assert.That(await Git("branch", "--format=%(refname:short)"), Does.Contain("topic"));
+		await new GitService(repo).DeleteBranchAsync("topic");
 
-		await git.DeleteBranchAsync("topic", force: true);
+		Assert.That(await Git("branch", "--format=%(refname:short)"), Does.Not.Contain("topic"));
+	}
+
+	[Test]
+	public async Task DeletesABranchInTheDefaultBranchWhileHeadLagsBehindIt()
+	{
+		// The shape `git branch -d` gets wrong. The branch is in the default branch, but it
+		// has no upstream, so -d falls back to measuring against HEAD - which is behind - and
+		// calls work unmerged that is plainly merged.
+		await Git("checkout", "--quiet", "-b", "topic");
+		await Commit("topic.txt", "on topic");
+		await Git("checkout", "--quiet", "main");
+		await Git("merge", "--quiet", "--no-ff", "-m", "merge topic", "topic");
+		await Git("branch", "default-branch");
+		await Git("reset", "--quiet", "--hard", "HEAD~1");
+
+		Assert.That(await Git("branch", "--merged", "default-branch", "--format=%(refname:short)"),
+			Does.Contain("topic"), "it is in the default branch");
+		Assert.That(async () => await Git("branch", "-d", "topic"), Throws.InstanceOf<ToolFailedException>(),
+			"yet -d refuses, which is the bug this guards");
+
+		await new GitService(repo).DeleteBranchAsync("topic");
+
 		Assert.That(await Git("branch", "--format=%(refname:short)"), Does.Not.Contain("topic"));
 	}
 
@@ -161,7 +180,7 @@ public class GitMergeStateTests
 
 		// Merged says the commits are safe elsewhere. It says nothing about this, so the
 		// deletion has to fail as a whole rather than take the directory with it.
-		Assert.That(async () => await new GitService(repo).DeleteBranchAsync("already-in", force: true),
+		Assert.That(async () => await new GitService(repo).DeleteBranchAsync("already-in"),
 			Throws.InstanceOf<ToolFailedException>());
 
 		Assert.That(await File.ReadAllTextAsync(file), Is.EqualTo("work in progress"));

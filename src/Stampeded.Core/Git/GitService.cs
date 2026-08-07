@@ -271,12 +271,15 @@ public sealed class GitService(string repoPath)
 	/// that directory, and git's refusal to discard them is the only thing standing between
 	/// this button and losing them.
 	///
-	/// <paramref name="force"/> applies to the branch, and is needed for one that is in the
-	/// default branch only by patch equivalence: git's own `-d` check is ancestry, so it
-	/// refuses a rebase-merged branch exactly as it would refuse unmerged work. Forcing is
-	/// right only when the caller has established that equivalence itself.
+	/// This deletes with -D, which is not the shortcut it looks like. `git branch -d` tests
+	/// the branch against its upstream, or against HEAD when it has none - neither of which
+	/// is the default branch. That answers a different question than the caller asked, and
+	/// gets it wrong in both directions: it refuses a branch that is an ancestor of the
+	/// default branch while HEAD happens to lag behind it, and it has no way to recognise a
+	/// rebase merge at all. The caller establishes the fact that matters against the ref that
+	/// matters; there is no second opinion here worth having.
 	/// </summary>
-	public async Task<BranchDeletion> DeleteBranchAsync(string branch, bool force = false, CancellationToken ct = default)
+	public async Task<BranchDeletion> DeleteBranchAsync(string branch, CancellationToken ct = default)
 	{
 		string sha = await RevParseAsync($"refs/heads/{branch}", ct);
 		string? removedWorktree = null;
@@ -285,7 +288,7 @@ public sealed class GitService(string repoPath)
 			await RemoveWorktreeAsync(checkout.Path, ct);
 			removedWorktree = checkout.Path;
 		}
-		await RunAsync(ct, "branch", force ? "-D" : "-d", branch);
+		await RunAsync(ct, "branch", "-D", branch);
 		return new BranchDeletion(sha, removedWorktree);
 	}
 
