@@ -62,6 +62,18 @@ public partial class StartDocumentView : UserControl
 			vm.PushBranchRow(row);
 	}
 
+	void OnDeleteBranch(object? sender, RoutedEventArgs e)
+	{
+		if (Vm is { } vm && BranchList.SelectedItem is BranchRow row)
+			vm.DeleteBranchRow(row);
+	}
+
+	void OnOpenWorktree(object? sender, RoutedEventArgs e)
+	{
+		if (Vm is { } vm && BranchList.SelectedItem is BranchRow row)
+			vm.OpenWorktree(row);
+	}
+
 	void OnPrPull(object? sender, RoutedEventArgs e)
 	{
 		if (Vm is { } vm && PrListBox.SelectedItem is PrSummary pr)
@@ -138,6 +150,18 @@ public partial class StartDocumentView : UserControl
 	{
 		if (Vm is { } vm && RowOf<BranchRow>(sender) is { } row)
 			vm.PushBranchRow(row);
+	}
+
+	void OnRowBranchDelete(object? sender, RoutedEventArgs e)
+	{
+		if (Vm is { } vm && RowOf<BranchRow>(sender) is { } row)
+			vm.DeleteBranchRow(row);
+	}
+
+	void OnRowBranchWorktree(object? sender, RoutedEventArgs e)
+	{
+		if (Vm is { } vm && RowOf<BranchRow>(sender) is { } row)
+			vm.OpenWorktree(row);
 	}
 
 	void OnRowPrPull(object? sender, RoutedEventArgs e)

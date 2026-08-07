@@ -34,6 +34,10 @@ public enum PushOutcome
 
 public sealed record PushResult(PushOutcome Outcome, string Sha);
 
+/// <summary>A deleted branch: the commit it pointed at, and the worktree that went with it
+/// when one held the branch.</summary>
+public sealed record BranchDeletion(string Sha, string? RemovedWorktree);
+
 public enum RebaseOutcome
 {
 	Rebased,
@@ -218,6 +222,106 @@ public sealed class GitService(string repoPath)
 	public async Task<IReadOnlyList<(char Status, string Path)>> DiffNameStatusAsync(
 		string a, string b, CancellationToken ct = default)
 		=> GitLogParser.ParseNameStatus(await RunAsync(ct, "diff", "--name-status", "--find-renames", a, b));
+
+	/// <summary>
+	/// The local branches whose tip is reachable from <paramref name="intoRef"/> - what
+	/// `git branch --merged` reports. It is an ancestry test, so it answers "is this in there
+	/// as it stands", and it is the cheap half of the question: one call for every branch.
+	/// A rebase-merged branch is not among them, because its commits were replayed and none
+	/// of the originals survives in the target - see <see cref="IsMergedByPatchAsync"/>.
+	/// </summary>
+	public async Task<IReadOnlySet<string>> ListMergedBranchesAsync(string intoRef, CancellationToken ct = default)
+	{
+		string output = await RunAsync(ct, "branch", "--merged", intoRef, "--format=%(refname:short)");
+		return output.ReplaceLineEndings("\n")
+			.Split('\n', StringSplitOptions.RemoveEmptyEntries)
+			.Select(line => line.Trim())
+			.Where(line => line.Length > 0)
+			.ToHashSet(StringComparer.Ordinal);
+	}
+
+	/// <summary>
+	/// Whether every commit on <paramref name="branch"/> already exists in
+	/// <paramref name="intoRef"/> as an equivalent patch, which is how a rebase-merged branch
+	/// looks: same changes, different commits, so ancestry says no and this says yes.
+	/// `git cherry` marks a commit "-" when the upstream has one with the same patch id and
+	/// "+" when it does not, so the branch is in when nothing is marked "+".
+	///
+	/// A branch that has no commits of its own answers true, which is right - there is
+	/// nothing of it left to merge. A squash-merged branch of more than one commit answers
+	/// false, because its commits were combined into one whose patch matches none of them.
+	/// </summary>
+	public async Task<bool> IsMergedByPatchAsync(string branch, string intoRef, CancellationToken ct = default)
+	{
+		string output = await RunAsync(ct, "cherry", intoRef, branch);
+		return !output.ReplaceLineEndings("\n")
+			.Split('\n', StringSplitOptions.RemoveEmptyEntries)
+			.Any(line => line.StartsWith('+'));
+	}
+
+	/// <summary>
+	/// Deletes a local branch, along with the worktree holding it when there is one - git
+	/// refuses to delete a branch some checkout has, so the two go together or not at all.
+	/// Returns the commit the branch pointed at, which is what it takes to offer the branch
+	/// back; nothing refers to that commit afterwards, so it lives on only in the reflog
+	/// until git expires it.
+	///
+	/// The worktree is removed without --force on purpose. "The branch is merged" says the
+	/// commits are safe somewhere else; it says nothing about uncommitted edits sitting in
+	/// that directory, and git's refusal to discard them is the only thing standing between
+	/// this button and losing them.
+	///
+	/// <paramref name="force"/> applies to the branch, and is needed for one that is in the
+	/// default branch only by patch equivalence: git's own `-d` check is ancestry, so it
+	/// refuses a rebase-merged branch exactly as it would refuse unmerged work. Forcing is
+	/// right only when the caller has established that equivalence itself.
+	/// </summary>
+	public async Task<BranchDeletion> DeleteBranchAsync(string branch, bool force = false, CancellationToken ct = default)
+	{
+		string sha = await RevParseAsync($"refs/heads/{branch}", ct);
+		string? removedWorktree = null;
+		if (await FindCheckoutAsync(branch, ct) is { } checkout)
+		{
+			await RemoveWorktreeAsync(checkout.Path, ct);
+			removedWorktree = checkout.Path;
+		}
+		await RunAsync(ct, "branch", force ? "-D" : "-d", branch);
+		return new BranchDeletion(sha, removedWorktree);
+	}
+
+	/// <summary>
+	/// Removes a worktree, falling back to deleting the directory when git will not do it.
+	/// `git worktree remove` rejects any worktree containing submodules outright - the check
+	/// runs before --force is even consulted, so there is no flag that gets past it, and a
+	/// repository with a submodule could otherwise never have a worktree removed here.
+	///
+	/// The fallback establishes for itself what git would have enforced: the worktree has to
+	/// be clean, submodules included, or nothing is deleted.
+	/// </summary>
+	async Task RemoveWorktreeAsync(string path, CancellationToken ct)
+	{
+		try
+		{
+			await RunAsync(ct, "worktree", "remove", path);
+			return;
+		}
+		catch (ToolFailedException ex) when (ex.StdErr.Contains("submodules", StringComparison.Ordinal))
+		{
+		}
+		string status = await ExternalTool.RunAsync(
+			"git", ["status", "--porcelain", "--ignore-submodules=none"], path, ct);
+		if (status.Trim().Length > 0)
+		{
+			throw new RefusedException(
+				$"'{path}' contains modified or untracked files. It holds submodules, so git will not "
+				+ "remove it and it would have to be deleted outright - which is not something to do "
+				+ "to uncommitted work. Nothing was deleted.");
+		}
+		Directory.Delete(path, recursive: true);
+		// The worktree's administrative entry outlives the directory, and the branch stays
+		// checked out as far as git is concerned until it is gone.
+		await RunAsync(ct, "worktree", "prune");
+	}
 
 	/// <summary>Local branches, most recently committed first.</summary>
 	public async Task<IReadOnlyList<BranchInfo>> ListBranchesAsync(CancellationToken ct = default)

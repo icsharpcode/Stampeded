@@ -139,6 +139,12 @@
             <MenuItem Header="Pull from origin" Click="OnPullBranch"
                       IsVisible="{Binding !State.ShowStashes}"
                       ToolTip.Tip="Fast-forward this branch to origin's copy; a diverged branch is left alone" />
+            <MenuItem Header="Open Worktree" Click="OnOpenWorktree"
+                      IsVisible="{Binding !State.ShowStashes}"
+                      ToolTip.Tip="Open the checkout that has this branch in the file manager" />
+            <MenuItem Header="Delete Merged Branch" Click="OnDeleteBranch"
+                      IsVisible="{Binding !State.ShowStashes}"
+                      ToolTip.Tip="Delete this local branch, if it is already in the default branch" />
             <MenuItem Header="Push to origin" Click="OnPushBranch"
                       IsVisible="{Binding !State.ShowStashes}"
                       ToolTip.Tip="Push to origin, force-pushing with --force-with-lease when the branches have diverged" />
@@ -167,12 +173,27 @@
                            Margin="0,0,6,0" Foreground="#3794FF" Text="{Binding PrTag}"
                            IsVisible="{Binding HasPrTag}"
                            ToolTip.Tip="This branch has an open pull request" />
+                <!-- Integration state: whether the branch is already in the default branch,
+                     and which branch the default one is. -->
+                <TextBlock DockPanel.Dock="Right" FontSize="11" Opacity="0.9" VerticalAlignment="Center"
+                           Margin="0,0,6,0" Foreground="#2EA043" Text="{Binding MergeText}"
+                           IsVisible="{Binding ShowMerge}" ToolTip.Tip="{Binding MergeTip}" />
+                <TextBlock DockPanel.Dock="Right" FontSize="11" Opacity="0.8" VerticalAlignment="Center"
+                           Margin="0,0,6,0" Foreground="#8B949E" Text="default"
+                           IsVisible="{Binding ShowDefault}"
+                           ToolTip.Tip="The repository's default branch on GitHub, and what everything else is reviewed and rebased against" />
                 <StackPanel DockPanel.Dock="Right" Classes="rowactions" Orientation="Horizontal"
                             Spacing="4" Margin="6,0">
                   <Button Content="Review" FontWeight="SemiBold" Click="OnRowBranchReview"
                           ToolTip.Tip="Open this for review" />
                   <Button Content="Pull" Click="OnRowBranchPull" IsVisible="{Binding IsBranch}"
                           ToolTip.Tip="Fast-forward this branch to origin's copy; a diverged branch is left alone" />
+                  <Button Content="Worktree" Click="OnRowBranchWorktree" IsVisible="{Binding HasWorktree}"
+                          ToolTip.Tip="{Binding WorktreePath}" />
+                  <!-- Only for a branch already in the default branch, so it can never be
+                       the button that loses work. -->
+                  <Button Content="Delete" Click="OnRowBranchDelete" IsVisible="{Binding ShowMerge}"
+                          ToolTip.Tip="Delete this local branch, and the worktree holding it if there is one. It is already in the default branch, and the commit it points at is reported so it can be put back. A worktree with uncommitted or untracked files stops the whole thing." />
                   <Button Content="Push" Click="OnRowBranchPush" IsVisible="{Binding IsBranch}"
                           ToolTip.Tip="Push this branch to origin. Diverged branches - what a rebase leaves - are force-pushed with --force-with-lease, which still refuses if origin moved since the last fetch." />
                   <Button Content="Rebase" Click="OnRowBranchRebase" IsVisible="{Binding IsBranch}"

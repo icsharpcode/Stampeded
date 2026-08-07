@@ -25,15 +25,44 @@ public sealed partial class PrepareItem(string label) : ObservableObject
 	bool done;
 }
 
+/// <summary>How a branch stands against the default branch.</summary>
+public enum MergeState
+{
+	/// <summary>Not answered yet, or genuinely not in the default branch.</summary>
+	Unknown,
+	/// <summary>Its tip is an ancestor of the default branch.</summary>
+	Merged,
+	/// <summary>Its commits are not in the default branch, but every one of them has an
+	/// equivalent patch there: what a rebase merge leaves behind.</summary>
+	RebaseMerged,
+}
+
 /// <summary>A local branch or a stash on the start page. Branches are annotated with
 /// their associated PR when one exists - including whether the local head differs from
 /// what the PR is showing.</summary>
 public sealed record BranchRow(BranchInfo Info, string PrTag, int? PrNumber = null, bool IsStash = false,
-	BranchSync? Sync = null)
+	BranchSync? Sync = null, MergeState Merge = MergeState.Unknown, bool IsDefault = false,
+	string? WorktreePath = null)
 {
 	public bool HasPrTag => PrTag.Length > 0;
 
 	public bool IsBranch => !IsStash;
+
+	/// <summary>Whether some checkout has this branch, which is where its files are.</summary>
+	public bool HasWorktree => !IsStash && WorktreePath is not null;
+
+	/// <summary>The default branch carries its own label rather than being reported as
+	/// merged into itself.</summary>
+	public bool ShowMerge => !IsStash && !IsDefault && Merge != MergeState.Unknown;
+
+	public bool ShowDefault => !IsStash && IsDefault;
+
+	public string MergeText => Merge == MergeState.RebaseMerged ? "rebase-merged" : "merged";
+
+	public string MergeTip => Merge == MergeState.RebaseMerged
+		? "Every commit on this branch already exists in the default branch as an equivalent "
+			+ "patch, which is what a rebase merge leaves behind. The branch itself can go."
+		: "This branch's tip is an ancestor of the default branch, so it is in as it stands.";
 
 	public bool HasSync => Sync is not null;
 
@@ -103,7 +132,19 @@ public class StartDocumentViewModel : Document
 	// Filled asynchronously for branches whose head is not the PR's; equality itself is
 	// free from the two SHAs, only "by how much" costs a git call.
 	readonly Dictionary<string, BranchSync> syncByBranch = [];
+	// Keyed by branch tip, so the answer survives a reload but is recomputed the moment the
+	// branch moves. Ancestry is answered for every branch in one call; the patch-equivalence
+	// that catches a rebase merge costs a call each and is filled in behind the list. The
+	// answers hold only for the default branch they were measured against, which is what
+	// mergeCheckedAgainst records.
+	readonly Dictionary<string, MergeState> mergeByBranchSha = [];
+	string? mergeCheckedAgainst;
+	IReadOnlySet<string> mergedBranches = new HashSet<string>();
+	// Which checkout has each branch, so a row can offer to open it - and so the reader can
+	// see at a glance which branches are laid out on disk somewhere.
+	IReadOnlyDictionary<string, string> worktreeByBranch = new Dictionary<string, string>();
 	string defaultBase = "origin/master";
+	string defaultBranch = "master";
 
 	public StartDocumentViewModel(ReviewWorkspace workspace)
 	{
@@ -144,9 +185,14 @@ public class StartDocumentViewModel : Document
 	{
 		try
 		{
+			defaultBranch = await workspace.GetDefaultBranchAsync();
 			defaultBase = await workspace.GetDefaultBaseAsync();
 			rawBranches = await workspace.Git.ListBranchesAsync();
 			rawStashes = await workspace.Git.ListStashesAsync();
+			mergedBranches = await workspace.Git.ListMergedBranchesAsync(defaultBase);
+			worktreeByBranch = (await workspace.Git.ListWorktreesAsync())
+				.Where(w => w.Branch is not null)
+				.ToDictionary(w => w.Branch!, w => w.Path, StringComparer.Ordinal);
 		}
 		catch (ToolFailedException)
 		{
@@ -162,6 +208,18 @@ public class StartDocumentViewModel : Document
 	{
 		rawBranches = await workspace.Git.ListBranchesAsync();
 		rawStashes = await workspace.Git.ListStashesAsync();
+		try
+		{
+			mergedBranches = await workspace.Git.ListMergedBranchesAsync(defaultBase);
+			worktreeByBranch = (await workspace.Git.ListWorktreesAsync())
+				.Where(w => w.Branch is not null)
+				.ToDictionary(w => w.Branch!, w => w.Path, StringComparer.Ordinal);
+		}
+		catch (ToolFailedException)
+		{
+			// No origin, or the default base is not fetched: the labels stay off rather than
+			// the whole list failing to reload.
+		}
 		AnnotateBranches();
 	}
 
@@ -198,11 +256,62 @@ public class StartDocumentViewModel : Document
 						: syncByBranch.GetValueOrDefault(branch.Name, BranchSync.Unfetched)
 					: null;
 			}
-			rows.Add(new BranchRow(branch, tag, prNumber, IsStash: false, sync));
+			var merge = mergedBranches.Contains(branch.Name)
+				? MergeState.Merged
+				: mergeByBranchSha.GetValueOrDefault(branch.Sha, MergeState.Unknown);
+			rows.Add(new BranchRow(branch, tag, prNumber, IsStash: false, sync, merge,
+				IsDefault: string.Equals(branch.Name, defaultBranch, StringComparison.Ordinal),
+				WorktreePath: worktreeByBranch.GetValueOrDefault(branch.Name)));
 		}
 		foreach (var row in rows.OrderBy(r => r.HasPrTag ? 0 : 1))
 			Branches.Add(row);
 		RefreshSyncStatesAsync(prsByBranch).HandleExceptions();
+		RefreshRebaseMergedAsync().HandleExceptions();
+	}
+
+	/// <summary>
+	/// Asks the more expensive question only of the branches the cheap one did not answer:
+	/// whether a branch that is not an ancestor of the default branch nonetheless has all of
+	/// its commits there as equivalent patches, which is what a rebase merge produces. One
+	/// git call per branch, so it runs behind the list rather than delaying it, and the
+	/// answer is cached against the branch tip.
+	/// </summary>
+	async Task RefreshRebaseMergedAsync()
+	{
+		// The cached answers were measured against the default branch as it stood. When a
+		// fetch moves it - which is the moment a branch becomes rebase-merged - every one of
+		// them is about a history that no longer exists, so they all go.
+		string? baseSha = await workspace.Git.TryRevParseAsync(defaultBase);
+		if (baseSha is null)
+			return;
+		if (!string.Equals(baseSha, mergeCheckedAgainst, StringComparison.Ordinal))
+		{
+			mergeByBranchSha.Clear();
+			mergeCheckedAgainst = baseSha;
+		}
+		bool changed = false;
+		foreach (var branch in rawBranches.ToList())
+		{
+			if (mergedBranches.Contains(branch.Name)
+				|| string.Equals(branch.Name, defaultBranch, StringComparison.Ordinal)
+				|| mergeByBranchSha.ContainsKey(branch.Sha))
+			{
+				continue;
+			}
+			try
+			{
+				mergeByBranchSha[branch.Sha] = await workspace.Git.IsMergedByPatchAsync(branch.Name, defaultBase)
+					? MergeState.RebaseMerged
+					: MergeState.Unknown;
+				changed = true;
+			}
+			catch (ToolFailedException)
+			{
+				// One unreadable branch does not stop the rest from being labelled.
+			}
+		}
+		if (changed)
+			AnnotateBranches();
 	}
 
 	/// <summary>Measures how far the branches that do not match their PR head have drifted.
@@ -397,6 +506,51 @@ public class StartDocumentViewModel : Document
 	{
 		if (!row.IsStash)
 			PushBranch(row.Info.Name);
+	}
+
+	/// <summary>Opens the checkout that has this branch in the desktop's file manager.</summary>
+	public void OpenWorktree(BranchRow row)
+	{
+		if (row.WorktreePath is { } path)
+			workspace.OpenUrlAsync(path).HandleExceptions();
+	}
+
+	/// <summary>Deletes a branch that is already in the default branch. Offered only for
+	/// those, so there is nothing to lose; the commit it pointed at is reported anyway,
+	/// since that is all it takes to put the branch back.</summary>
+	public void DeleteBranchRow(BranchRow row)
+	{
+		if (!row.ShowMerge)
+			return;
+		DeleteAsync().HandleExceptions();
+
+		async Task DeleteAsync()
+		{
+			string branch = row.Info.Name;
+			BranchDeletion deletion;
+			try
+			{
+				// A rebase-merged branch is not an ancestor, so git's own -d check would
+				// refuse it. Forcing is warranted because the equivalence was established
+				// before the button appeared.
+				deletion = await workspace.Git.DeleteBranchAsync(
+					branch, force: row.Merge == MergeState.RebaseMerged);
+			}
+			catch (Exception ex) when (ex is ToolFailedException or RefusedException)
+			{
+				// Only the deletion itself is caught here. Reporting a failure for anything
+				// that goes wrong afterwards would claim the branch is still there when it
+				// is not - and a worktree with uncommitted work lands in this branch too,
+				// which is the case where being told nothing happened matters most.
+				State.Status = $"Delete of {branch} failed, nothing was removed: {ex.Message}";
+				return;
+			}
+			mergeByBranchSha.Remove(deletion.Sha);
+			await ReloadRefsAsync();
+			State.Status = $"Deleted {branch}, which was {row.MergeText}"
+				+ (deletion.RemovedWorktree is { } path ? $", and its worktree {path}" : "")
+				+ $" (restore with: git branch {branch} {deletion.Sha[..9]}).";
+		}
 	}
 
 	/// <summary>Rebases a PR branch onto its target, server-side via the GitHub API.</summary>

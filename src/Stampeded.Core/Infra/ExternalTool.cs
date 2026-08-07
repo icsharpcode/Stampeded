@@ -11,6 +11,11 @@ public sealed class ToolFailedException(string tool, int exitCode, string stdErr
 	public string StdErr { get; } = stdErr;
 }
 
+/// <summary>An operation this tool refuses to perform, as opposed to one a CLI rejected.
+/// Callers treat it like <see cref="ToolFailedException"/>: it did not happen, and the
+/// message says why.</summary>
+public sealed class RefusedException(string message) : Exception(message);
+
 public static class ExternalTool
 {
 	/// <summary>
