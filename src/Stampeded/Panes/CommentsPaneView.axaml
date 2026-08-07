@@ -43,8 +43,11 @@
     </ListBox>
     <DockPanel Grid.Row="3" Margin="4">
       <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="4" Margin="4,0,0,0">
-        <Button Content="Approve" Click="OnApprove" />
-        <Button Content="Request Changes" Click="OnRequestChanges" />
+        <!-- GitHub rejects a verdict on your own pull request; a comment review is all it takes. -->
+        <Button Content="Approve" Click="OnApprove" IsEnabled="{Binding State.CanGiveVerdict}"
+                ToolTip.Tip="Approve. GitHub does not allow this on your own pull request." />
+        <Button Content="Request Changes" Click="OnRequestChanges" IsEnabled="{Binding State.CanGiveVerdict}"
+                ToolTip.Tip="Request changes. GitHub does not allow this on your own pull request." />
         <Button Content="Comment" Click="OnComment" />
       </StackPanel>
       <TextBox Text="{Binding State.ReviewBody}" AcceptsReturn="True" MaxHeight="60"

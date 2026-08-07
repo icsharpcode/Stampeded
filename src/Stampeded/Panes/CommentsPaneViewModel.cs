@@ -21,6 +21,11 @@ public sealed partial class CommentsState : ObservableObject
 
 	[ObservableProperty]
 	string reviewBody = "";
+
+	/// <summary>False on the user's own pull request, where GitHub accepts only a plain
+	/// comment review.</summary>
+	[ObservableProperty]
+	bool canGiveVerdict = true;
 }
 
 public sealed record CommentRow(string RelPath, int? Line, bool OldSide, string Body, Guid? DraftId, string Author, string? Url = null)
@@ -83,6 +88,10 @@ public class CommentsPaneViewModel : Tool
 		}
 		int outdated = workspace.Drafts.Count(d => d.CurrentLine is null);
 		State.Status = $"{workspace.Drafts.Count} draft(s){(outdated > 0 ? $" ({outdated} outdated)" : "")}, {workspace.PostedComments.Count} posted.";
+		RefreshVerdictAvailabilityAsync().HandleExceptions();
+
+		async Task RefreshVerdictAvailabilityAsync()
+			=> State.CanGiveVerdict = !await workspace.IsOwnPullRequestAsync();
 	}
 
 	public void AddDraft()
@@ -131,6 +140,14 @@ public class CommentsPaneViewModel : Tool
 
 		async Task SubmitAsync(string type)
 		{
+			// The button is disabled for these on the user's own PR, but the check that
+			// disables it is asynchronous, so a submission can still get here first.
+			if (type is "APPROVE" or "REQUEST_CHANGES" && await workspace.IsOwnPullRequestAsync())
+			{
+				State.Status = $"GitHub does not accept {(type == "APPROVE" ? "an approval" : "a change request")} "
+					+ "on your own pull request. Submit it as a comment instead; the drafts are kept.";
+				return;
+			}
 			try
 			{
 				var (submitted, skipped) = await workspace.SubmitReviewAsync(type, State.ReviewBody.Trim());
