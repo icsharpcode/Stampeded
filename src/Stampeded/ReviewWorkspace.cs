@@ -1794,6 +1794,53 @@ public sealed class ReviewWorkspace(string repoPath)
 		return (newLines, oldLines);
 	}
 
+	string? defaultBranch;
+
+	/// <summary>
+	/// The repository's default branch ("master", "main", ...). GitHub is asked first,
+	/// because it is the authority; git's local `origin/HEAD` is only a clone-time snapshot
+	/// and is missing or stale often enough to matter. Cached for the process - a repository
+	/// does not change its default branch while it is being reviewed.
+	/// </summary>
+	public async Task<string> GetDefaultBranchAsync()
+	{
+		if (defaultBranch is { } known)
+			return known;
+		try
+		{
+			return defaultBranch = await GitHub.GetDefaultBranchAsync();
+		}
+		catch (ToolFailedException)
+		{
+			string local = await Git.GetDefaultBaseAsync();
+			return defaultBranch = local.StartsWith("origin/", StringComparison.Ordinal)
+				? local["origin/".Length..]
+				: local;
+		}
+	}
+
+	/// <summary>The ref to review and rebase against: the default branch as origin has it.</summary>
+	public async Task<string> GetDefaultBaseAsync() => "origin/" + await GetDefaultBranchAsync();
+
+	/// <summary>Whether the open review is of the user's own pull request. GitHub rejects
+	/// APPROVE and REQUEST_CHANGES on those, so only a plain comment review can be
+	/// submitted. False when nothing is open, or when gh cannot say who it is - the
+	/// submission itself is the real gate, this only keeps the UI from offering what would
+	/// certainly fail.</summary>
+	public async Task<bool> IsOwnPullRequestAsync()
+	{
+		if (CurrentPr?.Author?.Login is not { Length: > 0 } author)
+			return false;
+		try
+		{
+			return string.Equals(author, await GitHub.GetViewerLoginAsync(), StringComparison.OrdinalIgnoreCase);
+		}
+		catch (ToolFailedException)
+		{
+			return false;
+		}
+	}
+
 	/// <summary>Submits drafts that sit on commentable diff lines as a review; drafts that
 	/// don't (outdated or outside the diff) stay local. Returns (submitted, skipped).</summary>
 	public async Task<(int Submitted, int Skipped)> SubmitReviewAsync(string eventType, string body)

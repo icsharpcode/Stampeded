@@ -59,7 +59,8 @@ public sealed record PrDetail(
 	string? Body,
 	string BaseRefName,
 	string HeadRefName,
-	string State);
+	string State,
+	PrAuthor? Author);
 
 public sealed record CheckRun(string Name, string State, string Bucket, string? Link, string? Workflow);
 
@@ -103,12 +104,27 @@ public sealed class GitHubService(string repoPath)
 		TypeInfoResolver = GitHubJsonContext.Default,
 	};
 
+	string? viewerLogin;
+	string? defaultBranch;
+
 	async Task<T> JsonAsync<T>(CancellationToken ct, params string[] args)
 	{
 		string output = await ExternalTool.RunAsync("gh", args, repoPath, ct);
 		return JsonSerializer.Deserialize<T>(output, JsonOptions)
 			?? throw new InvalidOperationException($"gh returned null JSON for: {string.Join(' ', args)}");
 	}
+
+	/// <summary>The login gh is authenticated as. Cached: it cannot change while the app
+	/// runs without gh being re-authenticated underneath it.</summary>
+	public async Task<string> GetViewerLoginAsync(CancellationToken ct = default)
+		=> viewerLogin ??= (await ExternalTool.RunAsync("gh", ["api", "user", "--jq", ".login"], repoPath, ct)).Trim();
+
+	/// <summary>The repository's default branch, as GitHub has it. This is the authority:
+	/// the local `origin/HEAD` that git offers instead is written at clone time and is not
+	/// updated when the repository is renamed or its default is changed.</summary>
+	public async Task<string> GetDefaultBranchAsync(CancellationToken ct = default)
+		=> defaultBranch ??= (await ExternalTool.RunAsync(
+			"gh", ["repo", "view", "--json", "defaultBranchRef", "--jq", ".defaultBranchRef.name"], repoPath, ct)).Trim();
 
 	public Task<IReadOnlyList<PrSummary>> ListOpenPrsAsync(CancellationToken ct = default)
 		=> JsonAsync<IReadOnlyList<PrSummary>>(ct,
@@ -119,7 +135,7 @@ public sealed class GitHubService(string repoPath)
 	public Task<PrDetail> GetPrAsync(int number, CancellationToken ct = default)
 		=> JsonAsync<PrDetail>(ct,
 			"pr", "view", number.ToString(),
-			"--json", "number,title,body,baseRefName,headRefName,state");
+			"--json", "number,title,body,baseRefName,headRefName,state,author");
 
 	/// <summary>Check runs for a PR. `gh pr checks` exits non-zero when checks failed or
 	/// are pending, so the JSON is taken from stdout regardless of exit code.</summary>
