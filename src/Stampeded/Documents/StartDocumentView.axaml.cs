@@ -48,6 +48,26 @@ public partial class StartDocumentView : UserControl
 			vm.State.ShowStashes = StashesMode.IsChecked == true;
 	}
 
+	void OnFetch(object? sender, RoutedEventArgs e) => Vm?.Fetch();
+
+	void OnPullBranch(object? sender, RoutedEventArgs e)
+	{
+		if (Vm is { } vm && BranchList.SelectedItem is BranchRow row)
+			vm.PullBranchRow(row);
+	}
+
+	void OnPushBranch(object? sender, RoutedEventArgs e)
+	{
+		if (Vm is { } vm && BranchList.SelectedItem is BranchRow row)
+			vm.PushBranchRow(row);
+	}
+
+	void OnPrPull(object? sender, RoutedEventArgs e)
+	{
+		if (Vm is { } vm && PrListBox.SelectedItem is PrSummary pr)
+			vm.PullBranch(pr.HeadRefName);
+	}
+
 	void OnRebaseBranch(object? sender, RoutedEventArgs e)
 	{
 		if (Vm is { } vm && BranchList.SelectedItem is BranchRow row)
@@ -106,6 +126,24 @@ public partial class StartDocumentView : UserControl
 	{
 		if (Vm is { } vm && RowOf<BranchRow>(sender) is { } row)
 			vm.RebaseBranch(row);
+	}
+
+	void OnRowBranchPull(object? sender, RoutedEventArgs e)
+	{
+		if (Vm is { } vm && RowOf<BranchRow>(sender) is { } row)
+			vm.PullBranchRow(row);
+	}
+
+	void OnRowBranchPush(object? sender, RoutedEventArgs e)
+	{
+		if (Vm is { } vm && RowOf<BranchRow>(sender) is { } row)
+			vm.PushBranchRow(row);
+	}
+
+	void OnRowPrPull(object? sender, RoutedEventArgs e)
+	{
+		if (Vm is { } vm && RowOf<PrSummary>(sender) is { } pr)
+			vm.PullBranch(pr.HeadRefName);
 	}
 
 	void OnRowBranchPrGitHub(object? sender, RoutedEventArgs e)

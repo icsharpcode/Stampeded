@@ -144,7 +144,7 @@ public class StartDocumentViewModel : Document
 	{
 		try
 		{
-			defaultBase = await workspace.Git.GetDefaultBaseAsync();
+			defaultBase = await workspace.GetDefaultBaseAsync();
 			rawBranches = await workspace.Git.ListBranchesAsync();
 			rawStashes = await workspace.Git.ListStashesAsync();
 		}
@@ -301,6 +301,102 @@ public class StartDocumentViewModel : Document
 				State.Status = $"Rebase of {row.Info.Name} failed, branch left unchanged: {ex.Message}";
 			}
 		}
+	}
+
+	/// <summary>Updates every remote-tracking ref, then re-reads the lists. Sync states are
+	/// measured against commits that have to be present locally, so the ones showing as
+	/// "differs" resolve into real ahead/behind counts once this has run.</summary>
+	public void Fetch()
+	{
+		FetchAsync().HandleExceptions();
+
+		async Task FetchAsync()
+		{
+			State.Status = "Fetching from origin...";
+			try
+			{
+				await workspace.Git.FetchAsync();
+				syncByBranch.Clear();
+				await ReloadRefsAsync();
+				await PrList.LoadAsync();
+				State.Status = "Fetched from origin.";
+			}
+			catch (ToolFailedException ex)
+			{
+				State.Status = $"Fetch failed: {ex.Message}";
+			}
+		}
+	}
+
+	/// <summary>Brings origin's copy of a branch in: creates it locally when it is not there
+	/// yet, fast-forwards it when it is behind. Diverged branches are left alone - that is
+	/// what the rebase command is for.</summary>
+	public void PullBranch(string branch)
+	{
+		PullAsync().HandleExceptions();
+
+		async Task PullAsync()
+		{
+			State.Status = $"Pulling {branch} from origin...";
+			try
+			{
+				var result = await workspace.Git.PullBranchAsync(branch);
+				syncByBranch.Remove(branch);
+				await ReloadRefsAsync();
+				State.Status = result.Outcome switch {
+					PullOutcome.Created => $"Created {branch} at origin's {result.Sha[..9]}.",
+					PullOutcome.FastForwarded => $"Fast-forwarded {branch} to {result.Sha[..9]}.",
+					PullOutcome.AlreadyUpToDate => $"{branch} is already up to date.",
+					_ => $"{branch} has diverged from origin's copy - nothing changed. "
+						+ "Rebase it instead, or reset it if the local commits are expendable.",
+				};
+			}
+			catch (ToolFailedException ex)
+			{
+				State.Status = $"Pull of {branch} failed, branch left unchanged: {ex.Message}";
+			}
+		}
+	}
+
+	public void PullBranchRow(BranchRow row)
+	{
+		if (!row.IsStash)
+			PullBranch(row.Info.Name);
+	}
+
+	/// <summary>Pushes a branch to origin, replacing origin's copy with --force-with-lease
+	/// when the two have diverged, which is what a rebase leaves behind.</summary>
+	public void PushBranch(string branch)
+	{
+		PushAsync().HandleExceptions();
+
+		async Task PushAsync()
+		{
+			State.Status = $"Pushing {branch} to origin...";
+			try
+			{
+				var result = await workspace.Git.PushBranchAsync(branch);
+				syncByBranch.Remove(branch);
+				await ReloadRefsAsync();
+				State.Status = result.Outcome switch {
+					PushOutcome.Created => $"Pushed {branch} to origin, which did not have it before.",
+					PushOutcome.Pushed => $"Pushed {branch} to origin ({result.Sha[..9]}).",
+					PushOutcome.ForcePushed => $"Force-pushed {branch} to origin ({result.Sha[..9]}); "
+						+ "the branches had diverged, so origin's copy was replaced.",
+					_ => $"origin is already at {branch} ({result.Sha[..9]}).",
+				};
+			}
+			catch (ToolFailedException ex)
+			{
+				State.Status = $"Push of {branch} failed, origin unchanged: {ex.Message}";
+			}
+		}
+	}
+
+	public void PushBranchRow(BranchRow row)
+	{
+		if (!row.IsStash)
+			PushBranch(row.Info.Name);
 	}
 
 	/// <summary>Rebases a PR branch onto its target, server-side via the GitHub API.</summary>

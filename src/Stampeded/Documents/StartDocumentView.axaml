@@ -70,6 +70,7 @@
           <ContextMenu>
             <MenuItem Header="Open Review (double-click)" Click="OnPrOpen" />
             <MenuItem Header="Open on GitHub" Click="OnPrOpenOnGitHub" />
+            <MenuItem Header="Pull Head Branch from origin" Click="OnPrPull" />
           </ContextMenu>
         </ListBox.ContextMenu>
         <ListBox.Styles>
@@ -93,6 +94,8 @@
                             Spacing="4" Margin="6,0">
                   <Button Content="Review" FontWeight="SemiBold" Click="OnRowPrReview"
                           ToolTip.Tip="Open this pull request for review" />
+                  <Button Content="Pull" Click="OnRowPrPull"
+                          ToolTip.Tip="Bring this PR's head branch into the local repository: created if it is not there yet, fast-forwarded if it is behind. Nothing is checked out." />
                   <Button Content="GitHub" Click="OnRowPrGitHub" ToolTip.Tip="Open this pull request in the browser" />
                 </StackPanel>
                 <TextBlock FontWeight="SemiBold" TextTrimming="CharacterEllipsis">
@@ -111,6 +114,8 @@
       <DockPanel DockPanel.Dock="Top" Margin="0,0,0,4">
         <Button DockPanel.Dock="Right" Classes="headbutton" Content="Refresh" Click="OnRefsRefresh"
                 ToolTip.Tip="Re-read branches and stashes from the repository" />
+        <Button DockPanel.Dock="Right" Classes="headbutton" Content="Fetch" Click="OnFetch"
+                ToolTip.Tip="git fetch origin: update the remote-tracking refs, then re-read both lists. Branches whose sync state reads 'differs' need this before it can be measured." />
         <StackPanel Orientation="Horizontal" Spacing="12">
           <RadioButton x:Name="BranchesMode" Classes="colhead" GroupName="RefKind"
                        Content="{Binding State.BranchesLabel}"
@@ -131,9 +136,15 @@
             <MenuItem Header="Open Review (double-click)" Click="OnBranchOpen" />
             <MenuItem Header="Create Branch from Stash..." Click="OnCreateBranchFromStash"
                       IsVisible="{Binding State.ShowStashes}" />
+            <MenuItem Header="Pull from origin" Click="OnPullBranch"
+                      IsVisible="{Binding !State.ShowStashes}"
+                      ToolTip.Tip="Fast-forward this branch to origin's copy; a diverged branch is left alone" />
+            <MenuItem Header="Push to origin" Click="OnPushBranch"
+                      IsVisible="{Binding !State.ShowStashes}"
+                      ToolTip.Tip="Push to origin, force-pushing with --force-with-lease when the branches have diverged" />
             <MenuItem Header="Rebase onto Default Base" Click="OnRebaseBranch"
                       IsVisible="{Binding !State.ShowStashes}"
-                      ToolTip.Tip="Rebase this branch in a throwaway worktree; your checkout is untouched and a conflict leaves the branch as it was" />
+                      ToolTip.Tip="Rebase this branch onto the default base. A branch no checkout has is rebased in a throwaway worktree; one that a checkout has is rebased there, so that checkout moves with it" />
             <MenuItem Header="Rebase PR onto its Target (server-side)" Click="OnRebasePr"
                       IsVisible="{Binding !State.ShowStashes}" />
             <MenuItem Header="Open PR on GitHub" Click="OnBranchPrOnGitHub"
@@ -160,8 +171,12 @@
                             Spacing="4" Margin="6,0">
                   <Button Content="Review" FontWeight="SemiBold" Click="OnRowBranchReview"
                           ToolTip.Tip="Open this for review" />
+                  <Button Content="Pull" Click="OnRowBranchPull" IsVisible="{Binding IsBranch}"
+                          ToolTip.Tip="Fast-forward this branch to origin's copy; a diverged branch is left alone" />
+                  <Button Content="Push" Click="OnRowBranchPush" IsVisible="{Binding IsBranch}"
+                          ToolTip.Tip="Push this branch to origin. Diverged branches - what a rebase leaves - are force-pushed with --force-with-lease, which still refuses if origin moved since the last fetch." />
                   <Button Content="Rebase" Click="OnRowBranchRebase" IsVisible="{Binding IsBranch}"
-                          ToolTip.Tip="Rebase onto the default base in a throwaway worktree; your checkout is untouched and a conflict leaves the branch as it was" />
+                          ToolTip.Tip="Rebase onto the default base. A branch no checkout has is rebased in a throwaway worktree; one that a checkout has is rebased there, so that checkout moves with it" />
                   <Button Content="Branch..." Click="OnRowStashBranch" IsVisible="{Binding IsStash}"
                           ToolTip.Tip="Point a new branch at this stash; the stash is kept and nothing is checked out" />
                   <Button Content="PR" Click="OnRowBranchPrGitHub" IsVisible="{Binding HasPrTag}"
