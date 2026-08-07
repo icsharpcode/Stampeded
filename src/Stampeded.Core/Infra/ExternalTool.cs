@@ -47,9 +47,29 @@ public static class ExternalTool
 		string argsText = string.Join(' ', args);
 		if (argsText.Length > 160)
 			argsText = argsText[..160] + "...";
-		CliLog.Write(exe, $"{argsText} -> exit {result.ExitCode} ({watch.ElapsedMilliseconds} ms)");
-		if (result.ExitCode != 0 && okExitCodes?.Contains(result.ExitCode) != true)
+		bool failed = result.ExitCode != 0 && okExitCodes?.Contains(result.ExitCode) != true;
+		CliLog.Write(exe, $"{argsText} -> exit {result.ExitCode} ({watch.ElapsedMilliseconds} ms)"
+			+ (failed ? ": " + FailureReason(result.StandardError, result.StandardOutput) : ""));
+		if (failed)
 			throw new ToolFailedException(exe, result.ExitCode, result.StandardError);
 		return result.StandardOutput;
+	}
+
+	/// <summary>
+	/// The reason to put on a failed command's log line. Without it the log records only an
+	/// exit code, which says that something failed but never what - and the tools already
+	/// explain themselves in one line ("fatal: 'x' is already checked out at ...",
+	/// "gh: Can not approve your own pull request (HTTP 422)"). Falls back to stdout, since
+	/// not every tool reports failures on stderr.
+	/// </summary>
+	public static string FailureReason(string stdErr, string stdOut)
+	{
+		string reason = FirstMeaningfulLine(stdErr) ?? FirstMeaningfulLine(stdOut) ?? "no output";
+		return reason.Length > 200 ? reason[..200] + "..." : reason;
+
+		static string? FirstMeaningfulLine(string text)
+			=> text.ReplaceLineEndings("\n").Split('\n')
+				.Select(line => line.Trim())
+				.FirstOrDefault(line => line.Length > 0);
 	}
 }

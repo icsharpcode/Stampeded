@@ -235,7 +235,8 @@ public sealed class GitHubService(string repoPath)
 			.WithWorkingDirectory(repoPath)
 			.WithValidation(CliWrap.CommandResultValidation.None)
 			.ExecuteBufferedAsync(ct);
-		CliLog.Write("gh", $"update-branch (rebase) #{number} -> exit {result.ExitCode}");
+		CliLog.Write("gh", $"update-branch (rebase) #{number} -> exit {result.ExitCode}"
+			+ (result.ExitCode != 0 ? ": " + ExternalTool.FailureReason(result.StandardError, result.StandardOutput) : ""));
 		if (result.ExitCode != 0)
 			throw new ToolFailedException("gh", result.ExitCode, result.StandardError + result.StandardOutput);
 	}
@@ -250,7 +251,8 @@ public sealed class GitHubService(string repoPath)
 			.WithStandardInputPipe(CliWrap.PipeSource.FromString(json))
 			.WithValidation(CliWrap.CommandResultValidation.None)
 			.ExecuteBufferedAsync(ct);
-		CliLog.Write("gh", $"submit review ({submission.Event}, {submission.Comments.Count} comment(s)) -> exit {result.ExitCode}");
+		CliLog.Write("gh", $"submit review ({submission.Event}, {submission.Comments.Count} comment(s)) -> exit {result.ExitCode}"
+			+ (result.ExitCode != 0 ? ": " + ExternalTool.FailureReason(result.StandardError, result.StandardOutput) : ""));
 		if (result.ExitCode != 0)
 			throw new ToolFailedException("gh", result.ExitCode, result.StandardError + result.StandardOutput);
 	}
