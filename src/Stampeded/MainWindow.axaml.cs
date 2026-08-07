@@ -67,6 +67,16 @@ public partial class MainWindow : Window
 
 	void OnRebasePr(object? s, RoutedEventArgs e) => App.Workspace?.RebaseCurrentPrOnTargetAsync().HandleExceptions();
 
+	// The overview page's commands, so they are reachable without going back to that tab.
+	void OnEnterCommitScope(object? s, RoutedEventArgs e) => App.Workspace?.EnterCommitScopeAsync().HandleExceptions();
+	void OnNextCommit(object? s, RoutedEventArgs e) => App.Workspace?.StepCommitScopeAsync(1).HandleExceptions();
+	void OnPreviousCommit(object? s, RoutedEventArgs e) => App.Workspace?.StepCommitScopeAsync(-1).HandleExceptions();
+	void OnExitCommitScope(object? s, RoutedEventArgs e) => App.Workspace?.ExitCommitScopeAsync().HandleExceptions();
+	void OnReviewRecord(object? s, RoutedEventArgs e) => App.Workspace?.OpenReviewRecord();
+	void OnBounce(object? s, RoutedEventArgs e) => App.Workspace?.PrepareBounceBody();
+	void OnOpenVsCode(object? s, RoutedEventArgs e) => App.Workspace?.OpenInVsCodeAsync(oldSide: false).HandleExceptions();
+	void OnOpenFixtures(object? s, RoutedEventArgs e) => App.Workspace?.OpenAffectedFixturesInILSpyAsync().HandleExceptions();
+
 	void OnInterdiff(object? s, RoutedEventArgs e) => App.Workspace?.OpenInterdiffAsync().HandleExceptions();
 
 	void OnOpenStart(object? s, RoutedEventArgs e) => App.Workspace?.OpenStart();

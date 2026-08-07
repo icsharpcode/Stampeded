@@ -40,4 +40,10 @@ public partial class ExplorerPaneView : UserControl
 	void OnNextCommit(object? sender, Avalonia.Interactivity.RoutedEventArgs e) => Vm?.StepCommit(1);
 
 	void OnExitCommitScope(object? sender, Avalonia.Interactivity.RoutedEventArgs e) => Vm?.ExitCommitScope();
+
+	void OnOpenVsCode(object? sender, Avalonia.Interactivity.RoutedEventArgs e) => Vm?.OpenInVsCode();
+
+	void OnOpenFixtures(object? sender, Avalonia.Interactivity.RoutedEventArgs e) => Vm?.OpenFixturesInIlspy();
+
+	void OnReviewRecord(object? sender, Avalonia.Interactivity.RoutedEventArgs e) => Vm?.OpenRecord();
 }

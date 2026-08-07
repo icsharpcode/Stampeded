@@ -19,19 +19,29 @@
       <StackPanel Spacing="3">
         <TextBlock FontSize="11" FontWeight="SemiBold" TextWrapping="Wrap"
                    Text="{Binding CommitScopeLine}" />
-        <StackPanel Orientation="Horizontal" Spacing="4">
-          <Button Content="Commit by commit" FontSize="10" Padding="6,1" Click="OnEnterCommitScope"
+        <!-- Wrapped: the pane is narrow, and a command that falls off its right edge is
+             the same as not having it here at all. -->
+        <WrapPanel Orientation="Horizontal">
+          <Button Content="Commit by commit" FontSize="10" Padding="6,1" Margin="0,0,4,3" Click="OnEnterCommitScope"
                   IsVisible="{Binding !InCommitScope}"
                   ToolTip.Tip="Read the change one commit at a time, in the order it was written" />
-          <Button Content="Prev" FontSize="10" Padding="6,1" Click="OnPreviousCommit"
+          <Button Content="Prev" FontSize="10" Padding="6,1" Margin="0,0,4,3" Click="OnPreviousCommit"
                   IsVisible="{Binding InCommitScope}"
                   ToolTip.Tip="Previous commit (Ctrl+[ in a diff)" />
-          <Button Content="Next" FontSize="10" Padding="6,1" FontWeight="SemiBold" Click="OnNextCommit"
+          <Button Content="Next" FontSize="10" Padding="6,1" Margin="0,0,4,3" FontWeight="SemiBold" Click="OnNextCommit"
                   IsVisible="{Binding InCommitScope}"
                   ToolTip.Tip="Next commit (Ctrl+] in a diff)" />
-          <Button Content="Whole change" FontSize="10" Padding="6,1" Click="OnExitCommitScope"
+          <Button Content="Whole change" FontSize="10" Padding="6,1" Margin="0,0,4,3" Click="OnExitCommitScope"
                   IsVisible="{Binding InCommitScope}" />
-        </StackPanel>
+          <!-- Verification and close-out, the commands used repeatedly during a pass. -->
+          <Button Content="VS Code" FontSize="10" Padding="6,1" Margin="0,0,4,3" Click="OnOpenVsCode"
+                  ToolTip.Tip="Open the head worktree in VS Code for building and debugging this revision" />
+          <Button Content="Fixtures in ILSpy" FontSize="10" Padding="6,1" Margin="0,0,4,3" Click="OnOpenFixtures"
+                  IsVisible="{Binding HasFixtureTools}"
+                  ToolTip.Tip="Open the compiled test-case assemblies this change affects in the ILSpy built from the review head (run the decompiler tests first)" />
+          <Button Content="Review record" FontSize="10" Padding="6,1" Margin="0,0,4,3" Click="OnReviewRecord"
+                  ToolTip.Tip="Write the close-out artifact: reviewed at which depth, verified how, skipped what" />
+        </WrapPanel>
       </StackPanel>
     </Border>
     <TextBlock Grid.Row="1" Classes="section" Text="CHANGED FILES" />
