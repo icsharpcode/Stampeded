@@ -93,6 +93,7 @@ public sealed class RoslynWorkspaceService : IDisposable
 				var loaded = await msbuild.OpenSolutionAsync(sln, cancellationToken: ct);
 				foreach (var diagnostic in msbuild.Diagnostics)
 					Log($"[workspace] {diagnostic.Kind}: {diagnostic.Message}");
+				loaded = DropUnresolvedAnalyzers(loaded);
 				if (loaded.Projects.Any(p => p.Documents.Any()))
 				{
 					workspace = msbuild;
@@ -124,6 +125,31 @@ public sealed class RoslynWorkspaceService : IDisposable
 				SetState(SemanticState.Failed, inner.Message);
 			}
 		}
+	}
+
+	/// <summary>
+	/// Drops analyzer references whose file the load could not find. An analyzer that failed
+	/// to resolve contributes nothing - it produces no diagnostics and we run none - but it
+	/// stays in the project as an UnresolvedAnalyzerReference, and checksumming one throws.
+	/// Every find-references call checksums the solution, so a single missing analyzer path
+	/// takes down Shift+F12 and everything built on it for the whole session.
+	/// </summary>
+	Solution DropUnresolvedAnalyzers(Solution solution)
+	{
+		int dropped = 0;
+		foreach (var project in solution.Projects)
+		{
+			var usable = project.AnalyzerReferences
+				.Where(r => r.FullPath is { Length: > 0 } path && File.Exists(path))
+				.ToList();
+			if (usable.Count == project.AnalyzerReferences.Count)
+				continue;
+			dropped += project.AnalyzerReferences.Count - usable.Count;
+			solution = solution.GetProject(project.Id)!.WithAnalyzerReferences(usable).Solution;
+		}
+		if (dropped > 0)
+			Log($"[workspace] dropped {dropped} unresolved analyzer reference(s)");
+		return solution;
 	}
 
 	async Task RestoreAsync(string sln, bool cleanRetry, CancellationToken ct)
