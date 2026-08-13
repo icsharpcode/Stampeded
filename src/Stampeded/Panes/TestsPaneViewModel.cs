@@ -7,6 +7,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 
 using Dock.Model.Mvvm.Controls;
 
+using Stampeded.Core.Infra;
 using Stampeded.Core.Testing;
 
 namespace Stampeded.Panes;

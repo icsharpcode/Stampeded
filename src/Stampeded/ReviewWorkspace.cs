@@ -7,6 +7,7 @@ using Stampeded.Core.GitHub;
 using Stampeded.Core.Infra;
 using Stampeded.Core.Review;
 using Stampeded.Core.Roslyn;
+using Stampeded.Core.Testing;
 using Stampeded.Documents;
 using Stampeded.Navigation;
 
@@ -209,6 +210,7 @@ public sealed class ReviewWorkspace(string repoPath)
 			}))
 			.HandleExceptions();
 		LoadSemanticsAsync(headSha, baseSha, ct).HandleExceptions();
+		LoadGeneratedSourcesAsync(ct).HandleExceptions();
 		ReattachDraftsAsync(ct).HandleExceptions();
 		CommentsChanged?.Invoke();
 	}
@@ -254,6 +256,7 @@ public sealed class ReviewWorkspace(string repoPath)
 			}))
 			.HandleExceptions();
 		LoadSemanticsAsync(headSha, baseSha, ct).HandleExceptions();
+		LoadGeneratedSourcesAsync(ct).HandleExceptions();
 		ReattachDraftsAsync(ct).HandleExceptions();
 		LoadPostedCommentsAsync(number, ct).HandleExceptions();
 	}
@@ -338,8 +341,95 @@ public sealed class ReviewWorkspace(string repoPath)
 		}
 	}
 
+	/// <summary>Progress of the generated-source pass, for the preparation checklist.</summary>
+	public string GeneratedSourcesStatus { get; private set; } = "waiting";
+	public bool GeneratedSourcesDone { get; private set; }
+	public event Action? GeneratedSourcesChanged;
+
+	/// <summary>
+	/// Adds what the builds generated to the reviewed files, replacing whatever an earlier
+	/// pass put there. They sort after the committed files: they are the consequence of the
+	/// change, and nobody should have to scroll past a generator's output to reach the code
+	/// that caused it.
+	/// </summary>
+	public void SetGeneratedFiles(IReadOnlyList<FileDiff> generated)
+	{
+		Files = [.. Files.Where(f => !f.IsGenerated), .. generated];
+		ReviewChanged?.Invoke();
+	}
+
+	/// <summary>
+	/// Builds both sides so the review can show what source generators emitted, which is
+	/// otherwise invisible: generated code is not in git, so a change that is entirely about
+	/// what a generator produces shows up as an edit to the generator and nothing else.
+	///
+	/// The head is built first and, when it generated nothing, the base is not built at all -
+	/// a repository without generators pays one build instead of two, and learns the answer
+	/// the only way there is to learn it.
+	/// </summary>
+	async Task LoadGeneratedSourcesAsync(CancellationToken ct)
+	{
+		if (WorktreePath is not { } head || BaseWorktreePath is not { } baseTree)
+		{
+			SetGeneratedStatus("no worktrees", done: true);
+			return;
+		}
+		try
+		{
+			// The semantic load is a design-time build over these same trees; running a real
+			// build alongside it has both writing the same obj directories. The A/B run waits
+			// for the same reason.
+			SetGeneratedStatus("waiting for semantics...", done: false);
+			while (Semantics is { State: SemanticState.Restoring or SemanticState.Loading }
+				|| BaseSemantics is { State: SemanticState.Restoring or SemanticState.Loading })
+			{
+				await Task.Delay(1000, ct);
+			}
+			SetGeneratedStatus("building head...", done: false);
+			await GeneratedSources.BuildAsync(head, ct);
+			if (GeneratedSources.Collect(head).Count == 0)
+			{
+				SetGeneratedStatus("no generators", done: true);
+				return;
+			}
+			SetGeneratedStatus("building base...", done: false);
+			await GeneratedSources.BuildAsync(baseTree, ct);
+			var generated = await GeneratedSources.DiffAsync(baseTree, head, ct);
+			SetGeneratedFiles(generated);
+			SetGeneratedStatus(generated.Count == 0 ? "unchanged" : $"{generated.Count} file(s)", done: true);
+		}
+		catch (OperationCanceledException)
+		{
+			throw;
+		}
+		catch (ToolFailedException ex)
+		{
+			// A review of a change that does not build is still a review; this is the one
+			// part of the preparation whose failure is expected often enough to be normal.
+			CliLog.Write("dotnet", $"generated sources unavailable: {ex.Message}");
+			SetGeneratedStatus("build failed", done: true);
+		}
+	}
+
+	void SetGeneratedStatus(string status, bool done)
+	{
+		GeneratedSourcesStatus = status;
+		GeneratedSourcesDone = done;
+		GeneratedSourcesChanged?.Invoke();
+	}
+
 	public async Task<DiffDocumentViewModel?> OpenFileAsync(FileDiff file)
 	{
+		if (file.Generated is { } generated)
+		{
+			return ShowDocument("diff:" + file.Path, () => new DiffDocumentViewModel(
+				file,
+				DiffDocumentBuilder.Build(ReadOrEmpty(generated.BaseFile), ReadOrEmpty(generated.HeadFile))) {
+				Title = Path.GetFileName(file.Path),
+			});
+
+			static string ReadOrEmpty(string? path) => path is null ? "" : File.ReadAllText(path);
+		}
 		if (BaseSha is null || HeadSha is null)
 			return null;
 		string oldText = file.Kind == FileChangeKind.Added || file.IsBinary
@@ -1857,7 +1947,9 @@ public sealed class ReviewWorkspace(string repoPath)
 			var file = anchor.OldSide
 				? Files.FirstOrDefault(f => f.OldPath == anchor.Path)
 				: Files.FirstOrDefault(f => f.Path == anchor.Path);
-			bool ok = draft.CurrentLine is { } line && file is not null
+			// A generated file has no counterpart in the pull request, so GitHub would reject
+			// the whole review over it. Such a draft stays local, like an outdated one.
+			bool ok = draft.CurrentLine is { } line && file is { IsGenerated: false }
 				&& (anchor.OldSide
 					? commentable[file].OldLines.Contains(line)
 					: commentable[file].NewLines.Contains(line));

@@ -58,7 +58,9 @@ public static class TriageEstimate
 			int added = file.Hunks.Sum(h => h.Lines.Count(l => l.Kind == PatchLineKind.Added));
 			int removed = file.Hunks.Sum(h => h.Lines.Count(l => l.Kind == PatchLineKind.Removed));
 			int changed = added + removed;
-			var category = Categorize(file.Path);
+			// Output collected from a build is generated whatever it happens to be called.
+			// The filename hints exist only to guess at generated code that was committed.
+			var category = file.IsGenerated ? FileCategory.Generated : Categorize(file.Path);
 			int minutes = category switch {
 				FileCategory.Dependency => DependencyFileMinutes,
 				FileCategory.Generated => (int)Math.Ceiling(changed / GeneratedLinesPerMinute),

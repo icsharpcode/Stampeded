@@ -159,6 +159,7 @@ public class StartDocumentViewModel : Document
 			"CI checks",
 			"Churn / hot spots",
 			"Posted review comments",
+			"Generated sources (builds both sides)",
 		})
 		{
 			PrepareItems.Add(new PrepareItem(label));
@@ -173,6 +174,7 @@ public class StartDocumentViewModel : Document
 		workspace.ChecksLoaded += () => Dispatcher.UIThread.Post(UpdatePreparation);
 		workspace.ChurnChanged += () => Dispatcher.UIThread.Post(UpdatePreparation);
 		workspace.CommentsChanged += () => Dispatcher.UIThread.Post(UpdatePreparation);
+		workspace.GeneratedSourcesChanged += () => Dispatcher.UIThread.Post(UpdatePreparation);
 		workspace.StatusMessage += message => Dispatcher.UIThread.Post(() => State.Status = message);
 		State.PropertyChanged += (_, e) => {
 			if (e.PropertyName == nameof(StartState.ShowStashes))
@@ -610,6 +612,7 @@ public class StartDocumentViewModel : Document
 		Set(6, !reviewOpen ? ("waiting", false)
 			: workspace.CommentsLoaded ? ($"{workspace.PostedComments.Count} comment(s)", true)
 			: ("loading...", false));
+		Set(7, (workspace.GeneratedSourcesStatus, workspace.GeneratedSourcesDone));
 
 		// Load-bearing: both semantic sides terminal, CI and churn in; the map and
 		// comments trail behind harmlessly (and may legitimately stay empty).

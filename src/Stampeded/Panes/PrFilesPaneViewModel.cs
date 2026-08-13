@@ -14,7 +14,9 @@ public sealed class FileEntry(FileDiff file, bool viewed) : ObservableObject
 {
 	public FileDiff File { get; } = file;
 
-	public string Marker => File.Kind switch {
+	/// <summary>"G" for generator output, whose add/modify/delete matters far less than the
+	/// fact that nobody wrote it.</summary>
+	public string Marker => File.IsGenerated ? "G" : File.Kind switch {
 		FileChangeKind.Added => "A",
 		FileChangeKind.Deleted => "D",
 		FileChangeKind.Renamed => "R",
@@ -106,7 +108,10 @@ public class PrFilesPaneViewModel : Tool
 	{
 		Files.Clear();
 		var ordered = workspace.Files
-			.OrderBy(f => workspace.IsTouchedSinceLastPass(f.Path) ? 0 : 1)
+			// Generator output goes last whatever else is true of it: it is what the change
+			// caused, and reaching the cause should never mean scrolling past the effect.
+			.OrderBy(f => f.IsGenerated ? 1 : 0)
+			.ThenBy(f => workspace.IsTouchedSinceLastPass(f.Path) ? 0 : 1)
 			.ThenBy(f => Core.Review.TestPaths.IsTestPath(f.Path) == testsFirst ? 0 : 1)
 			.ThenBy(f => DepthRank(workspace.GetDepth(f.Path)))
 			.ThenBy(f => f.Path, StringComparer.Ordinal);
