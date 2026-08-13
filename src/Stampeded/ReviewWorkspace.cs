@@ -1671,8 +1671,18 @@ public sealed class ReviewWorkspace(string repoPath)
 	/// <summary>Set by the dock factory so 'comment here' can surface the Comments pane.</summary>
 	public Dock.Model.Core.IDockable? CommentsPane { get; set; }
 
+	/// <summary>Review comments live on a pull request. A local-branch or uncommitted-work
+	/// review has nowhere to post them, so drafting one would only ever produce a draft that
+	/// can never leave the machine.</summary>
+	public bool CanComment => CurrentPr is not null;
+
 	public void BeginComment(CommentTarget target, bool activatePane = true)
 	{
+		if (!CanComment)
+		{
+			PostStatus("Comments need a pull request; this is a local review.");
+			return;
+		}
 		PendingCommentTarget = target;
 		if (activatePane && CommentsPane is not null && Factory is not null)
 			Factory.SetActiveDockable(CommentsPane);

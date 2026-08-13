@@ -260,6 +260,12 @@ public sealed class GitHubService(string repoPath)
 	/// <summary>Submits a review (APPROVE / REQUEST_CHANGES / COMMENT) with line comments.</summary>
 	public async Task SubmitReviewAsync(int number, ReviewSubmission submission, CancellationToken ct = default)
 	{
+		submission = submission with {
+			Comments = [.. submission.Comments.Select(c => c with { Body = WithAttribution(c.Body) })],
+			// A review whose body is empty renders as a bare "reviewed" line; there is nothing
+			// there to attribute, and the line comments carry the attribution already.
+			Body = submission.Comments.Count > 0 ? submission.Body : WithAttribution(submission.Body),
+		};
 		string json = JsonSerializer.Serialize(submission, JsonOptions);
 		var result = await CliWrap.Cli.Wrap("gh")
 			.WithArguments(["api", "-X", "POST", $"repos/{{owner}}/{{repo}}/pulls/{number}/reviews", "--input", "-"])
@@ -272,4 +278,11 @@ public sealed class GitHubService(string repoPath)
 		if (result.ExitCode != 0)
 			throw new ToolFailedException("gh", result.ExitCode, result.StandardError + result.StandardOutput);
 	}
+
+	/// <summary>Marks a comment as posted by this tool. It goes on each line comment, because
+	/// that is what a reader actually meets -- in the file view, in a thread, in a mail
+	/// notification -- none of which show the review summary the comments were batched into.</summary>
+	static string WithAttribution(string body)
+		=> (body.Length > 0 ? body.TrimEnd() + "\n\n" : "")
+			+ "*Reviewed with [Stampeded!](https://github.com/icsharpcode/Stampeded)*";
 }

@@ -136,6 +136,12 @@ public partial class DiffDocumentView : UserControl
 	{
 		if (viewModel is { Historical: true } || CaretBlobPosition() is not { } pos)
 			return;
+		if (App.Workspace is { CanComment: false } local)
+		{
+			// Say it here rather than let the popup take text that BeginComment would drop.
+			local.PostStatus("Comments need a pull request; this is a local review.");
+			return;
+		}
 		var docLine = Editor.Document.GetLineByNumber(Editor.TextArea.Caret.Line);
 		string text = Editor.Document.GetText(docLine.Offset, docLine.Length);
 		inlineCommentTarget = new ReviewWorkspace.CommentTarget(pos.RelPath, pos.OldSide, pos.Line, text);

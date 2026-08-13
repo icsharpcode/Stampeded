@@ -26,6 +26,10 @@ public sealed partial class CommentsState : ObservableObject
 	/// comment review.</summary>
 	[ObservableProperty]
 	bool canGiveVerdict = true;
+
+	/// <summary>False for a local review, which has no pull request to post to.</summary>
+	[ObservableProperty]
+	bool canComment = true;
 }
 
 public sealed record CommentRow(string RelPath, int? Line, bool OldSide, string Body, Guid? DraftId, string Author, string? Url = null)
@@ -86,12 +90,15 @@ public class CommentsPaneViewModel : Tool
 			string author = posted.IsResolved ? $"[resolved] {posted.Author}" : posted.Author;
 			Items.Add(new CommentRow(posted.RelPath, posted.Line, posted.OldSide, posted.Body, null, author, posted.Url));
 		}
+		State.CanComment = workspace.CanComment;
 		int outdated = workspace.Drafts.Count(d => d.CurrentLine is null);
-		State.Status = $"{workspace.Drafts.Count} draft(s){(outdated > 0 ? $" ({outdated} outdated)" : "")}, {workspace.PostedComments.Count} posted.";
+		State.Status = State.CanComment
+			? $"{workspace.Drafts.Count} draft(s){(outdated > 0 ? $" ({outdated} outdated)" : "")}, {workspace.PostedComments.Count} posted."
+			: "Local review: comments need a pull request to post to.";
 		RefreshVerdictAvailabilityAsync().HandleExceptions();
 
 		async Task RefreshVerdictAvailabilityAsync()
-			=> State.CanGiveVerdict = !await workspace.IsOwnPullRequestAsync();
+			=> State.CanGiveVerdict = workspace.CanComment && !await workspace.IsOwnPullRequestAsync();
 	}
 
 	public void AddDraft()

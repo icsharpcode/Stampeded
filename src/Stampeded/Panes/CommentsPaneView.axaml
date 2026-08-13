@@ -48,9 +48,10 @@
                 ToolTip.Tip="Approve. GitHub does not allow this on your own pull request." />
         <Button Content="Request Changes" Click="OnRequestChanges" IsEnabled="{Binding State.CanGiveVerdict}"
                 ToolTip.Tip="Request changes. GitHub does not allow this on your own pull request." />
-        <Button Content="Comment" Click="OnComment" />
+        <Button Content="Comment" Click="OnComment" IsEnabled="{Binding State.CanComment}" />
       </StackPanel>
       <TextBox Text="{Binding State.ReviewBody}" AcceptsReturn="True" MaxHeight="60"
+               IsEnabled="{Binding State.CanComment}"
                PlaceholderText="Review summary (optional)..." />
     </DockPanel>
   </Grid>
