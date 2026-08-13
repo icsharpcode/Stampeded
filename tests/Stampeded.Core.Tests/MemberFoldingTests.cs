@@ -39,6 +39,50 @@ public class MemberFoldingTests
 	}
 
 	[Test]
+	public void StartsAMemberAtItsDeclarationRatherThanItsAttributes()
+	{
+		string source = """
+			class C
+			{
+				[Test]
+				[Category("slow")]
+				public void M()
+				{
+				}
+
+				[Obsolete]
+				public int P => 1;
+			}
+			""";
+		var regions = MemberFolding.Compute(source);
+
+		// Collapsing M has to leave its attributes on screen: they are what tells the reader
+		// what the member is, which is the one thing a collapsed member cannot say for itself.
+		Assert.That(regions, Does.Contain(new MemberFoldRegion(5, 7)));
+		Assert.That(regions.Any(r => r.StartLine is 3 or 4), Is.False);
+		// P occupies a single line once its attribute is not counted, so it does not fold.
+		Assert.That(regions.Any(r => r.StartLine is 9 or 10), Is.False);
+	}
+
+	[Test]
+	public void FoldsATypeFromItsDeclarationNotItsAttributes()
+	{
+		string source = """
+			[Serializable]
+			class C
+			{
+				void M()
+				{
+				}
+			}
+			""";
+		var regions = MemberFolding.Compute(source);
+
+		Assert.That(regions, Does.Contain(new MemberFoldRegion(2, 7)));
+		Assert.That(regions.Any(r => r.StartLine == 1), Is.False);
+	}
+
+	[Test]
 	public void BrokenCodeStillYieldsRegions()
 	{
 		var regions = MemberFolding.Compute("class C {\n void M() {\n int x\n }\n}\n");

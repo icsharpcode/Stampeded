@@ -1,3 +1,4 @@
+using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 
@@ -26,12 +27,30 @@ public static class MemberFolding
 				or LocalFunctionStatementSyntax;
 			if (!foldable)
 				continue;
-			var span = text.Lines.GetLinePositionSpan(node.Span);
-			int start = span.Start.Line + 1;
-			int end = span.End.Line + 1;
+			int start = text.Lines.GetLinePosition(DeclarationStart(node)).Line + 1;
+			int end = text.Lines.GetLinePosition(node.Span.End).Line + 1;
 			if (end > start)
 				regions.Add(new MemberFoldRegion(start, end));
 		}
 		return regions;
+	}
+
+	/// <summary>
+	/// Where the declaration itself begins, past any attributes. Attributes are part of a
+	/// member's span, so folding from there hides them - and they are what says what the
+	/// member is for, which is the one thing a collapsed member cannot say for itself. A
+	/// member that occupies a single line once its attributes are excluded stops folding
+	/// altogether, which is right: there is nothing left to collapse.
+	/// </summary>
+	static int DeclarationStart(SyntaxNode node)
+	{
+		var attributes = node switch {
+			MemberDeclarationSyntax member => member.AttributeLists,
+			LocalFunctionStatementSyntax local => local.AttributeLists,
+			_ => default,
+		};
+		return attributes.Count > 0
+			? attributes[^1].GetLastToken().GetNextToken().SpanStart
+			: node.SpanStart;
 	}
 }
