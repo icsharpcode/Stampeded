@@ -206,7 +206,7 @@ public sealed record ThreadAnchor(bool OldSide, int BlobLine, string Key);
 /// <summary>
 /// Builds the unified-diff document from the two blob texts using DiffLib alignment.
 /// Changed runs are emitted GitHub-style (all removals, then all additions); aligned
-/// replace pairs carry character-level word-diff spans on both sides.
+/// replace pairs carry word-level diff spans on both sides.
 /// </summary>
 public static class DiffDocumentBuilder
 {
@@ -384,22 +384,71 @@ public static class DiffDocumentBuilder
 	static (IReadOnlyList<IntraLineSpan>? OldSpans, IReadOnlyList<IntraLineSpan>? NewSpans) ComputeWordDiffs(
 		string oldLine, string newLine)
 	{
+		var oldWords = Tokenize(oldLine);
+		var newWords = Tokenize(newLine);
 		var sections = DiffLib.Diff.CalculateSections(
-			oldLine.ToCharArray(), newLine.ToCharArray(), EqualityComparer<char>.Default);
+			oldWords.Select(w => w.Text).ToList(), newWords.Select(w => w.Text).ToList(),
+			EqualityComparer<string>.Default);
 		List<IntraLineSpan>? oldSpans = null, newSpans = null;
 		int o = 0, n = 0;
 		foreach (var section in sections)
 		{
 			if (!section.IsMatch)
 			{
-				if (section.LengthInCollection1 > 0)
-					(oldSpans ??= []).Add(new IntraLineSpan(o, section.LengthInCollection1));
-				if (section.LengthInCollection2 > 0)
-					(newSpans ??= []).Add(new IntraLineSpan(n, section.LengthInCollection2));
+				if (SpanOver(oldWords, o, section.LengthInCollection1) is { } oldSpan)
+					(oldSpans ??= []).Add(oldSpan);
+				if (SpanOver(newWords, n, section.LengthInCollection2) is { } newSpan)
+					(newSpans ??= []).Add(newSpan);
 			}
 			o += section.LengthInCollection1;
 			n += section.LengthInCollection2;
 		}
 		return (oldSpans, newSpans);
+
+		// One span per changed run rather than one per token: consecutive changed tokens are
+		// a single edit to the reader's eye, and their spans are contiguous by construction.
+		static IntraLineSpan? SpanOver(IReadOnlyList<Word> words, int first, int count)
+		{
+			if (count == 0)
+				return null;
+			var last = words[first + count - 1];
+			return new IntraLineSpan(words[first].Start, last.Start + last.Text.Length - words[first].Start);
+		}
+	}
+
+	readonly record struct Word(int Start, string Text);
+
+	/// <summary>
+	/// Splits a line into the units a reader compares: a run of identifier characters, a run
+	/// of whitespace, or one character of anything else.
+	///
+	/// Comparing single characters instead makes a renamed identifier light up as fragments
+	/// of the letters it happens to share with the old name -- "oldName" against "newName"
+	/// matching on "N", "ame" and lighting the rest -- which reads as noise rather than as
+	/// one thing having been replaced.
+	/// </summary>
+	static List<Word> Tokenize(string line)
+	{
+		var words = new List<Word>();
+		for (int i = 0; i < line.Length;)
+		{
+			int start = i;
+			if (char.IsLetterOrDigit(line[i]) || line[i] == '_')
+			{
+				while (i < line.Length && (char.IsLetterOrDigit(line[i]) || line[i] == '_'))
+					i++;
+			}
+			else if (char.IsWhiteSpace(line[i]))
+			{
+				while (i < line.Length && char.IsWhiteSpace(line[i]))
+					i++;
+			}
+			else
+			{
+				i++;
+			}
+			words.Add(new Word(start, line[start..i]));
+		}
+		return words;
 	}
 }

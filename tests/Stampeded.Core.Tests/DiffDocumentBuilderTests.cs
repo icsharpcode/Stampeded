@@ -133,6 +133,28 @@ public class DiffDocumentBuilderTests
 	}
 
 	[Test]
+	public void RenamedIdentifierIsOneSpanRatherThanTheLettersItShares()
+	{
+		var model = DiffDocumentBuilder.Build("int oldName = 1;", "int newName = 1;");
+
+		var added = model.Tags.Single(t => t.Kind == DiffLineKind.Added);
+		// Character comparison keeps the shared "Name" suffix out of the highlight and lights
+		// only "old"/"new"; the identifier was replaced as a whole and highlights as a whole.
+		Assert.That(added.WordDiffs, Has.Count.EqualTo(1));
+		Assert.That(added.WordDiffs![0], Is.EqualTo(new IntraLineSpan(4, "newName".Length)));
+	}
+
+	[Test]
+	public void UnchangedWordsOnAChangedLineStayOutOfTheHighlight()
+	{
+		var model = DiffDocumentBuilder.Build("var total = a + b;", "var total = a - b;");
+
+		var added = model.Tags.Single(t => t.Kind == DiffLineKind.Added);
+		Assert.That(added.WordDiffs, Has.Count.EqualTo(1));
+		Assert.That(added.WordDiffs![0], Is.EqualTo(new IntraLineSpan("var total = a ".Length, 1)));
+	}
+
+	[Test]
 	public void IdenticalTextsProduceNoHunks()
 	{
 		var model = DiffDocumentBuilder.Build(OldText, OldText);
