@@ -478,6 +478,7 @@ public sealed class RoslynWorkspaceService : IDisposable
 			return [];
 		var semanticModel = await document.GetSemanticModelAsync(ct);
 		var text = await document.GetTextAsync(ct);
+		var root = await document.GetSyntaxRootAsync(ct);
 		if (semanticModel is null)
 			return [];
 		var members = new Dictionary<string, ChangedMember>();
@@ -491,19 +492,8 @@ public sealed class RoslynWorkspaceService : IDisposable
 			if (content.Trim().Length == 0)
 				continue;
 			int position = textLine.Start + indent;
-			var symbol = semanticModel.GetEnclosingSymbol(position, ct);
-			// Walk up to the member users think in: method/property/field/event/ctor,
-			// falling back to the containing type for lines outside any member.
-			ISymbol? member = symbol;
-			while (member is not null
-				and not IMethodSymbol and not IPropertySymbol and not IFieldSymbol
-				and not IEventSymbol and not INamedTypeSymbol)
-			{
-				member = member.ContainingSymbol;
-			}
-			if (member is IMethodSymbol { AssociatedSymbol: { } associated })
-				member = associated; // accessors report as their property/event
-			if (member is null || member is INamespaceSymbol)
+			var member = MemberAtPosition(semanticModel, root, position, ct);
+			if (member is null)
 				continue;
 			string display = member.ToDisplayString(SymbolDisplayFormat.CSharpShortErrorMessageFormat);
 			if (members.TryGetValue(display, out var existing))
@@ -517,6 +507,76 @@ public sealed class RoslynWorkspaceService : IDisposable
 			}
 		}
 		return members.Values.OrderBy(m => m.FirstLine).ToList();
+	}
+
+	/// <summary>Walks up to the member users think in: method/property/field/event/ctor,
+	/// falling back to the containing type for lines outside any member. Null when the walk
+	/// leaves the type system (a line in a namespace declaration, or nothing resolvable).</summary>
+	/// <summary>
+	/// The member a text position belongs to.
+	///
+	/// A member's own declaration header -- "class C", a method signature, an attribute -- is
+	/// not inside the scope it opens, so the enclosing symbol there is whatever contains the
+	/// member: the type for a method, the namespace for a type. A signature is exactly what a
+	/// diff of a changed member touches, so the syntax decides for a position that reaches a
+	/// declaration without passing through a body first.
+	/// </summary>
+	static ISymbol? MemberAtPosition(SemanticModel model, SyntaxNode? root, int position, CancellationToken ct)
+	{
+		for (var node = root?.FindToken(position).Parent; node is not null; node = node.Parent)
+		{
+			// Inside a body the enclosing scope is the better answer: it reports the local
+			// function or lambda the position really sits in.
+			if (node is Microsoft.CodeAnalysis.CSharp.Syntax.BlockSyntax
+				or Microsoft.CodeAnalysis.CSharp.Syntax.ArrowExpressionClauseSyntax)
+			{
+				break;
+			}
+			if (node is Microsoft.CodeAnalysis.CSharp.Syntax.MemberDeclarationSyntax
+				or Microsoft.CodeAnalysis.CSharp.Syntax.LocalFunctionStatementSyntax)
+			{
+				// A field declaration declares nothing itself (its variables do), so it
+				// falls through to the enclosing type, which is what reaches the field.
+				if (WalkToMember(model.GetDeclaredSymbol(node, ct)) is { } declared)
+					return declared;
+				break;
+			}
+		}
+		return WalkToMember(model.GetEnclosingSymbol(position, ct));
+	}
+
+	static ISymbol? WalkToMember(ISymbol? symbol)
+	{
+		while (symbol is not null
+			and not IMethodSymbol and not IPropertySymbol and not IFieldSymbol
+			and not IEventSymbol and not INamedTypeSymbol)
+		{
+			symbol = symbol.ContainingSymbol;
+		}
+		if (symbol is IMethodSymbol { AssociatedSymbol: { } associated })
+			symbol = associated; // accessors report as their property/event
+		return symbol is null or INamespaceSymbol ? null : symbol;
+	}
+
+	/// <summary>The member a 1-based line belongs to -- the same symbol the change map is
+	/// keyed on, handed back as a symbol so callers can search its references. Resolving by
+	/// (line, guessed column) instead lands on whatever token sits at that column, which on
+	/// a body line is a local or a callee rather than the member that changed.</summary>
+	public async Task<ISymbol?> GetEnclosingMemberAsync(string repoRelativePath, int line, CancellationToken ct)
+	{
+		var document = GetDocument(ToAbsolutePath(repoRelativePath));
+		if (document is null)
+			return null;
+		var semanticModel = await document.GetSemanticModelAsync(ct);
+		var text = await document.GetTextAsync(ct);
+		if (semanticModel is null || line < 1 || line > text.Lines.Count)
+			return null;
+		var textLine = text.Lines[line - 1];
+		string content = textLine.ToString();
+		if (content.Trim().Length == 0)
+			return null;
+		int indent = content.Length - content.TrimStart().Length;
+		return MemberAtPosition(semanticModel, await document.GetSyntaxRootAsync(ct), textLine.Start + indent, ct);
 	}
 
 	/// <summary>Icon-grade member kind: named types report their TypeKind (Class, Struct,

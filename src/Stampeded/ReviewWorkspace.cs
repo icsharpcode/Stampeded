@@ -88,22 +88,37 @@ public sealed class ReviewWorkspace(string repoPath)
 		var classes = new HashSet<string>();
 		foreach (var entry in ChangeMap.Where(e => !e.OldSide).Take(30))
 		{
-			var symbol = await SymbolAtAsync(oldSide: false, entry.RelPath, entry.Line, 1)
-				?? await SymbolAtAsync(oldSide: false, entry.RelPath, entry.Line, 20);
-			if (symbol is null)
+			// The change map's line is wherever the edit landed inside the member, so the
+			// member has to come from the enclosing scope; the token at that line is a local
+			// or a callee, whose references say nothing about which tests cover the change.
+			var member = await sem.GetEnclosingMemberAsync(entry.RelPath, entry.Line, CancellationToken.None);
+			if (member is null)
 				continue;
-			var hits = await sem.FindReferencesAsync(symbol, CancellationToken.None);
-			foreach (var hit in hits)
+			// A test rarely names a private helper. When nothing under test refers to the
+			// member itself, the type that owns it is what the tests do exercise.
+			if (!await AddTestClassesAsync(member) && member is not Microsoft.CodeAnalysis.INamedTypeSymbol
+				&& member.ContainingType is { } type)
+			{
+				await AddTestClassesAsync(type);
+			}
+			if (classes.Count >= 8)
+				break;
+		}
+		return classes.ToList();
+
+		async Task<bool> AddTestClassesAsync(Microsoft.CodeAnalysis.ISymbol symbol)
+		{
+			bool anyTestHit = false;
+			foreach (var hit in await sem.FindReferencesAsync(symbol, CancellationToken.None))
 			{
 				string? rel = sem.ToRelativePath(hit.FilePath);
 				if (rel is null || !Core.Review.TestPaths.IsTestPath(rel))
 					continue;
+				anyTestHit = true;
 				classes.Add(Path.GetFileNameWithoutExtension(hit.FilePath));
-				if (classes.Count >= 8)
-					return classes.ToList();
 			}
+			return anyTestHit;
 		}
-		return classes.ToList();
 	}
 
 	/// <summary>(uncovered, measured) added lines across the diff, from the last coverage run.</summary>
