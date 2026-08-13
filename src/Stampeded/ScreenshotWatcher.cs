@@ -136,6 +136,17 @@ static class ScreenshotWatcher
 						toggle.IsChecked = true;
 					}
 				}
+				// key:<gesture> - raises a key press on the window (e.g. "key:Ctrl+OemPlus"),
+				// so a gesture handler is exercised rather than the state it produces.
+				foreach (var command in lines.Where(l => l.StartsWith("key:", StringComparison.Ordinal)))
+				{
+					var gesture = Avalonia.Input.KeyGesture.Parse(command["key:".Length..].Trim());
+					window.RaiseEvent(new Avalonia.Input.KeyEventArgs {
+						RoutedEvent = Avalonia.Input.InputElement.KeyDownEvent,
+						Key = gesture.Key,
+						KeyModifiers = gesture.KeyModifiers,
+					});
+				}
 				// select:<list-name>:<index> - drives a named ListBox's selection, so
 				// selection-dependent UI can be captured.
 				foreach (var command in lines.Where(l => l.StartsWith("select:", StringComparison.Ordinal)))
