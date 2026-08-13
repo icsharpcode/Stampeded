@@ -11,6 +11,13 @@
   <Window.DataTemplates>
     <local:ViewLocator />
   </Window.DataTemplates>
+  <!-- LayoutTransformControl rather than a RenderTransform: this one re-runs layout at the
+       new scale, so text is laid out and rendered at that size instead of a fixed layout
+       being magnified. -->
+  <LayoutTransformControl>
+    <LayoutTransformControl.LayoutTransform>
+      <ScaleTransform ScaleX="{Binding Zoom}" ScaleY="{Binding Zoom}" />
+    </LayoutTransformControl.LayoutTransform>
   <DockPanel>
     <Menu DockPanel.Dock="Top">
       <MenuItem Header="_Review">
@@ -39,6 +46,13 @@
         <MenuItem Header="Review Overview" Click="OnOpenOverview" />
         <Separator />
         <MenuItem Header="Side-by-Side of Current File" Click="OnSideBySide" />
+        <Separator />
+        <!-- The gestures live in the headers, not as InputGesture: the window handles them so
+             they keep working while a text box has focus, and a menu gesture would take them
+             first. "Ctrl+Plus" is also not a gesture Avalonia can parse - Plus is no Key. -->
+        <MenuItem Header="Zoom In  ( Ctrl++ )" Click="OnZoomIn" />
+        <MenuItem Header="Zoom Out  ( Ctrl+- )" Click="OnZoomOut" />
+        <MenuItem Header="Reset Zoom  ( Ctrl+0 )" Click="OnZoomReset" />
         <Separator />
         <MenuItem Header="Explorer Pane" Tag="Explorer" Click="OnShowPane" />
         <MenuItem Header="Change Map Pane" Tag="Map" Click="OnShowPane" />
@@ -117,4 +131,5 @@
       </Border>
     </Panel>
   </DockPanel>
+  </LayoutTransformControl>
 </Window>

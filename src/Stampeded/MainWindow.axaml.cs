@@ -1,4 +1,5 @@
 using Avalonia.Controls;
+using Avalonia.Input;
 using Avalonia.Interactivity;
 
 using Stampeded.Documents;
@@ -13,6 +14,42 @@ public partial class MainWindow : Window
 		DataContext = new MainViewModel();
 		ScreenshotWatcher.Attach(this);
 		RecentMenu.AddHandler(MenuItem.ClickEvent, OnRecentRepoClick);
+	}
+
+	MainViewModel? Vm => DataContext as MainViewModel;
+
+	void OnZoomIn(object? s, RoutedEventArgs e) => Vm?.ZoomIn();
+
+	void OnZoomOut(object? s, RoutedEventArgs e) => Vm?.ZoomOut();
+
+	void OnZoomReset(object? s, RoutedEventArgs e) => Vm?.ZoomReset();
+
+	/// <summary>
+	/// The zoom gestures. They are handled here rather than as InputGesture on the menu items
+	/// so that a "+" typed into a text box stays a "+"; the menu headers carry the gestures for
+	/// discoverability only. Both halves of the keyboard reach them: Ctrl+"+" arrives as
+	/// OemPlus on the main block, needing no Shift to match, and as Add on the numpad.
+	/// </summary>
+	protected override void OnKeyDown(KeyEventArgs e)
+	{
+		base.OnKeyDown(e);
+		if (e.Handled || !e.KeyModifiers.HasFlag(KeyModifiers.Control))
+			return;
+		switch (e.Key)
+		{
+			case Key.OemPlus or Key.Add:
+				Vm?.ZoomIn();
+				break;
+			case Key.OemMinus or Key.Subtract:
+				Vm?.ZoomOut();
+				break;
+			case Key.D0 or Key.NumPad0:
+				Vm?.ZoomReset();
+				break;
+			default:
+				return;
+		}
+		e.Handled = true;
 	}
 
 	void OnRecentRepoClick(object? sender, RoutedEventArgs e)

@@ -22,6 +22,21 @@ public partial class MainViewModel : ObservableObject
 	[ObservableProperty]
 	Documents.StartDocumentViewModel? startPage;
 
+	/// <summary>Scale of the whole window's content. Steps are multiplicative so each press
+	/// changes the size by as much as the last one appeared to.</summary>
+	[ObservableProperty]
+	double zoom = 1.0;
+
+	const double ZoomStep = 1.1;
+	const double MinZoom = 0.5;
+	const double MaxZoom = 3.0;
+
+	public void ZoomIn() => Zoom = Math.Min(MaxZoom, Zoom * ZoomStep);
+
+	public void ZoomOut() => Zoom = Math.Max(MinZoom, Zoom / ZoomStep);
+
+	public void ZoomReset() => Zoom = 1.0;
+
 	public MainViewModel()
 	{
 		var workspace = new ReviewWorkspace(Program.RepoPath);
