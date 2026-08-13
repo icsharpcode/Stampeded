@@ -1,5 +1,6 @@
 using Avalonia.Controls;
 using Avalonia.Input;
+using Avalonia.Input.Platform;
 using Avalonia.Interactivity;
 
 using Stampeded.Core.GitHub;
@@ -37,6 +38,15 @@ public partial class StartDocumentView : UserControl
 	{
 		if (Vm is { } vm && BranchList.SelectedItem is BranchRow row)
 			vm.OpenBranch(row);
+	}
+
+	void OnCopyBranchName(object? sender, RoutedEventArgs e)
+	{
+		if (Vm is not { } vm || BranchList.SelectedItem is not BranchRow row)
+			return;
+		string name = row.Info.Name;
+		TopLevel.GetTopLevel(this)?.Clipboard?.SetTextAsync(name).HandleExceptions();
+		vm.State.Status = $"Copied '{name}' to the clipboard.";
 	}
 
 	/// <summary>Avalonia's negated binding is one-way, so a radio pair cannot round-trip

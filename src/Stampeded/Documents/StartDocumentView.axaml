@@ -134,6 +134,8 @@
         <ListBox.ContextMenu>
           <ContextMenu>
             <MenuItem Header="Open Review (double-click)" Click="OnBranchOpen" />
+            <MenuItem Header="Copy Branch Name" Click="OnCopyBranchName"
+                      IsVisible="{Binding !State.ShowStashes}" />
             <MenuItem Header="Create Branch from Stash..." Click="OnCreateBranchFromStash"
                       IsVisible="{Binding State.ShowStashes}" />
             <MenuItem Header="Pull from origin" Click="OnPullBranch"
