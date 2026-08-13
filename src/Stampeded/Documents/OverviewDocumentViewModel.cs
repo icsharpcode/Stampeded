@@ -245,8 +245,11 @@ public class OverviewDocumentViewModel : Document
 	{
 		CommitLines.Clear();
 		State.CommitsHeader = "";
-		if (workspace.BaseSha is not { } baseSha || workspace.HeadSha is not { } headSha)
+		// The review's range, not the displayed one: while a commit is in scope BaseSha and
+		// HeadSha describe that commit, and this section is about the series it belongs to.
+		if (workspace.ReviewRange is not { } range)
 			return;
+		var (baseSha, headSha) = range;
 		try
 		{
 			// Uncommitted work leads the list: it sits on top of every commit below it, and
@@ -260,7 +263,10 @@ public class OverviewDocumentViewModel : Document
 			foreach (var commit in commits.Take(8))
 			{
 				var (added, removed) = stats.GetValueOrDefault(commit.Sha);
-				CommitLines.Add(new CommitLine(commit.ShortSha, $"+{added}", $"-{removed}", commit.Subject));
+				// The one being read is marked, so the series says where in it you are.
+				bool inScope = workspace.CommitScope?.Sha == commit.Sha;
+				CommitLines.Add(new CommitLine(commit.ShortSha, $"+{added}", $"-{removed}",
+					inScope ? $"> {commit.Subject}" : commit.Subject));
 			}
 			if (commits.Count > 8)
 				CommitLines.Add(new CommitLine("", "", "", $"... and {commits.Count - 8} more (Commits pane)"));

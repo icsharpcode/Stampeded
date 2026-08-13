@@ -905,6 +905,12 @@ public sealed class ReviewWorkspace(string repoPath)
 
 	(string Base, string Head)? fullRange;
 
+	/// <summary>The range the review is of. BaseSha and HeadSha stop describing it while a
+	/// single commit is in scope - they move to that commit - so anything that talks about
+	/// the review as a whole has to ask here instead.</summary>
+	public (string Base, string Head)? ReviewRange
+		=> fullRange ?? (BaseSha is { } b && HeadSha is { } h ? (b, h) : null);
+
 	public event Action? CommitScopeChanged;
 
 	public bool CanEnterCommitScope => HeadSha is not null && DirtyWorktreePath is null;
