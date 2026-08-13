@@ -61,13 +61,14 @@ public partial class ExplorerPaneViewModel : Tool
 
 	public void ExitCommitScope() => workspace.ExitCommitScopeAsync().HandleExceptions();
 
-	// The verification and close-out commands from the overview page. They are the ones
-	// reached for repeatedly during a pass, so they sit where the reading happens instead
-	// of a tab away; the once-per-review ones (open on GitHub, bounce, close) stay in the
-	// menu and on the overview page.
+	// The verification and close-out commands from the overview page, kept where the reading
+	// happens rather than a tab away. Opening on GitHub and bouncing stay behind in the menu:
+	// they belong to deciding about the change, not to reading it.
 	public void OpenInVsCode() => workspace.OpenInVsCodeAsync(oldSide: false).HandleExceptions();
 
 	public void OpenFixturesInIlspy() => workspace.OpenAffectedFixturesInILSpyAsync().HandleExceptions();
 
 	public void OpenRecord() => workspace.OpenReviewRecord();
+
+	public void CloseReview() => workspace.CloseReview();
 }

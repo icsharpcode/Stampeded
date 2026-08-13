@@ -11,7 +11,10 @@
       <Setter Property="Margin" Value="6,4,0,2" />
     </Style>
   </UserControl.Styles>
-  <Grid RowDefinitions="Auto,Auto,2*,4,Auto,3*">
+  <!-- Each section owns its heading, so the splitter's neighbours are the two resizable
+       areas. With a heading in a row of its own next to the splitter, dragging resized that
+       heading instead of the tree below it: the list shrank and the space became a gap. -->
+  <Grid RowDefinitions="Auto,2*,4,3*">
     <!-- While stepping, the commit is what the list below contains, so the stepper sits
          with it rather than somewhere the reader has to go back to. -->
     <Border Grid.Row="0" Padding="6,3" BorderThickness="0,0,0,1" BorderBrush="#803794FF"
@@ -41,13 +44,19 @@
                   ToolTip.Tip="Open the compiled test-case assemblies this change affects in the ILSpy built from the review head (run the decompiler tests first)" />
           <Button Content="Review record" FontSize="10" Padding="6,1" Margin="0,0,4,3" Click="OnReviewRecord"
                   ToolTip.Tip="Write the close-out artifact: reviewed at which depth, verified how, skipped what" />
+          <Button Content="Close review" FontSize="10" Padding="6,1" Margin="0,0,4,3" Click="OnCloseReview"
+                  ToolTip.Tip="End this review: close its documents and return to the start page" />
         </WrapPanel>
       </StackPanel>
     </Border>
-    <TextBlock Grid.Row="1" Classes="section" Text="CHANGED FILES" />
-    <panes:PrFilesPaneView Grid.Row="2" x:Name="FilesSection" DataContext="{Binding Files}" />
-    <GridSplitter Grid.Row="3" Height="4" HorizontalAlignment="Stretch" Background="#30808080" />
-    <TextBlock Grid.Row="4" Classes="section" Text="REPOSITORY" />
-    <panes:FileBrowserPaneView Grid.Row="5" x:Name="BrowserSection" DataContext="{Binding Browser}" />
+    <DockPanel Grid.Row="1">
+      <TextBlock DockPanel.Dock="Top" Classes="section" Text="CHANGED FILES" />
+      <panes:PrFilesPaneView x:Name="FilesSection" DataContext="{Binding Files}" />
+    </DockPanel>
+    <GridSplitter Grid.Row="2" Height="4" HorizontalAlignment="Stretch" Background="#30808080" />
+    <DockPanel Grid.Row="3">
+      <TextBlock DockPanel.Dock="Top" Classes="section" Text="REPOSITORY" />
+      <panes:FileBrowserPaneView x:Name="BrowserSection" DataContext="{Binding Browser}" />
+    </DockPanel>
   </Grid>
 </UserControl>
