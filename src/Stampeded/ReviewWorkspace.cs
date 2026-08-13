@@ -92,6 +92,7 @@ public sealed class ReviewWorkspace(string repoPath)
 		if (Semantics is not { State: SemanticState.Ready or SemanticState.SyntaxOnly } sem)
 			return [];
 		var classes = new HashSet<string>();
+		int traced = 0, unresolved = 0;
 		foreach (var entry in ChangeMap.Where(e => !e.OldSide).Take(30))
 		{
 			// The change map's line is wherever the edit landed inside the member, so the
@@ -99,7 +100,11 @@ public sealed class ReviewWorkspace(string repoPath)
 			// or a callee, whose references say nothing about which tests cover the change.
 			var member = await sem.GetEnclosingMemberAsync(entry.RelPath, entry.Line, CancellationToken.None);
 			if (member is null)
+			{
+				unresolved++;
 				continue;
+			}
+			traced++;
 			// A test rarely names a private helper. When nothing under test refers to the
 			// member itself, the type that owns it is what the tests do exercise.
 			if (!await AddTestClassesAsync(member) && member is not Microsoft.CodeAnalysis.INamedTypeSymbol
@@ -110,6 +115,12 @@ public sealed class ReviewWorkspace(string repoPath)
 			if (classes.Count >= 8)
 				break;
 		}
+		// Which of the ways this can come up empty actually happened: no member resolved, or
+		// members resolved but nothing under test refers to them.
+		CliLog.Write("impacted", $"{traced} member(s) traced of {ChangeMap.Count(e => !e.OldSide)} changed"
+			+ (unresolved > 0 ? $" ({unresolved} unresolved)" : "")
+			+ $" -> {classes.Count} test class(es)"
+			+ (classes.Count > 0 ? ": " + string.Join(", ", classes) : ""));
 		return classes.ToList();
 
 		async Task<bool> AddTestClassesAsync(Microsoft.CodeAnalysis.ISymbol symbol)

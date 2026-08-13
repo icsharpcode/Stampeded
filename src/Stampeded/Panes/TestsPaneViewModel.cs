@@ -8,6 +8,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using Dock.Model.Mvvm.Controls;
 
 using Stampeded.Core.Infra;
+using Stampeded.Core.Roslyn;
 using Stampeded.Core.Testing;
 
 namespace Stampeded.Panes;
@@ -122,11 +123,29 @@ public class TestsPaneViewModel : Tool
 
 		async Task ApplyImpactedFilterAsync()
 		{
-			State.Status = "Finding test classes referencing the changed members...";
+			// Three different failures used to share one sentence, which left "it does not
+			// work" and "this change has no tests" looking the same.
+			if (workspace.Semantics is not { State: SemanticState.Ready or SemanticState.SyntaxOnly } sem)
+			{
+				State.Status = $"Semantics are {workspace.Semantics?.State.ToString().ToLowerInvariant() ?? "not loaded"}; "
+					+ "the filter needs them to find what references the change.";
+				return;
+			}
+			if (workspace.ChangeMap.Count == 0)
+			{
+				State.Status = workspace.ChangeMapComputed
+					? "No changed members to trace: the change touches no C# member the map knows."
+					: "The change map is still being computed; try again in a moment.";
+				return;
+			}
+			State.Status = $"Finding test classes referencing {workspace.ChangeMap.Count} changed member(s)"
+				+ (sem.State == SemanticState.SyntaxOnly ? " (syntax-only semantics - references will be incomplete)" : "")
+				+ "...";
 			var classes = await workspace.SuggestImpactedTestClassesAsync();
 			if (classes.Count == 0)
 			{
-				State.Status = "No referencing test classes found (semantics/change map not ready, or the change is untested).";
+				State.Status = "No test file references the changed members or the types holding them - "
+					+ "the change may be untested, or reached only indirectly.";
 				return;
 			}
 			string baseArgs = State.Args;
