@@ -42,8 +42,10 @@ public partial class MainViewModel : ObservableObject
 	void UpdateTitle()
 	{
 		string repo = $"{Path.GetFileName(Program.RepoPath)}  ({Program.RepoPath})";
-		WindowTitle = App.Workspace?.CurrentPr is { } pr
-			? $"Stampeded!  -  {repo}  -  PR #{pr.Number}"
-			: $"Stampeded!  -  {repo}";
+		WindowTitle = App.Workspace switch {
+			{ CurrentPr: { } pr } => $"Stampeded!  -  {repo}  -  PR #{pr.Number}",
+			{ LocalRange: { } range } => $"Stampeded!  -  {repo}  -  {range.Head}",
+			_ => $"Stampeded!  -  {repo}",
+		};
 	}
 }

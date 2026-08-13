@@ -160,7 +160,11 @@ public class OverviewDocumentViewModel : Document
 	{
 		State.Title = workspace.CurrentPr is { } pr
 			? $"#{pr.Number}  {pr.Title}"
-			: workspace.HeadSha is null ? "No review open." : "Local range review";
+			: workspace.LocalRange is { } range
+				// The merge base, not the base ref: the diff is against where the branch left
+				// its base, which is a different commit as soon as the base moved on.
+				? $"{range.Head}  vs  {range.Base}  (merge base {workspace.BaseSha?[..8]})"
+				: workspace.HeadSha is null ? "No review open." : "Local range review";
 		State.WorkingTreeLine = workspace.DirtyWorktreePath is { } dirty
 			? $"Head is the working tree at {dirty} - uncommitted changes included"
 			+ (workspace.UncommittedFileCount > 0 ? $" ({workspace.UncommittedFileCount} file(s) beyond the last commit)." : ".")

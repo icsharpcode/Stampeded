@@ -36,6 +36,12 @@ public sealed class ReviewWorkspace(string repoPath)
 	public DocumentDock? Documents { get; set; }
 
 	public PrDetail? CurrentPr { get; private set; }
+
+	/// <summary>The refs a local range review was opened with, null for a pull request one.
+	/// Worth keeping apart from <see cref="BaseSha"/>: that is their merge base, the commit
+	/// the diff is really against, which is not what the user typed.</summary>
+	public (string Base, string Head)? LocalRange { get; private set; }
+
 	public string? BaseSha { get; private set; }
 	public string? HeadSha { get; private set; }
 	public IReadOnlyList<FileDiff> Files { get; private set; } = [];
@@ -203,6 +209,7 @@ public sealed class ReviewWorkspace(string repoPath)
 		ct.ThrowIfCancellationRequested();
 
 		CurrentPr = null;
+		LocalRange = (baseRef, headRef);
 		BaseSha = baseSha;
 		HeadSha = headSha;
 		Files = files;
@@ -251,6 +258,7 @@ public sealed class ReviewWorkspace(string repoPath)
 		ct.ThrowIfCancellationRequested();
 
 		CurrentPr = detail;
+		LocalRange = null;
 		BaseSha = baseSha;
 		HeadSha = headSha;
 		Files = files;
@@ -1154,6 +1162,7 @@ public sealed class ReviewWorkspace(string repoPath)
 		BaseSemantics?.Dispose();
 		BaseSemantics = null;
 		CurrentPr = null;
+		LocalRange = null;
 		CommitScope = null;
 		ScopeCommits = [];
 		fullRange = null;
