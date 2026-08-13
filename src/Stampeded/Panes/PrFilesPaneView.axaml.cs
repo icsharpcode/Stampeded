@@ -2,6 +2,8 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 
+using Stampeded.Controls;
+
 namespace Stampeded.Panes;
 
 public partial class PrFilesPaneView : UserControl
@@ -51,7 +53,7 @@ public partial class PrFilesPaneView : UserControl
 		if (entry is null || ReferenceEquals(FileList.SelectedItem, entry))
 			return;
 		FileList.SelectedItem = entry;
-		FileList.ScrollIntoView(entry);
+		FileList.ScrollRowIntoView(entry);
 	}
 
 	void OnDepthDeep(object? sender, RoutedEventArgs e) => SetDepth("deep");

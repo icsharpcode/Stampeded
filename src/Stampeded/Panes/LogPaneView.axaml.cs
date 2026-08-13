@@ -5,6 +5,8 @@ using Avalonia.Input;
 using Avalonia.Input.Platform;
 using Avalonia.Interactivity;
 
+using Stampeded.Controls;
+
 namespace Stampeded.Panes;
 
 public partial class LogPaneView : UserControl
@@ -24,7 +26,7 @@ public partial class LogPaneView : UserControl
 	void OnLinesChanged(object? sender, NotifyCollectionChangedEventArgs e)
 	{
 		if (e.Action == NotifyCollectionChangedAction.Add && LogList.ItemCount > 0)
-			LogList.ScrollIntoView(LogList.ItemCount - 1);
+			LogList.ScrollRowIntoView(LogList.ItemCount - 1);
 	}
 
 	void OnClear(object? sender, RoutedEventArgs e)

@@ -4,6 +4,7 @@ using Avalonia.Media.Imaging;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 
+using Stampeded.Controls;
 using Stampeded.Core.Infra;
 
 namespace Stampeded;
@@ -148,7 +149,7 @@ static class ScreenshotWatcher
 						&& index < list.ItemCount)
 					{
 						list.SelectedIndex = index;
-						list.ScrollIntoView(index);
+						list.ScrollRowIntoView(index);
 					}
 				}
 				foreach (var command in lines.Where(l => l.StartsWith("goto:", StringComparison.Ordinal)))
