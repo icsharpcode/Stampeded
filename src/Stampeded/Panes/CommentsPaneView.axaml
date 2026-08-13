@@ -11,7 +11,7 @@
       <DockPanel>
         <Button DockPanel.Dock="Right" Margin="4,0,0,0" Content="Add Draft" Click="OnAddDraft" />
         <TextBox Text="{Binding State.DraftBody}" AcceptsReturn="True" MaxHeight="80"
-                 Watermark="Draft comment text..." />
+                 PlaceholderText="Draft comment text..." />
       </DockPanel>
     </StackPanel>
     <ListBox Grid.Row="2" x:Name="CommentList" ItemsSource="{Binding Items}" SelectionChanged="OnSelectionChanged">
@@ -51,7 +51,7 @@
         <Button Content="Comment" Click="OnComment" />
       </StackPanel>
       <TextBox Text="{Binding State.ReviewBody}" AcceptsReturn="True" MaxHeight="60"
-               Watermark="Review summary (optional)..." />
+               PlaceholderText="Review summary (optional)..." />
     </DockPanel>
   </Grid>
 </UserControl>

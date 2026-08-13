@@ -9,7 +9,7 @@
       <Button DockPanel.Dock="Right" Margin="4,0,0,0" Click="OnRunClicked"
               Content="{Binding State.Running, Converter={x:Static panes:RunPaneView.RunButtonText}}" />
       <TextBox DockPanel.Dock="Right" Width="180" Margin="4,0,0,0" Text="{Binding State.Arguments}"
-               Watermark="app arguments" FontFamily="monospace" />
+               PlaceholderText="app arguments" FontFamily="monospace" />
       <ComboBox ItemsSource="{Binding Projects}" SelectedItem="{Binding State.SelectedProject}"
                 HorizontalAlignment="Stretch" />
     </DockPanel>

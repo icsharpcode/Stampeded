@@ -14,7 +14,7 @@
               ToolTip.Tip="Wraps the run with dotnet-coverage and overlays line coverage on the diffs" />
       <Button DockPanel.Dock="Right" Margin="4,0,0,0" Click="OnRunClicked"
               Content="{Binding State.Running, Converter={x:Static panes:TestsPaneView.RunButtonText}}" />
-      <TextBox Text="{Binding State.Args}" Watermark="dotnet arguments" FontFamily="monospace" />
+      <TextBox Text="{Binding State.Args}" PlaceholderText="dotnet arguments" FontFamily="monospace" />
     </DockPanel>
     <DockPanel Grid.Row="1" Margin="6,2">
       <TextBlock DockPanel.Dock="Left" FontFamily="monospace" Foreground="#3794FF" Margin="0,0,6,0"

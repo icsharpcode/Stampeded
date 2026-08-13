@@ -8,7 +8,7 @@
     <StackPanel DockPanel.Dock="Bottom" Margin="4" Spacing="4">
       <DockPanel>
         <Button DockPanel.Dock="Right" Margin="4,0,0,0" Content="Open Range" Click="OnOpenRangeClicked" />
-        <TextBox x:Name="RangeBox" Watermark="base..head (local review)" FontFamily="monospace" />
+        <TextBox x:Name="RangeBox" PlaceholderText="base..head (local review)" FontFamily="monospace" />
       </DockPanel>
       <DockPanel>
         <Button DockPanel.Dock="Right" Content="Refresh" Click="OnRefreshClicked" />
