@@ -39,6 +39,62 @@ public class MemberFoldingTests
 	}
 
 	[Test]
+	public void FoldsARegionToItsEndRegion()
+	{
+		string source = """
+			class C
+			{
+				#region Commands
+				void A()
+				{
+				}
+
+				void B()
+				{
+				}
+				#endregion
+			}
+			""";
+		var regions = MemberFolding.Compute(source);
+
+		Assert.That(regions, Does.Contain(new MemberFoldRegion(3, 11)));
+		Assert.That(regions, Does.Contain(new MemberFoldRegion(4, 6)));  // A, still foldable inside
+	}
+
+	[Test]
+	public void LeavesOutARegionWithNoEndAndOneThatCrossesAMember()
+	{
+		string unclosed = """
+			class C
+			{
+				#region Never closed
+				void A()
+				{
+				}
+			}
+			""";
+		Assert.That(MemberFolding.Compute(unclosed).Any(r => r.StartLine == 3), Is.False);
+
+		// Opens inside A and closes after it: a fold that no folding manager can nest.
+		string crossing = """
+			class C
+			{
+				void A()
+				{
+					#region Inside
+				}
+
+				void B()
+				{
+				}
+				#endregion
+			}
+			""";
+		Assert.That(MemberFolding.Compute(crossing).Any(r => r.StartLine == 5), Is.False);
+		Assert.That(MemberFolding.Compute(crossing), Does.Contain(new MemberFoldRegion(3, 6)));
+	}
+
+	[Test]
 	public void StartsAMemberAtItsDeclarationRatherThanItsAttributes()
 	{
 		string source = """
