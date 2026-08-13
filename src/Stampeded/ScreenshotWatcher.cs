@@ -1,5 +1,6 @@
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
+using Avalonia.Interactivity;
 using Avalonia.Media.Imaging;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
@@ -134,6 +135,21 @@ static class ScreenshotWatcher
 						.FirstOrDefault(t => t.Name == command["check:".Length..].Trim()) is { } toggle)
 					{
 						toggle.IsChecked = true;
+					}
+				}
+				// click:<button content> - presses a button by its label, for commands that have
+				// no gesture to raise and no view model the watcher can reach.
+				foreach (var command in lines.Where(l => l.StartsWith("click:", StringComparison.Ordinal)))
+				{
+					string label = command["click:".Length..].Trim();
+					if (window.GetVisualDescendants().OfType<Button>()
+						.FirstOrDefault(b => b.Content as string == label) is { } button)
+					{
+						button.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+					}
+					else
+					{
+						CliLog.Write("action", $"click: no button labelled '{label}'");
 					}
 				}
 				// key:<gesture> - raises a key press on the window (e.g. "key:Ctrl+OemPlus"),
