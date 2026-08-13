@@ -18,6 +18,38 @@ static class ScreenshotWatcher
 {
 	const string TriggerFile = "/tmp/stampeded-screenshot-request";
 
+	/// <summary>
+	/// Reports rows a virtualizing panel is still painting but no longer owns - the ghost rows
+	/// that appear over unrelated ones. A stranded container is either absent from the panel's
+	/// realized set or arranged at its own desired width, which no ordinary layout pass
+	/// produces: a row always spans the panel. Both are printed with the item they still show
+	/// and where they sit, which is what identifies the row that stranded them.
+	/// </summary>
+	static void ReportStrandedContainers(Window window)
+	{
+		int found = 0;
+		foreach (var panel in window.GetVisualDescendants().OfType<VirtualizingStackPanel>())
+		{
+			if (panel.FindAncestorOfType<ItemsControl>() is not { } owner)
+				continue;
+			var realized = owner.GetRealizedContainers().ToHashSet();
+			double width = panel.Bounds.Width;
+			foreach (var child in panel.GetVisualChildren().OfType<Control>().Where(c => c.IsVisible))
+			{
+				bool orphaned = !realized.Contains(child);
+				bool narrow = Math.Abs(child.Bounds.Width - width) > 0.5;
+				if (!orphaned && !narrow)
+					continue;
+				found++;
+				CliLog.Write("stranded",
+					$"{owner.GetType().Name}/{owner.Name ?? "(unnamed)"}: '{child.DataContext}' "
+					+ $"at y={child.Bounds.Y:0} w={child.Bounds.Width:0} (panel {width:0}) "
+					+ $"{(orphaned ? "not realized" : "realized")}{(narrow ? ", narrow" : "")}");
+			}
+		}
+		CliLog.Write("stranded", found == 0 ? "none" : $"{found} stranded container(s)");
+	}
+
 	public static void Attach(Window window)
 	{
 		var timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
@@ -75,6 +107,8 @@ static class ScreenshotWatcher
 						box.IsChecked = box.IsChecked != true;
 					}
 				}
+				if (lines.Contains("stranded"))
+					ReportStrandedContainers(window);
 				if (lines.Contains("overview"))
 					App.Workspace?.OpenOverview();
 				if (lines.Contains("commit-scope"))

@@ -15,8 +15,17 @@ public partial class FileBrowserPaneView : UserControl
 	{
 		if (DataContext is FileBrowserPaneViewModel vm && vm.Reveal(relPath) is { } node)
 		{
+			bool wasVisible = Tree.IsNodeFullyVisible(node);
 			Tree.SelectedItem = node;
-			Tree.ScrollIntoView(node);
+			// Posted, and skipped for a row already on screen, for the same reasons
+			// TreeSelectionBinder does both: expanding the path reshapes the tree and leaves
+			// the panel mid-arrange, and scrolling into that state is what strands a container
+			// to paint this file over an unrelated row. Scrolling a row that is already visible
+			// is work that can only go wrong.
+			Avalonia.Threading.Dispatcher.UIThread.Post(() => {
+				if (!wasVisible)
+					Tree.ScrollIntoNodeView(node);
+			});
 		}
 		return Task.CompletedTask;
 	}
