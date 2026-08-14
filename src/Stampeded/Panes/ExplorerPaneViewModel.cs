@@ -70,5 +70,5 @@ public partial class ExplorerPaneViewModel : Tool
 
 	public void OpenRecord() => workspace.OpenReviewRecord();
 
-	public void CloseReview() => workspace.CloseReview();
+	public void CloseReview() => workspace.CloseReviewAsync().HandleExceptions();
 }

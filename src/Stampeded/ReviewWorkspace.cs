@@ -1182,6 +1182,34 @@ public sealed class ReviewWorkspace(string repoPath)
 
 	/// <summary>Ends the review session: background work cancelled, semantics released,
 	/// state cleared, every review document closed and the start page back in front.</summary>
+	/// <summary>
+	/// Ends the review, asking first when drafts were never submitted. They are not lost by
+	/// closing - the review's state keeps them, and they are there again when it is reopened
+	/// - but someone who meant to send them would rather hear it now than discover it later.
+	/// </summary>
+	public async Task CloseReviewAsync()
+	{
+		if (Drafts.Count > 0 && MainWindowOrNull() is { } owner)
+		{
+			int outdated = Drafts.Count(d => d.CurrentLine is null);
+			bool close = await new ConfirmWindow("Close review",
+				$"{Drafts.Count} draft comment(s) have not been submitted"
+					+ (outdated > 0 ? $" ({outdated} outdated)" : "") + ".\n\n"
+					+ "Closing keeps them: they are stored with the review and will be here when you open it again.",
+				"Close review").ShowDialog<bool>(owner);
+			if (!close)
+			{
+				PostStatus($"Review left open; {Drafts.Count} draft(s) still unsubmitted.");
+				return;
+			}
+		}
+		CloseReview();
+	}
+
+	static Avalonia.Controls.Window? MainWindowOrNull()
+		=> (Avalonia.Application.Current?.ApplicationLifetime
+			as Avalonia.Controls.ApplicationLifetimes.IClassicDesktopStyleApplicationLifetime)?.MainWindow;
+
 	public void CloseReview()
 	{
 		sessionCts?.Cancel();

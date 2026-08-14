@@ -78,7 +78,7 @@ public partial class OverviewDocumentView : UserControl
 
 	void OnRecord(object? sender, RoutedEventArgs e) => Vm?.OpenRecord();
 
-	void OnCloseReview(object? sender, RoutedEventArgs e) => App.Workspace?.CloseReview();
+	void OnCloseReview(object? sender, RoutedEventArgs e) => App.Workspace?.CloseReviewAsync().HandleExceptions();
 
 	void OnIssueClick(object? sender, RoutedEventArgs e)
 	{
