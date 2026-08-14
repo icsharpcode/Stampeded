@@ -961,6 +961,11 @@ public partial class DiffDocumentView : UserControl
 
 	void OnEditorKeyDown(object? sender, KeyEventArgs e)
 	{
+		// The search panel is a child of the text area, so what is typed into its box tunnels
+		// through here on the way down. A review gesture is a letter to anyone typing one:
+		// leave every keystroke aimed at a text box alone.
+		if (e.Source is Avalonia.Visual source && source.FindAncestorOfType<TextBox>(includeSelf: true) is not null)
+			return;
 		switch (e.Key, e.KeyModifiers)
 		{
 			// n/p are the review's own keys; Ctrl+Down/Up are the ones a hand arrives with.
