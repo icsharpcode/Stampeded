@@ -48,6 +48,24 @@ public class DiffSliderTests
 	}
 
 	[Test]
+	public void ResolvesATieByMovingDown()
+	{
+		// Two members ending alike: the cut can sit on either one's closing brace, and only
+		// the later one reads as the added member. Neither position is at a paragraph
+		// boundary and both are equally indented, so nothing but the direction separates them.
+		string[] before = ["void A()", "{", "\twork();", "}", "// end"];
+		string[] after = ["void A()", "{", "\twork();", "}", "void B()", "{", "\twork();", "}", "// end"];
+		List<DiffRun> runs = [new(true, 3, 3), new(false, 0, 4), new(true, 2, 2)];
+
+		var slid = DiffSlider.Shift(before, after, runs);
+
+		// The run now starts at "void B()" instead of at A's brace.
+		Assert.That(slid, Is.EqualTo(new List<DiffRun> {
+			new(true, 4, 4), new(false, 0, 4), new(true, 1, 1),
+		}));
+	}
+
+	[Test]
 	public void LeavesARunWithNothingBetterToMoveTo()
 	{
 		// An item appended to a list: every position is a line of the same shape and depth,

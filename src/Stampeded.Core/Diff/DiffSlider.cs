@@ -11,11 +11,12 @@ public sealed record DiffRun(bool IsMatch, int OldLength, int NewLength);
 /// arbitrary. That is how an added method comes out starting at the closing brace of the
 /// method before it and ending inside itself: valid, and unreadable.
 ///
-/// A run only moves to a position that is plainly better than the one it has: to a paragraph
-/// boundary when it does not sit on one, or to a shallower indentation - a block that starts
-/// where the code steps outward reads as a block. Positions of equal standing leave it where
-/// the aligner put it, because a diff that is merely different is worse than one that is
-/// familiar.
+/// A run moves to the best position it can reach: a paragraph boundary first, then the
+/// shallower indentation - a block that starts where the code steps outward reads as a block.
+/// Positions of equal standing resolve downward, because an inserted block belongs after the
+/// closing line of the one before it rather than at it, which is the whole shape of the
+/// problem in brace-delimited code: two members that end alike leave the cut free to sit on
+/// either one's brace, and only the later reads as the new member.
 /// </summary>
 public static class DiffSlider
 {
@@ -91,16 +92,15 @@ public static class DiffSlider
 
 	static int BestShift(IReadOnlyList<string> lines, int start, int length, int up, int down)
 	{
-		var here = Rank(lines, start);
 		int best = 0;
-		var bestRank = here;
+		var bestRank = Rank(lines, start);
+		// Ascending, keeping a position that is better or equal: the best rank wins, and among
+		// equals the last one does. Sliding down past a shared ending is what moves an added
+		// member off the brace of the member before it.
 		for (int shift = -up; shift <= down; shift++)
 		{
-			if (shift == 0)
-				continue;
 			var rank = Rank(lines, start + shift);
-			// Strictly better only: an equal position is not a reason to move.
-			if (rank.CompareTo(bestRank) < 0)
+			if (rank.CompareTo(bestRank) <= 0)
 			{
 				bestRank = rank;
 				best = shift;
