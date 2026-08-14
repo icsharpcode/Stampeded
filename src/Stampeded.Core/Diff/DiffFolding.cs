@@ -9,51 +9,13 @@ namespace Stampeded.Core.Diff;
 /// so a member's signature stays visible while its body collapses.</param>
 public sealed record FoldRange(int StartLine, int EndLine, string Name, bool DefaultClosed, bool FromHeaderEnd);
 
-/// <summary>The folding policy shared by the unified and side-by-side diff views.</summary>
+/// <summary>
+/// Structural folding for the diff views: the code's own regions, and nothing about the
+/// diff. Hiding unchanged context is <see cref="ContextGaps"/>' job - sharing one mechanism
+/// made expanding a member reveal context and collapsing all of them swallow the change.
+/// </summary>
 public static class DiffFolding
 {
-	/// <summary>Lines of unchanged context left visible on each side of a hunk.</summary>
-	public const int Context = 3;
-
-	/// <summary>
-	/// Collapsible runs of unchanged lines. Nothing folds when the document has no
-	/// changes at all, which is how a plain source view stays fully expanded.
-	/// </summary>
-	public static List<FoldRange> UnchangedRuns(IReadOnlyList<DiffLineTag> tags, bool hasChanges)
-	{
-		var ranges = new List<FoldRange>();
-		if (!hasChanges)
-			return ranges;
-		int runStart = -1;
-		for (int i = 0; i <= tags.Count; i++)
-		{
-			bool context = i < tags.Count && tags[i].Kind == DiffLineKind.Context;
-			if (context && runStart < 0)
-			{
-				runStart = i;
-			}
-			else if (!context && runStart >= 0)
-			{
-				Add(ranges, tags.Count, runStart, i - 1);
-				runStart = -1;
-			}
-		}
-		return ranges;
-	}
-
-	static void Add(List<FoldRange> ranges, int tagCount, int firstTag, int lastTag)
-	{
-		// Keep Context lines visible on each side; at the document edges the whole run may
-		// fold except the context adjoining the hunk.
-		int foldFirst = firstTag == 0 ? firstTag : firstTag + Context;
-		int foldLast = lastTag == tagCount - 1 ? lastTag : lastTag - Context;
-		int hidden = foldLast - foldFirst + 1;
-		if (hidden < 2)
-			return;
-		ranges.Add(new FoldRange(foldFirst + 1, foldLast + 1,
-			$"... {hidden} unchanged lines", DefaultClosed: true, FromHeaderEnd: false));
-	}
-
 	/// <summary>
 	/// IDE-style folds for types, methods, properties and events. A diff document is not
 	/// valid C# (either side is interleaved with the other, or padded with filler), so the

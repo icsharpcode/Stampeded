@@ -35,6 +35,7 @@ public partial class DiffDocumentView : UserControl
 	Dictionary<string, ThreadData>? threadsByKey;
 	Avalonia.Point lastPointerPosition;
 	FoldingManager? foldingManager;
+	ContextGapView? contextGaps;
 	DiffDocumentModel? model;
 	DiffDocumentViewModel? viewModel;
 	RichTextColorizer? semanticColorizer;
@@ -60,6 +61,7 @@ public partial class DiffDocumentView : UserControl
 					: StandardCursorType.Ibeam);
 		Editor.TextArea.LeftMargins.Insert(0, margin);
 		FoldViewportAnchor.Install(Editor);
+		contextGaps = new ContextGapView(Editor);
 		Editor.TextArea.AddHandler(KeyDownEvent, OnEditorKeyDown, RoutingStrategies.Tunnel);
 		// Click-vs-drag discrimination (ported from ILSpy's DecompilerTextView): the press
 		// only records its position; the release compares against it, so press-and-drag
@@ -245,10 +247,12 @@ public partial class DiffDocumentView : UserControl
 		}
 		var caret = CaretBlobPosition();
 		var expandedFolds = CaptureExpandedFolds();
+		var openedGaps = CaptureGaps();
 		viewModel.ReplaceModel(target);
 		model = target;
 		ApplyModelToEditor(target);
 		RestoreExpandedFolds(expandedFolds);
+		RestoreGaps(openedGaps, target);
 		if (caret is { } restore)
 		{
 			// Restore position without focusing: a background tab grabbing focus would
@@ -311,13 +315,57 @@ public partial class DiffDocumentView : UserControl
 		}
 	}
 
+	/// <summary>
+	/// What each gap still hides, as blob positions. Splicing a comment thread into the
+	/// document renumbers every line below it, so how far the reader has opened the context
+	/// has to be carried by content rather than by line number - the same reason fold state
+	/// is.
+	/// </summary>
+	List<((bool OldSide, int Line) First, (bool OldSide, int Line) Last)> CaptureGaps()
+	{
+		var carried = new List<((bool, int), (bool, int))>();
+		if (contextGaps is null || model is null)
+			return carried;
+		foreach (var gap in contextGaps.Gaps)
+		{
+			if (BlobPosition(gap.FirstLine) is { } first && BlobPosition(gap.LastLine) is { } last)
+				carried.Add((first, last));
+		}
+		return carried;
+
+		(bool OldSide, int Line)? BlobPosition(int docLine)
+		{
+			if (docLine < 1 || docLine > model.Tags.Count)
+				return null;
+			var tag = model.Tags[docLine - 1];
+			return tag.NewLine > 0 ? (false, tag.NewLine) : tag.OldLine > 0 ? (true, tag.OldLine) : null;
+		}
+	}
+
+	void RestoreGaps(
+		List<((bool OldSide, int Line) First, (bool OldSide, int Line) Last)> carried, DiffDocumentModel m)
+	{
+		if (contextGaps is null || carried.Count == 0)
+			return;
+		var gaps = new List<ContextGap>();
+		foreach (var (first, last) in carried)
+		{
+			if (DocLine(first) is { } firstDoc && DocLine(last) is { } lastDoc && lastDoc >= firstDoc)
+				gaps.Add(new ContextGap(firstDoc, lastDoc));
+		}
+		contextGaps.Restore(gaps);
+
+		int? DocLine((bool OldSide, int Line) position)
+			=> position.OldSide ? m.DocLineFromOldLine(position.Line) : m.DocLineFromNewLine(position.Line);
+	}
+
 	void ApplyModelToEditor(DiffDocumentModel m)
 	{
 		Editor.Text = m.Text;
 		margin.Tags = m.Tags;
 		margin.InvalidateMeasure();
 		Overview.Attach(Editor, m.Tags);
-		InstallFoldings(m);
+		InstallFoldsAndGaps(m);
 		ApplyMarginCursors();
 		referenceGenerator.References = null;
 		markers.RemoveAll(_ => true);
@@ -614,7 +662,7 @@ public partial class DiffDocumentView : UserControl
 		margin.Tags = vm.Model.Tags;
 		margin.InvalidateMeasure();
 		Overview.Attach(Editor, vm.Model.Tags);
-		InstallFoldings(vm.Model);
+		InstallFoldsAndGaps(vm.Model);
 		ApplyMarginCursors();
 		referenceGenerator.References = null;
 		markers.RemoveAll(_ => true);
@@ -744,16 +792,24 @@ public partial class DiffDocumentView : UserControl
 			foreach (var folding in foldingManager.GetFoldingsContaining(offset))
 				folding.IsFolded = false;
 		}
+		// A line hidden as context has to be given back before the caret can sit on it.
+		contextGaps?.Reveal(line);
 		Editor.TextArea.Caret.Line = line;
 		Editor.TextArea.Caret.Column = 1;
 		Editor.ScrollToLine(line);
 		Editor.TextArea.Focus();
 	}
 
-	void InstallFoldings(DiffDocumentModel m)
+	/// <summary>
+	/// Folds are the code's structure only - types, members, #regions. Unchanged context is
+	/// hidden by <see cref="contextGaps"/> instead, which is why expanding a method no longer
+	/// reveals context and collapsing everything no longer swallows the change.
+	/// </summary>
+	void InstallFoldsAndGaps(DiffDocumentModel m)
 	{
 		foldingManager ??= FoldingManager.Install(Editor.TextArea);
-		var ranges = DiffFolding.UnchangedRuns(m.Tags, m.Hunks.Count > 0);
+		contextGaps?.Install(m.Tags, m.Hunks.Count > 0);
+		var ranges = new List<FoldRange>();
 		if (viewModel is { } vm && vm.File.Path.EndsWith(".cs", StringComparison.OrdinalIgnoreCase))
 		{
 			bool oldSide = vm.File.Kind == Core.Diff.FileChangeKind.Deleted;

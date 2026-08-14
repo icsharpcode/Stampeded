@@ -23,48 +23,6 @@ public class DiffFoldingTests
 	}
 
 	[Test]
-	public void FoldsNothingWhenTheDocumentHasNoChanges()
-	{
-		Assert.That(DiffFolding.UnchangedRuns(Tags(new string('.', 50)), hasChanges: false), Is.Empty);
-	}
-
-	[Test]
-	public void KeepsContextLinesVisibleBesideAHunk()
-	{
-		// 20 unchanged, one added line, 20 unchanged.
-		var ranges = DiffFolding.UnchangedRuns(Tags(new string('.', 20) + "+" + new string('.', 20)), hasChanges: true);
-
-		Assert.That(ranges, Has.Count.EqualTo(2));
-		// Leading run: folds from line 1 (document edge) to 3 lines before the hunk.
-		Assert.That(ranges[0].StartLine, Is.EqualTo(1));
-		Assert.That(ranges[0].EndLine, Is.EqualTo(20 - DiffFolding.Context));
-		// Trailing run: starts 3 lines after the hunk and folds to the last line.
-		Assert.That(ranges[1].StartLine, Is.EqualTo(22 + DiffFolding.Context));
-		Assert.That(ranges[1].EndLine, Is.EqualTo(41));
-		Assert.That(ranges, Has.All.Matches<FoldRange>(r => r.DefaultClosed && !r.FromHeaderEnd));
-	}
-
-	[Test]
-	public void SkipsRunsTooShortToBeWorthHiding()
-	{
-		// Six unchanged lines between two hunks: three of context on each side leaves
-		// nothing to hide.
-		var ranges = DiffFolding.UnchangedRuns(Tags("+" + new string('.', 6) + "+"), hasChanges: true);
-
-		Assert.That(ranges, Is.Empty);
-	}
-
-	[Test]
-	public void NamesAFoldByHowManyLinesItHides()
-	{
-		var ranges = DiffFolding.UnchangedRuns(Tags("+" + new string('.', 30) + "+"), hasChanges: true);
-
-		Assert.That(ranges, Has.Count.EqualTo(1));
-		Assert.That(ranges[0].EndLine - ranges[0].StartLine + 1, Is.EqualTo(30 - 2 * DiffFolding.Context));
-		Assert.That(ranges[0].Name, Is.EqualTo($"... {30 - 2 * DiffFolding.Context} unchanged lines"));
-	}
-
-	[Test]
 	public void MapsMemberRegionsBackThroughTheSideLineMap()
 	{
 		string source = """

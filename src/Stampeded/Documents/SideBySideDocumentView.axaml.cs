@@ -25,6 +25,7 @@ public partial class SideBySideDocumentView : UserControl
 	IReadOnlyList<DiffLineTag>? rightTags;
 	FoldingManager? leftFolding;
 	FoldingManager? rightFolding;
+	ContextGapView? contextGaps;
 	bool syncingFolds;
 	bool syncing;
 	bool scrollWired;
@@ -133,14 +134,16 @@ public partial class SideBySideDocumentView : UserControl
 	/// Both panes fold over the same document lines. They have to: the panes are kept in
 	/// step by copying the scroll offset, which is only exact while they render the same
 	/// number of lines, so a fold on one side must collapse the other side's matching rows.
+	/// Unchanged context is hidden by one gap view driving both panes, for that same reason.
 	/// </summary>
 	void InstallFoldings(SideBySideDocumentViewModel vm)
 	{
 		leftFolding ??= FoldingManager.Install(Left.TextArea);
 		rightFolding ??= FoldingManager.Install(Right.TextArea);
+		contextGaps ??= new ContextGapView(Left, Right);
 		var tags = vm.Pair.LeftTags;
 		bool hasChanges = tags.Any(t => t.Kind != DiffLineKind.Context);
-		var ranges = DiffFolding.UnchangedRuns(tags, hasChanges);
+		var ranges = new List<FoldRange>();
 		if (vm.File.Path.EndsWith(".cs", StringComparison.OrdinalIgnoreCase))
 		{
 			// Member regions come from the side the file still has, and are applied to both
@@ -153,6 +156,7 @@ public partial class SideBySideDocumentView : UserControl
 		rightFolding.Clear();
 		leftFolding.UpdateFoldings(FoldInstaller.ToFoldings(Left.Document, ranges), -1);
 		rightFolding.UpdateFoldings(FoldInstaller.ToFoldings(Right.Document, ranges), -1);
+		contextGaps.Install(tags, hasChanges);
 	}
 
 	/// <summary>Copies collapse state across, matching sections by position in the ordered
