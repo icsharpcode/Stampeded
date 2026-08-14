@@ -116,6 +116,25 @@ public class CommentsPaneViewModel : Tool
 		}
 	}
 
+	public void Refresh()
+	{
+		RefreshAsync().HandleExceptions();
+
+		async Task RefreshAsync()
+		{
+			State.Status = "Refreshing posted comments...";
+			try
+			{
+				await workspace.RefreshPostedCommentsAsync();
+			}
+			catch (ToolFailedException ex)
+			{
+				// Rebuild would otherwise overwrite this with a count that did not change.
+				State.Status = $"Refresh failed: {ex.Message}";
+			}
+		}
+	}
+
 	public void RemoveSelected(CommentRow row)
 	{
 		if (row.DraftId is { } id)

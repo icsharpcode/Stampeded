@@ -37,6 +37,8 @@ public partial class CommentsPaneView : UserControl
 			vm.RemoveSelected(row);
 	}
 
+	void OnRefresh(object? s, RoutedEventArgs e) => Vm?.Refresh();
+
 	void OnApprove(object? s, RoutedEventArgs e) => Vm?.Submit("APPROVE");
 
 	void OnRequestChanges(object? s, RoutedEventArgs e) => Vm?.Submit("REQUEST_CHANGES");

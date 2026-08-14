@@ -1833,6 +1833,22 @@ public sealed class ReviewWorkspace(string repoPath)
 		CommentsChanged?.Invoke();
 	}
 
+	/// <summary>
+	/// Re-reads the posted comments from GitHub. They are fetched when the review opens and
+	/// after submitting, so anything said meanwhile - a reply, a resolved thread, a review
+	/// from someone else - is invisible until asked for.
+	/// </summary>
+	public async Task RefreshPostedCommentsAsync()
+	{
+		if (CurrentPr is not { } pr)
+		{
+			PostStatus("No pull request: a local review has no posted comments to fetch.");
+			return;
+		}
+		using var busy = Busy.Begin("Refreshing comments");
+		await LoadPostedCommentsAsync(pr.Number, CancellationToken.None);
+	}
+
 	async Task LoadPostedCommentsAsync(int number, CancellationToken ct)
 	{
 		CommentsLoaded = false;
