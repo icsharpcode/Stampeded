@@ -267,6 +267,7 @@ public partial class DiffDocumentView : UserControl
 		row.Children.Add(show);
 		return new Avalonia.Controls.Border {
 			Cursor = new Cursor(StandardCursorType.Arrow),
+			[Avalonia.Controls.Documents.TextElement.FontFamilyProperty] = Avalonia.Media.FontFamily.Default,
 			Opacity = 0.55,
 			Child = row,
 			Background = new Avalonia.Media.SolidColorBrush(Avalonia.Media.Color.Parse(dark ? "#2B2417" : "#FFF8C5"), 0.9),
@@ -622,6 +623,10 @@ public partial class DiffDocumentView : UserControl
 			// The editor's I-beam must not bleed over the embedded box; children without
 			// their own cursor inherit the arrow from here.
 			Cursor = new Cursor(StandardCursorType.Arrow),
+			// Prose, not code: the box is an inline object inside the editor and would
+			// otherwise inherit its monospace family. What is written between backticks keeps
+			// the monospace family the markdown style gives it.
+			[Avalonia.Controls.Documents.TextElement.FontFamilyProperty] = Avalonia.Media.FontFamily.Default,
 			Opacity = resolvedThread ? 0.55 : 1.0,
 			Child = panel,
 			Background = new Avalonia.Media.SolidColorBrush(Avalonia.Media.Color.Parse(dark ? "#2B2417" : "#FFF8C5"), dark ? 0.9 : 0.9),
