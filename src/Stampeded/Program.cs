@@ -33,13 +33,18 @@ internal static class Program
 
 	public static AppBuilder BuildAvaloniaApp()
 	{
-		return AppBuilder.Configure<App>()
+		var builder = AppBuilder.Configure<App>()
 			.UsePlatformDetect()
 			.With(new X11PlatformOptions { OverlayPopups = true })
-			// Third-party styles (e.g. Markdown.Avalonia's code spans) name Windows
-			// fonts outright; an unresolvable family name aborts the layout pass, so
-			// map the usual suspects to the fontconfig monospace alias.
-			.With(new Avalonia.Media.FontManagerOptions {
+			.LogToTrace();
+		// Third-party styles (e.g. Markdown.Avalonia's code spans) name Windows
+		// fonts outright; an unresolvable family name aborts the layout pass, so
+		// map the usual suspects to the fontconfig monospace alias. Only where
+		// fontconfig exists: on Windows the named fonts are real and the aliases
+		// are the unresolvable ones - with them in place even the default
+		// typeface fails to produce a glyph typeface and no window ever shows.
+		if (!OperatingSystem.IsWindows())
+			builder = builder.With(new Avalonia.Media.FontManagerOptions {
 				FontFamilyMappings = new Dictionary<string, Avalonia.Media.FontFamily> {
 					["Consolas"] = new("monospace"),
 					["Menlo"] = new("monospace"),
@@ -48,7 +53,7 @@ internal static class Program
 					["Cascadia Code"] = new("monospace"),
 					["Segoe UI"] = new("sans-serif"),
 				},
-			})
-			.LogToTrace();
+			});
+		return builder;
 	}
 }
