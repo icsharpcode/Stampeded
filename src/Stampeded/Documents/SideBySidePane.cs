@@ -177,7 +177,7 @@ sealed class SideBySidePane
 		if (CaretBlobPosition() is not { } pos)
 			return;
 		App.Workspace?.NavigateToDefinitionAsync(pos.RelPath, pos.Line, pos.Column, pos.OldSide,
-			new ReviewWorkspace.NavEntryOrigin(dockableId, editor.TextArea.Caret.Line)).HandleExceptions();
+			new ReviewWorkspace.NavEntryOrigin(dockableId, pos.Line, pos.OldSide)).HandleExceptions();
 	}
 
 	public void ShowReferences()

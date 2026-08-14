@@ -116,6 +116,8 @@ static class ScreenshotWatcher
 						box.IsChecked = box.IsChecked != true;
 					}
 				}
+				if (lines.Contains("caret"))
+					CliLog.Write("caret", Documents.DiffDocumentView.ActiveView?.CaretDescription() ?? "(no view)");
 				if (lines.Contains("stranded"))
 					ReportStrandedContainers(window);
 				if (lines.Contains("overview"))

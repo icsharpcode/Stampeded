@@ -13,7 +13,7 @@ using Stampeded.Navigation;
 
 namespace Stampeded;
 
-sealed record NavEntry(string DockableId, int DocLine) : IEquatable<NavEntry?>;
+sealed record NavEntry(string DockableId, int BlobLine, bool OldSide) : IEquatable<NavEntry?>;
 
 public sealed record ReferenceItem(string RelPath, int Line, string Preview, bool InChangedLine, bool OldSide);
 
@@ -1442,7 +1442,7 @@ public sealed class ReviewWorkspace(string repoPath)
 				return;
 			CliLog.Write("action", $"decompiled {reflectionName} ({Path.GetFileName(assemblyPath)}) -> line {result.MemberLine}");
 			RecordOrigin(origin);
-			history.Record(new NavEntry(id, result.MemberLine));
+			history.Record(new NavEntry(id, result.MemberLine, false));
 			vm.RequestCaret(result.MemberLine);
 		}
 		catch (Exception ex)
@@ -1591,14 +1591,14 @@ public sealed class ReviewWorkspace(string repoPath)
 		if (vm is null)
 			return;
 		if (record)
-			history.Record(new NavEntry(vm.Id, docLine));
-		vm.RequestCaret(docLine);
+			history.Record(new NavEntry(vm.Id, fileLine, oldSide));
+		vm.RequestCaret(fileLine, oldSide);
 	}
 
-	public readonly record struct NavEntryOrigin(string DockableId, int DocLine);
+	public readonly record struct NavEntryOrigin(string DockableId, int BlobLine, bool OldSide);
 
 	void RecordOrigin(NavEntryOrigin origin)
-		=> history.Record(new NavEntry(origin.DockableId, origin.DocLine));
+		=> history.Record(new NavEntry(origin.DockableId, origin.BlobLine, origin.OldSide));
 
 	public Task GoBackAsync() => history.CanNavigateBack ? NavigateToEntryAsync(history.GoBack()) : Task.CompletedTask;
 
@@ -1617,7 +1617,7 @@ public sealed class ReviewWorkspace(string repoPath)
 			{
 				Factory.SetActiveDockable(doc);
 				Factory.SetFocusedDockable(Documents, doc);
-				doc.RequestCaret(entry.DocLine);
+				doc.RequestCaret(entry.BlobLine, entry.OldSide);
 			}
 			return;
 		}
@@ -1628,7 +1628,7 @@ public sealed class ReviewWorkspace(string repoPath)
 			if (fileDiff is not null)
 			{
 				var vm = await OpenFileAsync(fileDiff);
-				vm?.RequestCaret(entry.DocLine);
+				vm?.RequestCaret(entry.BlobLine, entry.OldSide);
 				return;
 			}
 		}
@@ -1645,7 +1645,7 @@ public sealed class ReviewWorkspace(string repoPath)
 				vm.Title += " @ base";
 			return vm;
 		});
-		source?.RequestCaret(entry.DocLine);
+		source?.RequestCaret(entry.BlobLine, entry.OldSide);
 	}
 
 	#endregion

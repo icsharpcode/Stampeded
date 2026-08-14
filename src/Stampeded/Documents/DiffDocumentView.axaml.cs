@@ -108,6 +108,13 @@ public partial class DiffDocumentView : UserControl
 	/// </summary>
 	public void FocusEditor() => Editor.TextArea.Focus();
 
+	/// <summary>Where the caret is, in file coordinates and in document ones, for checks that
+	/// have to know exactly rather than approximately.</summary>
+	public string CaretDescription()
+		=> CaretBlobPosition() is { } pos
+			? $"{pos.RelPath}:{pos.Line}{(pos.OldSide ? " (base)" : "")} at document line {Editor.TextArea.Caret.Line}"
+			: $"(no blob position) at document line {Editor.TextArea.Caret.Line}";
+
 	/// <summary>
 	/// The view showing a given document, for code that has the document and needs the
 	/// control. <see cref="ActiveView"/> cannot answer this: Dock keeps every document's view
@@ -794,8 +801,10 @@ public partial class DiffDocumentView : UserControl
 		markers.RemoveAll(_ => true);
 		QueueSemanticsRefresh();
 		OnCommentsChangedForThreads();
-		if (vm.TakePendingCaretLine() is int line)
-			Dispatcher.UIThread.Post(() => MoveCaretToLine(line));
+		// Queued behind the thread rebuild posted just above, so the mapping sees the
+		// document the reader will actually be looking at.
+		if (vm.TakePendingCaret() is { } pending)
+			Dispatcher.UIThread.Post(() => MoveCaretToBlobLine(pending.Line, pending.OldSide));
 		if (ActiveView == this)
 			ActiveViewChanged?.Invoke();
 	}
@@ -903,9 +912,20 @@ public partial class DiffDocumentView : UserControl
 
 	#endregion
 
-	void OnCaretRequested(int docLine)
+	void OnCaretRequested(int blobLine, bool oldSide)
 	{
-		Dispatcher.UIThread.Post(() => MoveCaretToLine(docLine));
+		Dispatcher.UIThread.Post(() => MoveCaretToBlobLine(blobLine, oldSide));
+	}
+
+	/// <summary>
+	/// Moves the caret to a line of the file. The mapping happens here rather than where the
+	/// request came from: threads are spliced into the document after it opens, and a document
+	/// line worked out before that describes a different place afterwards.
+	/// </summary>
+	void MoveCaretToBlobLine(int blobLine, bool oldSide)
+	{
+		int? docLine = oldSide ? model?.DocLineFromOldLine(blobLine) : model?.DocLineFromNewLine(blobLine);
+		MoveCaretToLine(docLine ?? blobLine);
 	}
 
 	void MoveCaretToLine(int line)
@@ -1098,7 +1118,7 @@ public partial class DiffDocumentView : UserControl
 	{
 		if (viewModel is null or { Historical: true } || CaretBlobPosition() is not { } pos)
 			return;
-		var origin = new ReviewWorkspace.NavEntryOrigin(viewModel.Id, Editor.TextArea.Caret.Line);
+		var origin = new ReviewWorkspace.NavEntryOrigin(viewModel.Id, pos.Line, pos.OldSide);
 		App.Workspace?.NavigateToDefinitionAsync(pos.RelPath, pos.Line, pos.Column, pos.OldSide, origin).HandleExceptions();
 	}
 

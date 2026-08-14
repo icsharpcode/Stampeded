@@ -28,21 +28,26 @@ public class DiffDocumentViewModel(FileDiff file, DiffDocumentModel model) : Doc
 	/// <summary>The commit shown when <see cref="Historical"/> (blame runs against it).</summary>
 	public string? HistoricalSha { get; init; }
 
-	int? pendingCaretLine;
+	(int Line, bool OldSide)? pendingCaret;
 
-	public event Action<int>? CaretRequested;
+	public event Action<int, bool>? CaretRequested;
 
-	public void RequestCaret(int docLine)
+	/// <summary>
+	/// Asks for the caret at a line of the file, on the given side. In file coordinates, not
+	/// the document's: the document gains and loses lines as comment threads are spliced into
+	/// it, and a request made before that happens would land wherever those lines pushed it.
+	/// </summary>
+	public void RequestCaret(int blobLine, bool oldSide = false)
 	{
-		pendingCaretLine = docLine;
-		CaretRequested?.Invoke(docLine);
+		pendingCaret = (blobLine, oldSide);
+		CaretRequested?.Invoke(blobLine, oldSide);
 	}
 
-	public int? TakePendingCaretLine()
+	public (int Line, bool OldSide)? TakePendingCaret()
 	{
-		int? line = pendingCaretLine;
-		pendingCaretLine = null;
-		return line;
+		var pending = pendingCaret;
+		pendingCaret = null;
+		return pending;
 	}
 
 	/// <summary>A read-only source view over an unchanged worktree file, sharing the whole
