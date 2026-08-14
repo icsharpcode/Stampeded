@@ -1,6 +1,9 @@
+using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Threading;
+
+using Avalonia.VisualTree;
 
 using AvaloniaEdit;
 
@@ -50,8 +53,13 @@ public static class FoldViewportAnchor
 	{
 		if (anchor.Line > editor.Document.LineCount)
 			return;
+		// The editor's ScrollViewer, not TextEditor.ScrollToVerticalOffset: that method's
+		// whole body in AvaloniaEdit 12 is a call to ApplyTemplate, so it scrolls nothing and
+		// this anchor held nothing still for as long as it called it.
+		if (editor.GetVisualDescendants().OfType<ScrollViewer>().FirstOrDefault() is not { } scroll)
+			return;
 		double target = editor.TextArea.TextView.GetVisualTopByDocumentLine(anchor.Line) - anchor.Delta;
-		if (Math.Abs(target - editor.TextArea.TextView.VerticalOffset) > 0.5)
-			editor.ScrollToVerticalOffset(Math.Max(0, target));
+		if (Math.Abs(target - scroll.Offset.Y) > 0.5)
+			scroll.Offset = new Avalonia.Vector(scroll.Offset.X, Math.Max(0, target));
 	}
 }

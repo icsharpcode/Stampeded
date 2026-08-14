@@ -1,6 +1,7 @@
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Media;
+using Avalonia.VisualTree;
 
 using AvaloniaEdit;
 using AvaloniaEdit.Document;
@@ -131,11 +132,53 @@ public sealed class ContextGapView
 		int index = gaps.IndexOf(gap);
 		if (index < 0)
 			return;
+		// Revealing inserts rows at the gap, sliding everything after it down the screen -
+		// which is the code the reader is looking at. The line that followed the gap is
+		// pinned to the row it already occupied, so the context appears above what is being
+		// read instead of pushing it away.
+		var anchors = editors.Select(e => CaptureBelow(e, gap)).ToArray();
 		if (replacement is null)
 			gaps.RemoveAt(index);
 		else
 			gaps[index] = replacement;
 		Apply();
+		// Queued behind the layout pass the change triggers: until it runs, the rows the
+		// anchor is measured against are the old ones.
+		Avalonia.Threading.Dispatcher.UIThread.Post(
+			() => {
+				for (int i = 0; i < editors.Length; i++)
+					RestoreBelow(editors[i], anchors[i]);
+			},
+			Avalonia.Threading.DispatcherPriority.Loaded);
+	}
+
+	/// <summary>The first visible line after a gap, and where it sits on screen.</summary>
+	static (int Line, double Delta)? CaptureBelow(TextEditor editor, ContextGap gap)
+	{
+		var view = editor.TextArea.TextView;
+		if (!view.VisualLinesValid)
+			return null;
+		foreach (var visual in view.VisualLines)
+		{
+			// The visual line carrying the control spans the whole gap, so the next one is
+			// the content that follows it.
+			if (visual.FirstDocumentLine.LineNumber > gap.LastLine)
+				return (visual.FirstDocumentLine.LineNumber, visual.VisualTop - view.VerticalOffset);
+		}
+		return null;
+	}
+
+	static void RestoreBelow(TextEditor editor, (int Line, double Delta)? anchor)
+	{
+		if (anchor is not { } pinned || pinned.Line > editor.Document.LineCount)
+			return;
+		// Through the editor's ScrollViewer: TextEditor.ScrollToVerticalOffset is an empty
+		// method in AvaloniaEdit 12, so anything asking it to scroll is asking nothing.
+		if (editor.GetVisualDescendants().OfType<ScrollViewer>().FirstOrDefault() is not { } scroll)
+			return;
+		double target = editor.TextArea.TextView.GetVisualTopByDocumentLine(pinned.Line) - pinned.Delta;
+		if (Math.Abs(target - scroll.Offset.Y) > 0.5)
+			scroll.Offset = new Avalonia.Vector(scroll.Offset.X, Math.Max(0, target));
 	}
 
 	Control BuildBar(ContextGap gap)
