@@ -260,13 +260,7 @@ public sealed class GitHubService(string repoPath)
 	/// <summary>Submits a review (APPROVE / REQUEST_CHANGES / COMMENT) with line comments.</summary>
 	public async Task SubmitReviewAsync(int number, ReviewSubmission submission, CancellationToken ct = default)
 	{
-		submission = submission with {
-			Comments = [.. submission.Comments.Select(c => c with { Body = WithAttribution(c.Body) })],
-			// A review whose body is empty renders as a bare "reviewed" line; there is nothing
-			// there to attribute, and the line comments carry the attribution already.
-			Body = submission.Comments.Count > 0 ? submission.Body : WithAttribution(submission.Body),
-		};
-		string json = JsonSerializer.Serialize(submission, JsonOptions);
+		string json = JsonSerializer.Serialize(Attributed(submission), JsonOptions);
 		var result = await CliWrap.Cli.Wrap("gh")
 			.WithArguments(["api", "-X", "POST", $"repos/{{owner}}/{{repo}}/pulls/{number}/reviews", "--input", "-"])
 			.WithWorkingDirectory(repoPath)
@@ -279,9 +273,24 @@ public sealed class GitHubService(string repoPath)
 			throw new ToolFailedException("gh", result.ExitCode, result.StandardError + result.StandardOutput);
 	}
 
-	/// <summary>Marks a comment as posted by this tool. It goes on each line comment, because
-	/// that is what a reader actually meets -- in the file view, in a thread, in a mail
-	/// notification -- none of which show the review summary the comments were batched into.</summary>
+	/// <summary>
+	/// Marks a review as posted by this tool, once. It goes on the first line comment rather
+	/// than the review body, because that is what a reader actually meets -- in the file view,
+	/// in a thread, in a mail notification -- none of which show the summary the comments were
+	/// batched into. Repeating it on every comment of the same review said nothing further and
+	/// took a line away from each of them; a review with no line comments puts it on the body,
+	/// which is then all there is to mark.
+	/// </summary>
+	public static ReviewSubmission Attributed(ReviewSubmission submission)
+		=> submission.Comments.Count == 0
+			? submission with { Body = WithAttribution(submission.Body) }
+			: submission with {
+				Comments = [
+					submission.Comments[0] with { Body = WithAttribution(submission.Comments[0].Body) },
+					.. submission.Comments.Skip(1),
+				],
+			};
+
 	static string WithAttribution(string body)
 		=> (body.Length > 0 ? body.TrimEnd() + "\n\n" : "")
 			+ "*Reviewed with [Stampeded!](https://github.com/icsharpcode/Stampeded)*";
