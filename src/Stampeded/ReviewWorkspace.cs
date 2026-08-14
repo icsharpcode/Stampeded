@@ -1303,6 +1303,15 @@ public sealed class ReviewWorkspace(string repoPath)
 			StatusMessage?.Invoke("Last commit read. 'Whole change' reviews the change as one diff.");
 			return;
 		}
+		// The last file has nowhere to advance to, and the advance would silently do nothing -
+		// leaving 'v' pressed once more to un-view the file just finished. The read is over at
+		// that point, so it ends where the close-out lives.
+		if (Files.Count > 0 && Files[^1].Path == file.Path)
+		{
+			OpenOverview();
+			StatusMessage?.Invoke($"Last file read; {Files.Count(f => Store.IsViewed(f.Path))} of {Files.Count} viewed.");
+			return;
+		}
 		await OpenAdjacentFileAsync(1);
 	}
 
