@@ -93,6 +93,26 @@ public partial class DiffDocumentView : UserControl
 		ActiveViewChanged?.Invoke();
 	}
 
+	/// <summary>
+	/// Puts keyboard focus in the text area. The single-key review gestures (v, n, p, [, ],
+	/// c, b, u) are a handler on it, so they are dead until it holds focus - which opening a
+	/// document does not give it: Dock's focused dockable is a layout concept, not the
+	/// keyboard's.
+	/// </summary>
+	public void FocusEditor() => Editor.TextArea.Focus();
+
+	/// <summary>
+	/// The view showing a given document, for code that has the document and needs the
+	/// control. <see cref="ActiveView"/> cannot answer this: Dock keeps every document's view
+	/// attached and only swaps which one is visible, so "last attached or focused" is stale
+	/// the moment a tab is selected without the mouse.
+	/// </summary>
+	public static DiffDocumentView? ViewFor(DiffDocumentViewModel document)
+		=> viewsByDocument.TryGetValue(document, out var view) ? view : null;
+
+	static readonly System.Runtime.CompilerServices.ConditionalWeakTable<DiffDocumentViewModel, DiffDocumentView>
+		viewsByDocument = new();
+
 	protected override void OnAttachedToVisualTree(Avalonia.VisualTreeAttachmentEventArgs e)
 	{
 		base.OnAttachedToVisualTree(e);
@@ -586,6 +606,7 @@ public partial class DiffDocumentView : UserControl
 		if (DataContext is not DiffDocumentViewModel vm)
 			return;
 		viewModel = vm;
+		viewsByDocument.AddOrUpdate(vm, this);
 		vm.CaretRequested += OnCaretRequested;
 		model = vm.Model;
 		Editor.SyntaxHighlighting = HighlightingService.GetByExtension(Path.GetExtension(vm.File.Path));

@@ -1268,8 +1268,20 @@ public sealed class ReviewWorkspace(string repoPath)
 			if (i >= 0 && index == i)
 				return;
 		}
-		await OpenFileAsync(Files[index]);
+		if (await OpenFileAsync(Files[index]) is { } opened)
+			FocusEditorOf(opened);
 	}
+
+	/// <summary>
+	/// Puts keyboard focus in a document's editor once the dock has shown it. The single-key
+	/// review gestures are handled by the editor, so advancing to the next file without this
+	/// leaves them dead until the mouse is used: activating a dockable decides what is
+	/// visible, not what the keyboard talks to.
+	/// </summary>
+	static void FocusEditorOf(DiffDocumentViewModel document)
+		=> Avalonia.Threading.Dispatcher.UIThread.Post(
+			() => global::Stampeded.Documents.DiffDocumentView.ViewFor(document)?.FocusEditor(),
+			Avalonia.Threading.DispatcherPriority.Loaded);
 
 	public async Task ToggleViewedAndAdvanceAsync()
 	{
