@@ -137,13 +137,15 @@ static class ScreenshotWatcher
 						toggle.IsChecked = true;
 					}
 				}
-				// click:<button content> - presses a button by its label, for commands that have
-				// no gesture to raise and no view model the watcher can reach.
+				// click:<name or label> - presses a button, for commands that have no gesture to
+				// raise and no view model the watcher can reach. The name wins over the label,
+				// which several buttons share ("Refresh" labels six of them).
 				foreach (var command in lines.Where(l => l.StartsWith("click:", StringComparison.Ordinal)))
 				{
 					string label = command["click:".Length..].Trim();
-					if (window.GetVisualDescendants().OfType<Button>()
-						.FirstOrDefault(b => b.Content as string == label) is { } button)
+					var buttons = window.GetVisualDescendants().OfType<Button>().ToList();
+					if ((buttons.FirstOrDefault(b => b.Name == label)
+						?? buttons.FirstOrDefault(b => b.Content as string == label)) is { } button)
 					{
 						button.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
 					}
