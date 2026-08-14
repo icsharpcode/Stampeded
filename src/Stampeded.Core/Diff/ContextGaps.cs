@@ -24,7 +24,7 @@ public sealed record ContextGap(int FirstLine, int LastLine)
 public static class ContextGaps
 {
 	/// <summary>Lines of unchanged context left visible on each side of a hunk.</summary>
-	public const int Context = 3;
+	public const int Context = 5;
 
 	/// <summary>Lines revealed per step, as GitHub's expanders do it.</summary>
 	public const int Step = 20;

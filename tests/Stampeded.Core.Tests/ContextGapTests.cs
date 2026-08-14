@@ -46,9 +46,9 @@ public class ContextGapTests
 	[Test]
 	public void SkipsRunsTooShortToBeWorthHiding()
 	{
-		// Six unchanged lines between two hunks: three of context on each side leaves
-		// nothing to hide.
-		Assert.That(ContextGaps.Compute(Tags("+" + new string('.', 6) + "+"), hasChanges: true), Is.Empty);
+		// A run shorter than the context kept on both sides of it has nothing left to hide.
+		Assert.That(ContextGaps.Compute(Tags("+" + new string('.', 2 * ContextGaps.Context) + "+"),
+			hasChanges: true), Is.Empty);
 	}
 
 	[Test]
