@@ -21,8 +21,8 @@
   <DockPanel>
     <Menu DockPanel.Dock="Top">
       <MenuItem Header="_Review">
-        <MenuItem Header="Next Hunk" InputGesture="N" Click="OnNextHunk" />
-        <MenuItem Header="Previous Hunk" InputGesture="P" Click="OnPrevHunk" />
+        <MenuItem Header="Next Hunk  ( n / Ctrl+Down )" Click="OnNextHunk" />
+        <MenuItem Header="Previous Hunk  ( p / Ctrl+Up )" Click="OnPrevHunk" />
         <Separator />
         <MenuItem Header="Next File  ( ] )" Click="OnNextFile" />
         <MenuItem Header="Previous File  ( [ )" Click="OnPrevFile" />

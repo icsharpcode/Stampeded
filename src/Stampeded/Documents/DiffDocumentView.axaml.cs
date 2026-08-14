@@ -769,11 +769,16 @@ public partial class DiffDocumentView : UserControl
 	{
 		switch (e.Key, e.KeyModifiers)
 		{
+			// n/p are the review's own keys; Ctrl+Down/Up are the ones a hand arrives with.
+			// They cost AvaloniaEdit's scroll-by-line, which a diff nobody types into has
+			// little use for - and this handler tunnels, so the editor never sees them.
 			case (Key.N, KeyModifiers.None):
+			case (Key.Down, KeyModifiers.Control):
 				JumpToHunk(1);
 				e.Handled = true;
 				break;
 			case (Key.P, KeyModifiers.None):
+			case (Key.Up, KeyModifiers.Control):
 				JumpToHunk(-1);
 				e.Handled = true;
 				break;
