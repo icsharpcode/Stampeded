@@ -47,6 +47,14 @@ public sealed class ContextGapView
 
 	public IReadOnlyList<ContextGap> Gaps => gaps;
 
+	/// <summary>Raised whenever what is hidden changes, so anything derived from it - the
+	/// structural folds, which must not offer to collapse code that is not shown - can
+	/// follow.</summary>
+	public event Action? Changed;
+
+	/// <summary>Whether a line is currently hidden as context.</summary>
+	public bool Hides(int line) => gaps.Any(g => g.Contains(line));
+
 	/// <summary>The gaps of a freshly loaded document, all closed.</summary>
 	public void Install(IReadOnlyList<DiffLineTag> tags, bool hasChanges)
 	{
@@ -115,6 +123,7 @@ public sealed class ContextGapView
 			generators[i].BarLines = barLines;
 			view.Redraw();
 		}
+		Changed?.Invoke();
 	}
 
 	void Replace(ContextGap gap, ContextGap? replacement)

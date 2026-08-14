@@ -26,6 +26,7 @@ public partial class SideBySideDocumentView : UserControl
 	FoldingManager? leftFolding;
 	FoldingManager? rightFolding;
 	ContextGapView? contextGaps;
+	List<FoldRange> structuralRanges = [];
 	bool syncingFolds;
 	bool syncing;
 	bool scrollWired;
@@ -140,10 +141,14 @@ public partial class SideBySideDocumentView : UserControl
 	{
 		leftFolding ??= FoldingManager.Install(Left.TextArea);
 		rightFolding ??= FoldingManager.Install(Right.TextArea);
-		contextGaps ??= new ContextGapView(Left, Right);
+		if (contextGaps is null)
+		{
+			contextGaps = new ContextGapView(Left, Right);
+			contextGaps.Changed += RefreshFoldings;
+		}
 		var tags = vm.Pair.LeftTags;
 		bool hasChanges = tags.Any(t => t.Kind != DiffLineKind.Context);
-		var ranges = new List<FoldRange>();
+		var ranges = structuralRanges = [];
 		if (vm.File.Path.EndsWith(".cs", StringComparison.OrdinalIgnoreCase))
 		{
 			// Member regions come from the side the file still has, and are applied to both
@@ -152,11 +157,24 @@ public partial class SideBySideDocumentView : UserControl
 			var (sideText, sideToDocLine) = vm.Pair.GetSideText(oldSide);
 			ranges.AddRange(DiffFolding.Members(sideText, sideToDocLine));
 		}
+		contextGaps.Install(tags, hasChanges);
+		RefreshFoldings();
+	}
+
+	/// <summary>
+	/// The structural folds that apply to what is shown, in both panes. A fold beginning
+	/// inside hidden context is left out: the gap's control stands for those lines, and the
+	/// margin would otherwise draw the fold's marker beside it.
+	/// </summary>
+	void RefreshFoldings()
+	{
+		if (leftFolding is null || rightFolding is null)
+			return;
+		var shown = structuralRanges.Where(r => contextGaps?.Hides(r.StartLine) != true).ToList();
 		leftFolding.Clear();
 		rightFolding.Clear();
-		leftFolding.UpdateFoldings(FoldInstaller.ToFoldings(Left.Document, ranges), -1);
-		rightFolding.UpdateFoldings(FoldInstaller.ToFoldings(Right.Document, ranges), -1);
-		contextGaps.Install(tags, hasChanges);
+		leftFolding.UpdateFoldings(FoldInstaller.ToFoldings(Left.Document, shown), -1);
+		rightFolding.UpdateFoldings(FoldInstaller.ToFoldings(Right.Document, shown), -1);
 	}
 
 	/// <summary>Copies collapse state across, matching sections by position in the ordered

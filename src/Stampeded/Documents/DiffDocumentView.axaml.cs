@@ -36,6 +36,7 @@ public partial class DiffDocumentView : UserControl
 	Avalonia.Point lastPointerPosition;
 	FoldingManager? foldingManager;
 	ContextGapView? contextGaps;
+	List<FoldRange> structuralRanges = [];
 	DiffDocumentModel? model;
 	DiffDocumentViewModel? viewModel;
 	RichTextColorizer? semanticColorizer;
@@ -62,6 +63,7 @@ public partial class DiffDocumentView : UserControl
 		Editor.TextArea.LeftMargins.Insert(0, margin);
 		FoldViewportAnchor.Install(Editor);
 		contextGaps = new ContextGapView(Editor);
+		contextGaps.Changed += RefreshFoldings;
 		Editor.TextArea.AddHandler(KeyDownEvent, OnEditorKeyDown, RoutingStrategies.Tunnel);
 		// Click-vs-drag discrimination (ported from ILSpy's DecompilerTextView): the press
 		// only records its position; the release compares against it, so press-and-drag
@@ -808,17 +810,30 @@ public partial class DiffDocumentView : UserControl
 	void InstallFoldsAndGaps(DiffDocumentModel m)
 	{
 		foldingManager ??= FoldingManager.Install(Editor.TextArea);
-		contextGaps?.Install(m.Tags, m.Hunks.Count > 0);
-		var ranges = new List<FoldRange>();
+		structuralRanges = [];
 		if (viewModel is { } vm && vm.File.Path.EndsWith(".cs", StringComparison.OrdinalIgnoreCase))
 		{
 			bool oldSide = vm.File.Kind == Core.Diff.FileChangeKind.Deleted;
 			var (sideText, sideToDocLine) = m.GetSideText(oldSide);
-			ranges.AddRange(DiffFolding.Members(sideText, sideToDocLine));
+			structuralRanges.AddRange(DiffFolding.Members(sideText, sideToDocLine));
 		}
-		var foldings = FoldInstaller.ToFoldings(Editor.Document, ranges);
+		contextGaps?.Install(m.Tags, m.Hunks.Count > 0);
+		RefreshFoldings();
+	}
+
+	/// <summary>
+	/// Installs the structural folds that apply to what is actually shown. A fold beginning
+	/// inside hidden context is left out: the gap's control stands for all those lines at
+	/// once, so the margin would draw that fold's marker beside the control and offer to
+	/// collapse code the reader cannot see. They come back as the context does.
+	/// </summary>
+	void RefreshFoldings()
+	{
+		if (foldingManager is null)
+			return;
+		var shown = structuralRanges.Where(r => contextGaps?.Hides(r.StartLine) != true).ToList();
 		foldingManager.Clear();
-		foldingManager.UpdateFoldings(foldings, -1);
+		foldingManager.UpdateFoldings(FoldInstaller.ToFoldings(Editor.Document, shown), -1);
 	}
 
 	void OnEditorKeyDown(object? sender, KeyEventArgs e)
