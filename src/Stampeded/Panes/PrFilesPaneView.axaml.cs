@@ -8,9 +8,24 @@ namespace Stampeded.Panes;
 
 public partial class PrFilesPaneView : UserControl
 {
+	/// <summary>True while a selection is being set to follow a document, so that echo does
+	/// not reopen what is already open.</summary>
+	bool revealing;
+
 	public PrFilesPaneView()
 	{
 		InitializeComponent();
+	}
+
+	/// <summary>
+	/// Selecting a file opens it. Files are not opened when a review loads any more - the
+	/// list is the review's queue, and walking it with the mouse or the arrow keys is how a
+	/// reader gets to the next one.
+	/// </summary>
+	void OnSelectionChanged(object? sender, SelectionChangedEventArgs e)
+	{
+		if (!revealing)
+			OpenSelected();
 	}
 
 	void OnDoubleTapped(object? sender, TappedEventArgs e)
@@ -52,7 +67,15 @@ public partial class PrFilesPaneView : UserControl
 		var entry = vm.Files.FirstOrDefault(f => f.File.Path == relPath);
 		if (entry is null || ReferenceEquals(FileList.SelectedItem, entry))
 			return;
-		FileList.SelectedItem = entry;
+		revealing = true;
+		try
+		{
+			FileList.SelectedItem = entry;
+		}
+		finally
+		{
+			revealing = false;
+		}
 		FileList.ScrollRowIntoView(entry);
 	}
 

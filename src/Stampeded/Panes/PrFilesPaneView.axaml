@@ -10,10 +10,11 @@
          viewed checkbox out of reach. Paths give up whole directory segments instead, so
          the file name - the part being identified - always survives. -->
     <ListBox x:Name="FileList" ItemsSource="{Binding Files}" DoubleTapped="OnDoubleTapped"
+             SelectionChanged="OnSelectionChanged"
              ScrollViewer.HorizontalScrollBarVisibility="Disabled">
     <ListBox.ContextMenu>
       <ContextMenu>
-        <MenuItem Header="Open Diff (double-click)" Click="OnOpenClicked" />
+        <MenuItem Header="Open Diff (click)" Click="OnOpenClicked" />
         <MenuItem Header="Toggle Viewed" Click="OnToggleViewedClicked" />
         <Separator />
         <MenuItem Header="Plan: Verify Deeply" Click="OnDepthDeep" />

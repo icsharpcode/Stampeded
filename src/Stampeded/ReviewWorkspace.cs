@@ -233,15 +233,10 @@ public sealed class ReviewWorkspace(string repoPath)
 		PostedComments = [];
 		CommentsLoaded = true;
 		ReviewChanged?.Invoke();
-		// Overview first so it holds the leftmost tab; the diff tabs open behind it and
-		// the continuation brings it back to the front.
+		// The overview is where a review starts; files open as the Explorer's list is walked,
+		// one tab at a time, instead of arriving as a wall of them.
 		OpenOverview();
-		OpenUnviewedFilesAsync()
-			.ContinueWith(_ => Avalonia.Threading.Dispatcher.UIThread.Post(() => {
-				OpenOverview();
-				CloseStartPage();
-			}))
-			.HandleExceptions();
+		CloseStartPage();
 		LoadSemanticsAsync(headSha, baseSha, ct).HandleExceptions();
 		LoadGeneratedSourcesAsync(ct).HandleExceptions();
 		ReattachDraftsAsync(ct).HandleExceptions();
@@ -280,15 +275,10 @@ public sealed class ReviewWorkspace(string repoPath)
 		history.Clear();
 		CloseDocumentsExceptStart();
 		ReviewChanged?.Invoke();
-		// Overview first so it holds the leftmost tab; the diff tabs open behind it and
-		// the continuation brings it back to the front.
+		// The overview is where a review starts; files open as the Explorer's list is walked,
+		// one tab at a time, instead of arriving as a wall of them.
 		OpenOverview();
-		OpenUnviewedFilesAsync()
-			.ContinueWith(_ => Avalonia.Threading.Dispatcher.UIThread.Post(() => {
-				OpenOverview();
-				CloseStartPage();
-			}))
-			.HandleExceptions();
+		CloseStartPage();
 		LoadSemanticsAsync(headSha, baseSha, ct).HandleExceptions();
 		LoadGeneratedSourcesAsync(ct).HandleExceptions();
 		ReattachDraftsAsync(ct).HandleExceptions();
@@ -347,31 +337,6 @@ public sealed class ReviewWorkspace(string repoPath)
 			}
 			addedLinesByFile[file.Path] = added;
 			removedLinesByFile[file.OldPath] = removed;
-		}
-	}
-
-	/// <summary>Opens every not-yet-viewed file as a diff tab and focuses the first, so a
-	/// fresh review starts with the whole remaining work queue in front of the reviewer.</summary>
-	async Task OpenUnviewedFilesAsync()
-	{
-		DiffDocumentViewModel? first = null;
-		// Likely review order: tests first (the executable spec), then implementation,
-		// deep-marked files ahead within each group.
-		var ordered = Files
-			.OrderBy(f => Core.Review.TestPaths.IsTestPath(f.Path) ? 0 : 1)
-			.ThenBy(f => GetDepth(f.Path) == "deep" ? 0 : 1)
-			.ThenBy(f => f.Path, StringComparer.Ordinal);
-		foreach (var file in ordered)
-		{
-			if (Store.IsViewed(file.Path))
-				continue;
-			var vm = await OpenFileAsync(file);
-			first ??= vm;
-		}
-		if (first is not null && Factory is not null && Documents is not null)
-		{
-			Factory.SetActiveDockable(first);
-			Factory.SetFocusedDockable(Documents, first);
 		}
 	}
 
@@ -958,7 +923,6 @@ public sealed class ReviewWorkspace(string repoPath)
 		ReviewChanged?.Invoke();
 		CommitScopeChanged?.Invoke();
 		OpenOverview();
-		OpenUnviewedFilesAsync().HandleExceptions();
 		// The semantic workspaces stay on the review's head: they describe where the code
 		// ends up, which is the right frame for navigating out of a commit being read.
 		ComputeChangeMapAsync().HandleExceptions();
@@ -1013,7 +977,6 @@ public sealed class ReviewWorkspace(string repoPath)
 		ReviewChanged?.Invoke();
 		CommitScopeChanged?.Invoke();
 		OpenOverview();
-		OpenUnviewedFilesAsync().HandleExceptions();
 		ComputeChangeMapAsync().HandleExceptions();
 	}
 
