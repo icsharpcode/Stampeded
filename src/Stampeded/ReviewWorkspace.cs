@@ -1028,7 +1028,6 @@ public sealed class ReviewWorkspace(string repoPath)
 		BaseSemantics?.Dispose();
 	}
 
-	/// <summary>Opens any URL in the browser (Linux-first: xdg-open).</summary>
 	/// <summary>Head-side text of a file: read from the checkout under review when that is
 	/// what the head means, else from the commit.</summary>
 	public Task<string> ReadHeadFileAsync(string relPath, CancellationToken ct = default)
@@ -1042,8 +1041,20 @@ public sealed class ReviewWorkspace(string repoPath)
 		return Git.ShowFileAsync(HeadSha!, relPath, ct);
 	}
 
+	/// <summary>
+	/// Opens a URL in whatever the desktop uses for it. Each platform has its own opener and
+	/// naming only xdg-open meant every link in the app - the pull request, a comment, a
+	/// commit - did nothing at all off Linux.
+	/// </summary>
 	public Task OpenUrlAsync(string url)
-		=> ExternalTool.RunAsync("xdg-open", [url], RepoPath);
+	{
+		// "start" is a cmd builtin, not a program, and its first quoted argument is the
+		// window title - hence the empty one before the URL.
+		var (tool, args) = OperatingSystem.IsWindows() ? ("cmd", (string[])["/c", "start", "", url])
+			: OperatingSystem.IsMacOS() ? ("open", [url])
+			: ("xdg-open", [url]);
+		return ExternalTool.RunAsync(tool, args, RepoPath);
+	}
 
 	/// <summary>Opens a commit on GitHub via gh.</summary>
 	public Task OpenCommitOnGitHubAsync(string sha)

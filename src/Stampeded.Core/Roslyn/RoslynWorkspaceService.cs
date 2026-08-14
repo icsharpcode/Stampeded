@@ -303,16 +303,38 @@ public sealed class RoslynWorkspaceService : IDisposable
 		return documentsByPath.TryGetValue(absolutePath, out var id) ? solution.GetDocument(id) : null;
 	}
 
+	/// <summary>
+	/// Absolute path of a repo-relative one. Git speaks forward slashes on every platform and
+	/// Path.Combine only inserts a separator without touching the ones already there, so on
+	/// Windows the result would keep "src/Foo.cs" while the document index is keyed on what
+	/// Roslyn reports, "src\Foo.cs" - and every lookup would miss, taking the whole semantic
+	/// layer down with it. GetFullPath normalises; elsewhere it changes nothing.
+	/// </summary>
 	public string ToAbsolutePath(string repoRelativePath)
-		=> Path.Combine(worktreePath, repoRelativePath);
+		=> Path.GetFullPath(Path.Combine(worktreePath, repoRelativePath));
 
+	/// <summary>
+	/// The worktree-relative form of an absolute path, or null for a path outside the
+	/// worktree. Compared the way the filesystem does: on Windows, Roslyn's spelling of a
+	/// path need not match how the worktree path was spelled, and treating that as "outside"
+	/// silently drops every reference hit and navigation target.
+	/// </summary>
 	public string? ToRelativePath(string absolutePath)
 	{
 		string full = Path.GetFullPath(absolutePath);
-		string root = Path.GetFullPath(worktreePath);
-		return full.StartsWith(root, StringComparison.Ordinal)
-			? full[(root.Length + 1)..].Replace('\\', '/')
-			: null;
+		string root = Path.TrimEndingDirectorySeparator(Path.GetFullPath(worktreePath));
+		var comparison = OperatingSystem.IsWindows()
+			? StringComparison.OrdinalIgnoreCase
+			: StringComparison.Ordinal;
+		// The character after the root has to be the separator, or "/repo-other" counts as
+		// being inside "/repo".
+		if (full.Length <= root.Length || !full.StartsWith(root, comparison)
+			|| (full[root.Length] != Path.DirectorySeparatorChar
+				&& full[root.Length] != Path.AltDirectorySeparatorChar))
+		{
+			return null;
+		}
+		return full[(root.Length + 1)..].Replace('\\', '/');
 	}
 
 	/// <summary>Spans of identifier-like classified tokens, for clickable reference segments.</summary>
