@@ -31,13 +31,16 @@
          cannot host UI between lines without corrupting the diff line map). -->
     <Popup x:Name="CommentPopup" PlacementTarget="Editor" Placement="AnchorAndGravity"
            PlacementAnchor="TopLeft" PlacementGravity="BottomRight" IsLightDismissEnabled="True">
+      <!-- Light dismiss is turned off in code as soon as the box holds text: a click meant
+           for the code behind it must not take away what was written. -->
       <Border Background="{DynamicResource ThemeBackgroundBrush}" BorderBrush="#3794FF"
               BorderThickness="1" CornerRadius="4" Padding="8" MinWidth="440" MaxWidth="620">
         <StackPanel Spacing="6">
           <TextBlock x:Name="CommentTargetText" FontSize="11" Opacity="0.7"
                      TextTrimming="CharacterEllipsis" />
           <TextBox x:Name="CommentBox" AcceptsReturn="True" MinHeight="56" MaxHeight="150"
-                   TextWrapping="Wrap" FontSize="13" KeyDown="OnCommentBoxKeyDown" />
+                   TextWrapping="Wrap" FontSize="13" KeyDown="OnCommentBoxKeyDown"
+                   TextChanged="OnCommentTextChanged" />
           <StackPanel Orientation="Horizontal" Spacing="6" HorizontalAlignment="Right">
             <TextBlock FontSize="10" Opacity="0.6" VerticalAlignment="Center"
                        Text="Ctrl+Enter saves the draft, Esc closes" />

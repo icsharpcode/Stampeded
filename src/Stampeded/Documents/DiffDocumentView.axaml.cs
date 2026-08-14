@@ -193,6 +193,7 @@ public partial class DiffDocumentView : UserControl
 		double marginsWidth = Editor.TextArea.LeftMargins.OfType<Avalonia.Controls.Control>().Sum(m => m.Bounds.Width);
 		CommentPopup.HorizontalOffset = marginsWidth + 8;
 		CommentPopup.VerticalOffset = anchorY;
+		CommentPopup.IsLightDismissEnabled = true;
 		CommentPopup.IsOpen = true;
 		CommentBox.Focus();
 	}
@@ -661,6 +662,15 @@ public partial class DiffDocumentView : UserControl
 			OnCommentCancel(sender, e);
 		}
 	}
+
+	/// <summary>
+	/// An empty editor may be dismissed by clicking away from it - there is nothing to lose,
+	/// and a stray click should not need a button. Once something has been written, only Save
+	/// draft, Cancel or Esc close it: a click aimed at the code behind it would otherwise take
+	/// the words with it.
+	/// </summary>
+	void OnCommentTextChanged(object? sender, TextChangedEventArgs e)
+		=> CommentPopup.IsLightDismissEnabled = string.IsNullOrEmpty(CommentBox.Text);
 
 	void OnCommentSave(object? sender, RoutedEventArgs e) => SaveInlineCommentAsync().HandleExceptions();
 
