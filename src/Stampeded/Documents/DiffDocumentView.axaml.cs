@@ -33,6 +33,8 @@ public partial class DiffDocumentView : UserControl
 	readonly TextMarkerService markers;
 	readonly Editor.ThreadElementGenerator threadGenerator = new();
 	Dictionary<string, ThreadData>? threadsByKey;
+	/// <summary>Resolved threads the reader has opened again; they collapse by default.</summary>
+	readonly HashSet<string> openedResolvedThreads = [];
 	Avalonia.Point lastPointerPosition;
 	FoldingManager? foldingManager;
 	ContextGapView? contextGaps;
@@ -178,6 +180,61 @@ public partial class DiffDocumentView : UserControl
 		CommentPopup.VerticalOffset = anchor.Y;
 		CommentPopup.IsOpen = true;
 		CommentBox.Focus();
+	}
+
+	/// <summary>
+	/// A resolved thread in one row: who said it, how much there is, and a way back to it.
+	/// The full box is what an open question deserves; a settled one only has to stay
+	/// findable.
+	/// </summary>
+	Avalonia.Controls.Control BuildResolvedSummary(string key, ThreadData thread, bool dark)
+	{
+		var first = thread.Comments[0];
+		string excerpt = first.Body.ReplaceLineEndings(" ").Trim();
+		if (excerpt.Length > 80)
+			excerpt = excerpt[..80] + "...";
+		var row = new Avalonia.Controls.StackPanel {
+			Orientation = Avalonia.Layout.Orientation.Horizontal,
+			Spacing = 6,
+			VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center,
+		};
+		row.Children.Add(new Avalonia.Controls.TextBlock {
+			Text = "Resolved",
+			FontSize = 10,
+			FontWeight = Avalonia.Media.FontWeight.SemiBold,
+			Foreground = new Avalonia.Media.SolidColorBrush(Avalonia.Media.Color.Parse("#2EA043")),
+			VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center,
+		});
+		row.Children.Add(new Avalonia.Controls.TextBlock {
+			Text = $"{first.Author}: {excerpt}"
+				+ (thread.Comments.Count > 1 ? $"  (+{thread.Comments.Count - 1})" : ""),
+			FontSize = 11,
+			Opacity = 0.75,
+			TextTrimming = Avalonia.Media.TextTrimming.CharacterEllipsis,
+			VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center,
+		});
+		var show = new Avalonia.Controls.Button {
+			Content = "Show",
+			FontSize = 10,
+			Padding = new Avalonia.Thickness(6, 0),
+			Cursor = new Cursor(StandardCursorType.Hand),
+		};
+		show.Click += (_, _) => {
+			openedResolvedThreads.Add(key);
+			Editor.TextArea.TextView.Redraw();
+		};
+		row.Children.Add(show);
+		return new Avalonia.Controls.Border {
+			Cursor = new Cursor(StandardCursorType.Arrow),
+			Opacity = 0.55,
+			Child = row,
+			Background = new Avalonia.Media.SolidColorBrush(Avalonia.Media.Color.Parse(dark ? "#2B2417" : "#FFF8C5"), 0.9),
+			BorderBrush = new Avalonia.Media.SolidColorBrush(Avalonia.Media.Color.Parse("#D2992255")),
+			BorderThickness = new Avalonia.Thickness(1),
+			CornerRadius = new Avalonia.CornerRadius(4),
+			Padding = new Avalonia.Thickness(10, 2),
+			Margin = new Avalonia.Thickness(0, 1),
+		};
 	}
 
 	sealed record ThreadComment(bool IsDraft, string Author, string Body, Guid? DraftId, string? ThreadId = null, bool Resolved = false, string? Url = null);
@@ -395,6 +452,14 @@ public partial class DiffDocumentView : UserControl
 		}
 		bool resolvedThread = thread.Comments.Count > 0 && thread.Comments.All(c => c.DraftId is not null || c.Resolved)
 			&& thread.Comments.Any(c => c.Resolved);
+		// A resolved thread is settled business: it takes a line instead of a box, and opens
+		// again on demand. One holding an unsent draft stays open - hiding the reader's own
+		// unposted words would be losing them.
+		if (resolvedThread && !openedResolvedThreads.Contains(key)
+			&& !thread.Comments.Any(c => c.DraftId is not null))
+		{
+			return BuildResolvedSummary(key, thread, dark);
+		}
 		foreach (var comment in thread.Comments)
 		{
 			var header = new Avalonia.Controls.DockPanel();
@@ -473,6 +538,15 @@ public partial class DiffDocumentView : UserControl
 			};
 			toggle.Click += (_, _) => App.Workspace?.SetThreadResolvedAsync(gitThreadId, !resolvedThread).HandleExceptions();
 			buttons.Children.Add(toggle);
+		}
+		if (resolvedThread)
+		{
+			var hide = new Avalonia.Controls.Button { Content = "Hide", FontSize = 10, Padding = new Avalonia.Thickness(6, 1) };
+			hide.Click += (_, _) => {
+				openedResolvedThreads.Remove(key);
+				Editor.TextArea.TextView.Redraw();
+			};
+			buttons.Children.Add(hide);
 		}
 		if (buttons.Children.Count > 0)
 			panel.Children.Add(buttons);
