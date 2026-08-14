@@ -9,6 +9,39 @@ public partial class OverviewDocumentView : UserControl
 	public OverviewDocumentView()
 	{
 		InitializeComponent();
+		// Takes focus itself so 'o' has somewhere to land: the overview is a page of text and
+		// buttons, none of which would otherwise hold the keyboard.
+		Focusable = true;
+	}
+
+	/// <summary>The one overview view. There is a single overview document per window, so
+	/// the code that shows it can reach the control without a lookup.</summary>
+	public static OverviewDocumentView? Current { get; private set; }
+
+	protected override void OnAttachedToVisualTree(Avalonia.VisualTreeAttachmentEventArgs e)
+	{
+		base.OnAttachedToVisualTree(e);
+		Current = this;
+	}
+
+	protected override void OnDetachedFromVisualTree(Avalonia.VisualTreeAttachmentEventArgs e)
+	{
+		if (Current == this)
+			Current = null;
+		base.OnDetachedFromVisualTree(e);
+	}
+
+	/// <summary>'o' goes back to the file the overview was opened from, the same key that
+	/// left it. Skipped while a text box has focus, so it stays typeable.</summary>
+	protected override void OnKeyDown(KeyEventArgs e)
+	{
+		base.OnKeyDown(e);
+		if (!e.Handled && e.Key == Key.O && e.KeyModifiers == KeyModifiers.None
+			&& TopLevel.GetTopLevel(this)?.FocusManager?.GetFocusedElement() is not TextBox)
+		{
+			App.Workspace?.ToggleOverviewAsync().HandleExceptions();
+			e.Handled = true;
+		}
 	}
 
 	OverviewDocumentViewModel? Vm => DataContext as OverviewDocumentViewModel;

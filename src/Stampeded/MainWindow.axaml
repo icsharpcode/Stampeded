@@ -28,6 +28,7 @@
         <MenuItem Header="Previous File  ( [ )" Click="OnPrevFile" />
         <Separator />
         <MenuItem Header="Toggle Viewed + Advance" InputGesture="V" Click="OnToggleViewed" />
+        <MenuItem Header="Overview / Back to File  ( o )" Click="OnToggleOverview" />
         <MenuItem Header="Toggle Blame Margin" InputGesture="B" Click="OnToggleBlame" />
         <MenuItem Header="Comment at Caret" InputGesture="C" Click="OnCommentAtCaret" />
         <Separator />

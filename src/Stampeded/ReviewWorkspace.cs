@@ -1231,7 +1231,14 @@ public sealed class ReviewWorkspace(string repoPath)
 
 	/// <summary>Opens (or refocuses) the review overview document.</summary>
 	public void OpenOverview()
-		=> ShowDocument("overview", () => new Documents.OverviewDocumentViewModel(this));
+	{
+		ShowDocument("overview", () => new Documents.OverviewDocumentViewModel(this));
+		// So the key that got here also gets back: the overview handles it itself, and only
+		// while it holds focus.
+		Avalonia.Threading.Dispatcher.UIThread.Post(
+			() => global::Stampeded.Documents.OverviewDocumentView.Current?.Focus(),
+			Avalonia.Threading.DispatcherPriority.Loaded);
+	}
 
 	/// <summary>Two arbitrary texts side by side (e.g. base-vs-head test run outputs).</summary>
 	public void OpenSideBySideText(string id, string title, string leftText, string rightText)
@@ -1313,6 +1320,29 @@ public sealed class ReviewWorkspace(string repoPath)
 			return;
 		}
 		await OpenAdjacentFileAsync(1);
+	}
+
+	string? fileBeforeOverview;
+
+	/// <summary>
+	/// Swaps between the overview and the file being read, one key both ways. Looking up what
+	/// the change is about mid-file is a glance, not a navigation: coming back has to land
+	/// where it left, and picking the file out of the list again is not that.
+	/// </summary>
+	public async Task ToggleOverviewAsync()
+	{
+		if (Documents?.ActiveDockable is OverviewDocumentViewModel)
+		{
+			var back = Files.FirstOrDefault(f => f.Path == fileBeforeOverview)
+				// Nothing to return to (the file went away with a reload, or the overview was
+				// the first thing opened): the file to read is the first unread one.
+				?? Files.FirstOrDefault(f => !Store.IsViewed(f.Path)) ?? Files.FirstOrDefault();
+			if (back is not null && await OpenFileAsync(back) is { } opened)
+				FocusEditorOf(opened);
+			return;
+		}
+		fileBeforeOverview = CurrentFile?.Path;
+		OpenOverview();
 	}
 
 	public void SetViewed(string path, bool viewed)

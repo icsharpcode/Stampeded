@@ -797,6 +797,10 @@ public partial class DiffDocumentView : UserControl
 				App.Workspace?.ToggleViewedAndAdvanceAsync().HandleExceptions();
 				e.Handled = true;
 				break;
+			case (Key.O, KeyModifiers.None):
+				App.Workspace?.ToggleOverviewAsync().HandleExceptions();
+				e.Handled = true;
+				break;
 			case (Key.F12, KeyModifiers.None):
 				NavigateToDefinitionAtCaret();
 				e.Handled = true;

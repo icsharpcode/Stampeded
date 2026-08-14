@@ -88,6 +88,7 @@ public partial class MainWindow : Window
 	void OnNextFile(object? s, RoutedEventArgs e) => App.Workspace?.OpenAdjacentFileAsync(1).HandleExceptions();
 	void OnPrevFile(object? s, RoutedEventArgs e) => App.Workspace?.OpenAdjacentFileAsync(-1).HandleExceptions();
 	void OnToggleViewed(object? s, RoutedEventArgs e) => App.Workspace?.ToggleViewedAndAdvanceAsync().HandleExceptions();
+	void OnToggleOverview(object? s, RoutedEventArgs e) => App.Workspace?.ToggleOverviewAsync().HandleExceptions();
 	void OnToggleBlame(object? s, RoutedEventArgs e) => View?.ToggleBlameCommand();
 	void OnCommentAtCaret(object? s, RoutedEventArgs e) => View?.CommentAtCaretCommand();
 	void OnGoToDefinition(object? s, RoutedEventArgs e) => View?.GoToDefinitionCommand();
