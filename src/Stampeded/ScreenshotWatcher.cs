@@ -143,7 +143,12 @@ static class ScreenshotWatcher
 				foreach (var command in lines.Where(l => l.StartsWith("click:", StringComparison.Ordinal)))
 				{
 					string label = command["click:".Length..].Trim();
-					var buttons = window.GetVisualDescendants().OfType<Button>().ToList();
+					// Only what is on screen: every document's view stays attached, so an
+					// off-screen tab's button would otherwise be pressed instead of the one
+					// the capture shows.
+					var buttons = window.GetVisualDescendants().OfType<Button>()
+						.Where(b => b.IsEffectivelyVisible)
+						.ToList();
 					if ((buttons.FirstOrDefault(b => b.Name == label)
 						?? buttons.FirstOrDefault(b => b.Content as string == label)) is { } button)
 					{
@@ -183,6 +188,17 @@ static class ScreenshotWatcher
 					{
 						list.SelectedIndex = index;
 						list.ScrollRowIntoView(index);
+					}
+				}
+				// open-file:<repo-relative path> - opens a file's diff without navigating into
+				// it, so what a reader first sees can be captured.
+				foreach (var command in lines.Where(l => l.StartsWith("open-file:", StringComparison.Ordinal)))
+				{
+					string rel = command["open-file:".Length..].Trim();
+					if (App.Workspace is { } ws
+						&& ws.Files.FirstOrDefault(f => f.Path == rel) is { } file)
+					{
+						ws.OpenFileAsync(file).HandleExceptions();
 					}
 				}
 				foreach (var command in lines.Where(l => l.StartsWith("goto:", StringComparison.Ordinal)))
