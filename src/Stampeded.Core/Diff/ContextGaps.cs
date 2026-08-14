@@ -30,10 +30,21 @@ public static class ContextGaps
 	public const int Step = 20;
 
 	/// <summary>
+	/// How far above a hunk a member's first line is still worth showing. A change is read
+	/// against what it is part of, and the signature says that in one line; further away the
+	/// lines in between cost more than the answer is worth, and the reader can open them.
+	/// </summary>
+	public const int MemberReach = 12;
+
+	/// <summary>
 	/// The gaps of a diff, closed. Nothing is hidden in a document without changes, which is
 	/// how a plain source view stays whole.
 	/// </summary>
-	public static List<ContextGap> Compute(IReadOnlyList<DiffLineTag> tags, bool hasChanges)
+	/// <param name="memberStarts">1-based document lines where a member's declaration begins.
+	/// A gap ending just below one keeps it visible, so a change is read with the signature it
+	/// belongs to rather than in a fragment of a body.</param>
+	public static List<ContextGap> Compute(
+		IReadOnlyList<DiffLineTag> tags, bool hasChanges, IReadOnlyList<int>? memberStarts = null)
 	{
 		var gaps = new List<ContextGap>();
 		if (!hasChanges)
@@ -52,7 +63,31 @@ public static class ContextGaps
 				runStart = -1;
 			}
 		}
-		return gaps;
+		return memberStarts is { Count: > 0 } ? [.. gaps.Select(g => KeepMemberStart(g, memberStarts)).OfType<ContextGap>()] : gaps;
+	}
+
+	/// <summary>
+	/// Shrinks a gap that ends within <see cref="MemberReach"/> lines below a member's first
+	/// line, so that line and everything under it stay visible. Null when nothing worth hiding
+	/// is left over.
+	/// </summary>
+	static ContextGap? KeepMemberStart(ContextGap gap, IReadOnlyList<int> memberStarts)
+	{
+		int lowest = -1;
+		foreach (int line in memberStarts)
+		{
+			// Inside this gap, near its end - the end being where the hunk's own context
+			// begins - and the lowest such line, which is the innermost member.
+			if (line >= gap.FirstLine && line <= gap.LastLine
+				&& gap.LastLine - line + 1 <= MemberReach && line > lowest)
+			{
+				lowest = line;
+			}
+		}
+		if (lowest < 0)
+			return gap;
+		var shrunk = gap with { LastLine = lowest - 1 };
+		return shrunk.HiddenCount >= 2 ? shrunk : null;
 	}
 
 	static void Add(List<ContextGap> gaps, int tagCount, int firstTag, int lastTag)

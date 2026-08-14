@@ -52,6 +52,59 @@ public class ContextGapTests
 	}
 
 	[Test]
+	public void KeepsAMemberSignatureVisibleAboveTheHunkItBelongsTo()
+	{
+		// 40 unchanged lines, then a change. Without a member start the gap hides everything
+		// up to the hunk's own context.
+		var tags = Tags(new string('.', 40) + "+" + new string('.', 10));
+		var plain = ContextGaps.Compute(tags, hasChanges: true)[0];
+		Assert.That(plain.LastLine, Is.EqualTo(40 - ContextGaps.Context));
+
+		// A member declared 8 lines above the hunk is within reach: the gap now ends above
+		// it, so the signature and the lines under it are read with the change.
+		int signature = 41 - 8;
+		var kept = ContextGaps.Compute(tags, hasChanges: true, [signature])[0];
+		Assert.That(kept.LastLine, Is.EqualTo(signature - 1));
+	}
+
+	[Test]
+	public void LeavesAMemberThatStartsTooFarAbove()
+	{
+		var tags = Tags(new string('.', 40) + "+" + new string('.', 10));
+		int farAway = 41 - (ContextGaps.MemberReach + 6);
+
+		var gaps = ContextGaps.Compute(tags, hasChanges: true, [farAway]);
+
+		Assert.That(gaps[0].LastLine, Is.EqualTo(40 - ContextGaps.Context),
+			"the lines in between cost more than the signature is worth from there");
+	}
+
+	[Test]
+	public void PicksTheInnermostMemberWhenSeveralAreInReach()
+	{
+		var tags = Tags(new string('.', 40) + "+" + new string('.', 10));
+
+		// Both are inside the gap - one starting at line 29, a nested one at 33.
+		var gaps = ContextGaps.Compute(tags, hasChanges: true, [29, 33]);
+
+		// The nearer declaration is the one the change sits in.
+		Assert.That(gaps[0].LastLine, Is.EqualTo(32));
+	}
+
+	[Test]
+	public void DropsAGapLeftWithNothingWorthHiding()
+	{
+		// The member starts so close to the top of the run that shrinking leaves a line or
+		// two - less than the control that would hide them.
+		var tags = Tags(new string('.', 12) + "+" + new string('.', 10));
+		var gaps = ContextGaps.Compute(tags, hasChanges: true, [2]);
+
+		// Only the run after the hunk is left; the one before it opened completely.
+		Assert.That(gaps.Any(g => g.FirstLine == 1), Is.False);
+		Assert.That(gaps, Has.Count.EqualTo(1));
+	}
+
+	[Test]
 	public void RevealsFromEitherEndAStepAtATime()
 	{
 		var gaps = ContextGaps.Compute(Tags("+" + new string('.', 60) + "+"), hasChanges: true);

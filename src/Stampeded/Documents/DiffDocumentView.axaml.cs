@@ -940,7 +940,9 @@ public partial class DiffDocumentView : UserControl
 			var (sideText, sideToDocLine) = m.GetSideText(oldSide);
 			structuralRanges.AddRange(DiffFolding.Members(sideText, sideToDocLine));
 		}
-		contextGaps?.Install(m.Tags, m.Hunks.Count > 0);
+		// The fold ranges start where each member's declaration does, which is exactly what
+		// the gaps need to know to keep a signature above a hunk in view.
+		contextGaps?.Install(m.Tags, m.Hunks.Count > 0, [.. structuralRanges.Select(r => r.StartLine)]);
 		RefreshFoldings();
 	}
 
