@@ -274,22 +274,29 @@ public sealed class GitHubService(string repoPath)
 	}
 
 	/// <summary>
-	/// Marks a review as posted by this tool, once. It goes on the first line comment rather
-	/// than the review body, because that is what a reader actually meets -- in the file view,
-	/// in a thread, in a mail notification -- none of which show the summary the comments were
-	/// batched into. Repeating it on every comment of the same review said nothing further and
-	/// took a line away from each of them; a review with no line comments puts it on the body,
-	/// which is then all there is to mark.
+	/// Marks a review as posted by this tool, once, on the first thing a reader will meet.
+	/// That is the first line comment - the file view, a thread and a mail notification all
+	/// show those, and none of them shows the summary the comments were batched into. With no
+	/// line comments the summary is what carries it instead.
+	///
+	/// An approval or a rejection with nothing written at all is left alone: the mark would be
+	/// the entire review, which says who ran it and nothing about the change.
 	/// </summary>
 	public static ReviewSubmission Attributed(ReviewSubmission submission)
-		=> submission.Comments.Count == 0
-			? submission with { Body = WithAttribution(submission.Body) }
-			: submission with {
+	{
+		if (submission.Comments.Count > 0)
+		{
+			return submission with {
 				Comments = [
 					submission.Comments[0] with { Body = WithAttribution(submission.Comments[0].Body) },
 					.. submission.Comments.Skip(1),
 				],
 			};
+		}
+		return submission.Body.Trim().Length == 0
+			? submission
+			: submission with { Body = WithAttribution(submission.Body) };
+	}
 
 	static string WithAttribution(string body)
 		=> (body.Length > 0 ? body.TrimEnd() + "\n\n" : "")

@@ -24,12 +24,19 @@ public class ReviewAttributionTests
 	}
 
 	[Test]
-	public void MarksTheBodyWhenAReviewHasNoLineComments()
+	public void MarksTheSummaryWhenAReviewHasNoLineComments()
 	{
-		var approval = GitHubService.Attributed(new ReviewSubmission("", "APPROVE", []));
-		Assert.That(approval.Body, Is.EqualTo(Mark));
-
 		var withSummary = GitHubService.Attributed(new ReviewSubmission("Looks good.", "APPROVE", []));
+
 		Assert.That(withSummary.Body, Is.EqualTo("Looks good.\n\n" + Mark));
+	}
+
+	[Test]
+	public void LeavesAVerdictWithNothingWrittenUnmarked()
+	{
+		// The mark would be the whole review: who ran it, and nothing about the change.
+		Assert.That(GitHubService.Attributed(new ReviewSubmission("", "APPROVE", [])).Body, Is.EqualTo(""));
+		Assert.That(GitHubService.Attributed(new ReviewSubmission("  \n ", "REQUEST_CHANGES", [])).Body,
+			Is.EqualTo("  \n "));
 	}
 }
