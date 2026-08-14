@@ -3,6 +3,7 @@ using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Media;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
 
 using AvaloniaEdit.Document;
 using AvaloniaEdit.Folding;
@@ -158,7 +159,13 @@ public partial class DiffDocumentView : UserControl
 
 	ReviewWorkspace.CommentTarget? inlineCommentTarget;
 
-	public void CommentAtCaretCommand()
+	public void CommentAtCaretCommand() => CommentAtCaretCommand(null);
+
+	/// <param name="anchorLine">Document line the editor should be placed under. A reply
+	/// belongs below the thread it answers, and the thread's box sits on its own line under
+	/// the commented code - anchoring to the caret alone would open the editor on top of
+	/// what is being replied to.</param>
+	public void CommentAtCaretCommand(int? anchorLine)
 	{
 		if (viewModel is { Historical: true } || CaretBlobPosition() is not { } pos)
 			return;
@@ -173,14 +180,41 @@ public partial class DiffDocumentView : UserControl
 		inlineCommentTarget = new ReviewWorkspace.CommentTarget(pos.RelPath, pos.OldSide, pos.Line, text);
 		CommentTargetText.Text = $"{pos.RelPath}:{pos.Line}{(pos.OldSide ? " (base)" : "")}  |  {text.Trim()}";
 		var view = Editor.TextArea.TextView;
-		var caretPosition = new AvaloniaEdit.TextViewPosition(Editor.TextArea.Caret.Line, 1);
-		var anchor = view.GetVisualPosition(caretPosition, VisualYPosition.LineBottom) - view.ScrollOffset;
+		int anchorAt = Math.Clamp(anchorLine ?? Editor.TextArea.Caret.Line, 1, Editor.Document.LineCount);
+		var caretPosition = new AvaloniaEdit.TextViewPosition(anchorAt, 1);
+		double anchorY = ScrollToMakeRoomBelow(caretPosition);
 		double marginsWidth = Editor.TextArea.LeftMargins.OfType<Avalonia.Controls.Control>().Sum(m => m.Bounds.Width);
 		CommentPopup.HorizontalOffset = marginsWidth + 8;
-		CommentPopup.VerticalOffset = anchor.Y;
+		CommentPopup.VerticalOffset = anchorY;
 		CommentPopup.IsOpen = true;
 		CommentBox.Focus();
 	}
+
+	/// <summary>
+	/// The offset the editor box should sit at, having scrolled far enough that it fits under
+	/// its anchor. Replying to a tall thread otherwise puts the box past the bottom of the
+	/// diff, where it floats over the pane below - the popup is an overlay and knows nothing
+	/// of the editor's bounds.
+	/// </summary>
+	double ScrollToMakeRoomBelow(AvaloniaEdit.TextViewPosition position)
+	{
+		var view = Editor.TextArea.TextView;
+		double anchorY = (view.GetVisualPosition(position, VisualYPosition.LineBottom) - view.ScrollOffset).Y;
+		double overflow = anchorY + CommentBoxHeight - view.Bounds.Height;
+		if (overflow > 0
+			&& Editor.GetVisualDescendants().OfType<Avalonia.Controls.ScrollViewer>().FirstOrDefault() is { } scroll)
+		{
+			double max = Math.Max(0, scroll.Extent.Height - scroll.Viewport.Height);
+			double target = Math.Clamp(scroll.Offset.Y + overflow, 0, max);
+			double moved = target - scroll.Offset.Y;
+			scroll.Offset = new Avalonia.Vector(scroll.Offset.X, target);
+			anchorY -= moved;
+		}
+		return anchorY;
+	}
+
+	/// <summary>Height the comment editor needs, as laid out in the view's markup.</summary>
+	const double CommentBoxHeight = 150;
 
 	/// <summary>
 	/// A resolved thread in one row: who said it, how much there is, and a way back to it.
@@ -235,6 +269,21 @@ public partial class DiffDocumentView : UserControl
 			Padding = new Avalonia.Thickness(10, 2),
 			Margin = new Avalonia.Thickness(0, 1),
 		};
+	}
+
+	/// <summary>
+	/// The last of the thread rows reserved under a code line, or the line itself when it
+	/// carries none. Threads are spliced in as synthetic lines below the code they comment
+	/// on, so this is the bottom of everything already said there.
+	/// </summary>
+	int LastThreadLineAfter(int docLine)
+	{
+		if (model is null)
+			return docLine;
+		int last = docLine;
+		for (int line = docLine + 1; line <= model.Tags.Count && model.Tags[line - 1].Kind == DiffLineKind.Comment; line++)
+			last = line;
+		return last;
 	}
 
 	sealed record ThreadComment(bool IsDraft, string Author, string Body, Guid? DraftId, string? ThreadId = null, bool Resolved = false, string? Url = null);
@@ -524,7 +573,7 @@ public partial class DiffDocumentView : UserControl
 				if (docLine is { } dl)
 				{
 					MoveCaretToLine(dl);
-					CommentAtCaretCommand();
+					CommentAtCaretCommand(LastThreadLineAfter(dl));
 				}
 			};
 			buttons.Children.Add(reply);
