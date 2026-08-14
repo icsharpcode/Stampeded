@@ -37,6 +37,9 @@ public sealed class ReviewWorkspace(string repoPath)
 
 	public PrDetail? CurrentPr { get; private set; }
 
+	/// <summary>Where "#1234" in any text of this review points; null off GitHub.</summary>
+	public string? IssueUrlPrefix { get; private set; }
+
 	/// <summary>The refs a local range review was opened with, null for a pull request one.
 	/// Worth keeping apart from <see cref="BaseSha"/>: that is their merge base, the commit
 	/// the diff is really against, which is not what the user typed.</summary>
@@ -237,6 +240,7 @@ public sealed class ReviewWorkspace(string repoPath)
 		// one tab at a time, instead of arriving as a wall of them.
 		OpenOverview();
 		CloseStartPage();
+		LoadIssueUrlPrefixAsync(ct).HandleExceptions();
 		LoadSemanticsAsync(headSha, baseSha, ct).HandleExceptions();
 		LoadGeneratedSourcesAsync(ct).HandleExceptions();
 		ReattachDraftsAsync(ct).HandleExceptions();
@@ -279,10 +283,19 @@ public sealed class ReviewWorkspace(string repoPath)
 		// one tab at a time, instead of arriving as a wall of them.
 		OpenOverview();
 		CloseStartPage();
+		LoadIssueUrlPrefixAsync(ct).HandleExceptions();
 		LoadSemanticsAsync(headSha, baseSha, ct).HandleExceptions();
 		LoadGeneratedSourcesAsync(ct).HandleExceptions();
 		ReattachDraftsAsync(ct).HandleExceptions();
 		LoadPostedCommentsAsync(number, ct).HandleExceptions();
+	}
+
+	async Task LoadIssueUrlPrefixAsync(CancellationToken ct)
+	{
+		IssueUrlPrefix = await GitHub.GetIssueUrlPrefixAsync(ct);
+		// The description and the comment threads are rendered before this returns.
+		ReviewChanged?.Invoke();
+		CommentsChanged?.Invoke();
 	}
 
 	async Task LoadSemanticsAsync(string headSha, string baseSha, CancellationToken ct)

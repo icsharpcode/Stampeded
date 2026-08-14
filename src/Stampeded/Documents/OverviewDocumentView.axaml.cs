@@ -9,6 +9,9 @@ public partial class OverviewDocumentView : UserControl
 	public OverviewDocumentView()
 	{
 		InitializeComponent();
+		// The description is full of links - the issues it closes, the discussions it came
+		// from - and they have to go somewhere when pressed.
+		DescriptionView.Engine = Editor.MarkdownLinks.NewEngine();
 		// Takes focus itself so 'o' has somewhere to land: the overview is a page of text and
 		// buttons, none of which would otherwise hold the keyboard.
 		Focusable = true;

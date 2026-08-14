@@ -139,7 +139,7 @@
         <Expander.Header>
           <TextBlock Classes="sectiontitle" Text="Description" />
         </Expander.Header>
-        <md:MarkdownScrollViewer Markdown="{Binding State.Description}" MaxHeight="240" />
+        <md:MarkdownScrollViewer x:Name="DescriptionView" Markdown="{Binding State.Description}" MaxHeight="240" />
       </Expander>
 
       <Expander Classes="block" IsExpanded="{Binding State.CommitsExpanded}" IsVisible="{Binding State.CommitsHeader, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">

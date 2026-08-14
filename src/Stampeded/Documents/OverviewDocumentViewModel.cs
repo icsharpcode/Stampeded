@@ -170,7 +170,7 @@ public class OverviewDocumentViewModel : Document
 			+ (workspace.UncommittedFileCount > 0 ? $" ({workspace.UncommittedFileCount} file(s) beyond the last commit)." : ".")
 			: "";
 		State.Description = workspace.CurrentPr?.Body is { Length: > 0 } body
-			? body.ReplaceLineEndings("\n")
+			? Core.GitHub.IssueLinks.Autolink(body.ReplaceLineEndings("\n"), workspace.IssueUrlPrefix)
 			: "(no description)";
 		RebuildCommitScope();
 		RebuildLinkedIssues();

@@ -223,6 +223,21 @@ public sealed class GitHubService(string repoPath)
 
 	(string Owner, string Repo)? ownerRepo;
 
+	/// <summary>Where an issue number of this repository points, or null when the repository
+	/// is not on GitHub - a review of a local branch in a clone with no such remote.</summary>
+	public async Task<string?> GetIssueUrlPrefixAsync(CancellationToken ct = default)
+	{
+		try
+		{
+			var (owner, repo) = await GetOwnerRepoAsync(ct);
+			return $"https://github.com/{owner}/{repo}/issues/";
+		}
+		catch (ToolFailedException)
+		{
+			return null;
+		}
+	}
+
 	async Task<(string Owner, string Repo)> GetOwnerRepoAsync(CancellationToken ct)
 	{
 		if (ownerRepo is { } cached)

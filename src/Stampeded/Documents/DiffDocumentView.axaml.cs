@@ -155,7 +155,7 @@ public partial class DiffDocumentView : UserControl
 
 	public void JumpToHunkCommand(int direction) => JumpToHunk(direction);
 
-	static readonly global::Markdown.Avalonia.Markdown ThreadMarkdownEngine = new();
+	static readonly global::Markdown.Avalonia.Markdown ThreadMarkdownEngine = MarkdownLinks.NewEngine();
 
 	ReviewWorkspace.CommentTarget? inlineCommentTarget;
 
@@ -547,7 +547,8 @@ public partial class DiffDocumentView : UserControl
 			// Review comments are markdown (code spans, lists, links). Rendered via the
 			// engine directly: a ScrollViewer inside an editor inline object would nest
 			// scroll regions into every visual line and wreck scrolling performance.
-			var rendered = ThreadMarkdownEngine.Transform(comment.Body);
+			var rendered = ThreadMarkdownEngine.Transform(
+			Core.GitHub.IssueLinks.Autolink(comment.Body, App.Workspace?.IssueUrlPrefix));
 			var host = new Avalonia.Controls.ContentControl {
 				Content = rendered,
 				Margin = new Avalonia.Thickness(0, 0, 0, 4),
