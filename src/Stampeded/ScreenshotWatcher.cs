@@ -157,7 +157,11 @@ static class ScreenshotWatcher
 				foreach (var command in lines.Where(l => l.StartsWith("key:", StringComparison.Ordinal)))
 				{
 					var gesture = Avalonia.Input.KeyGesture.Parse(command["key:".Length..].Trim());
-					window.RaiseEvent(new Avalonia.Input.KeyEventArgs {
+					// On the focused element, as a real key press arrives: a gesture handled by
+					// whatever holds focus is exactly what a window-level raise would miss.
+					var focused = window.FocusManager?.GetFocusedElement() as Avalonia.Interactivity.Interactive
+						?? window;
+					focused.RaiseEvent(new Avalonia.Input.KeyEventArgs {
 						RoutedEvent = Avalonia.Input.InputElement.KeyDownEvent,
 						Key = gesture.Key,
 						KeyModifiers = gesture.KeyModifiers,
