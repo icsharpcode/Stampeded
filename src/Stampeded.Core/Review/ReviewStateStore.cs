@@ -133,6 +133,19 @@ public sealed class ReviewStateStore
 		Save();
 	}
 
+	/// <summary>Rewrites a draft's text. Its anchor and the time it was written stay: it is
+	/// the same remark, said better.</summary>
+	public void UpdateDraft(Guid id, string body)
+	{
+		if (current?.Drafts is null)
+			return;
+		int index = current.Drafts.FindIndex(d => d.Id == id);
+		if (index < 0)
+			return;
+		current.Drafts[index] = current.Drafts[index] with { Body = body };
+		Save();
+	}
+
 	public void RemoveDraft(Guid id)
 	{
 		if (current?.Drafts is null)

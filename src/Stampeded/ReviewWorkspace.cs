@@ -1795,6 +1795,14 @@ public sealed class ReviewWorkspace(string repoPath)
 		RebuildDrafts();
 	}
 
+	public void UpdateDraft(Guid id, string body)
+	{
+		if (body.Trim().Length == 0)
+			return;
+		Store.UpdateDraft(id, body);
+		RebuildDrafts();
+	}
+
 	public void RemoveDraft(Guid id)
 	{
 		Store.RemoveDraft(id);

@@ -166,6 +166,27 @@ public partial class DiffDocumentView : UserControl
 
 	ReviewWorkspace.CommentTarget? inlineCommentTarget;
 
+	/// <summary>The draft the editor is rewriting, when it was opened on one.</summary>
+	Guid? editingDraftId;
+
+	/// <summary>
+	/// Opens the editor on a draft that already exists, below the thread it belongs to. Saving
+	/// rewrites that draft rather than adding another: it is the same remark, said better.
+	/// </summary>
+	void EditDraft(Guid draftId, string body, ThreadData thread)
+	{
+		int? docLine = thread.OldSide ? model?.DocLineFromOldLine(thread.BlobLine) : model?.DocLineFromNewLine(thread.BlobLine);
+		if (docLine is not { } dl)
+			return;
+		MoveCaretToLine(dl);
+		CommentAtCaretCommand(LastThreadLineAfter(dl));
+		if (!CommentPopup.IsOpen)
+			return;
+		editingDraftId = draftId;
+		CommentBox.Text = body;
+		CommentBox.CaretIndex = body.Length;
+	}
+
 	public void CommentAtCaretCommand() => CommentAtCaretCommand(null);
 
 	/// <param name="anchorLine">Document line the editor should be placed under. A reply
@@ -182,6 +203,10 @@ public partial class DiffDocumentView : UserControl
 			local.PostStatus("Comments need a pull request; this is a local review.");
 			return;
 		}
+		// A fresh editor: whatever the last one held - a draft being rewritten, or text a
+		// dismissal left behind - is not this comment.
+		editingDraftId = null;
+		CommentBox.Text = "";
 		var docLine = Editor.Document.GetLineByNumber(Editor.TextArea.Caret.Line);
 		string text = Editor.Document.GetText(docLine.Offset, docLine.Length);
 		inlineCommentTarget = new ReviewWorkspace.CommentTarget(pos.RelPath, pos.OldSide, pos.Line, text);
@@ -543,6 +568,15 @@ public partial class DiffDocumentView : UserControl
 				};
 				delete.Click += (_, _) => App.Workspace?.RemoveDraft(draftId);
 				header.Children.Add(delete);
+				var edit = new Avalonia.Controls.Button {
+					Content = "Edit",
+					FontSize = 10,
+					Padding = new Avalonia.Thickness(5, 1),
+					[Avalonia.Controls.DockPanel.DockProperty] = Avalonia.Controls.Dock.Right,
+				};
+				string draftBody = comment.Body;
+				edit.Click += (_, _) => EditDraft(draftId, draftBody, thread);
+				header.Children.Add(edit);
 			}
 			header.Children.Add(new Avalonia.Controls.TextBlock {
 				Text = comment.Author,
@@ -681,8 +715,16 @@ public partial class DiffDocumentView : UserControl
 		string body = CommentBox.Text?.Trim() ?? "";
 		if (body.Length == 0)
 			return;
-		ws.BeginComment(target, activatePane: false);
-		await ws.CommitDraftAsync(body);
+		if (editingDraftId is { } editing)
+		{
+			ws.UpdateDraft(editing, body);
+			editingDraftId = null;
+		}
+		else
+		{
+			ws.BeginComment(target, activatePane: false);
+			await ws.CommitDraftAsync(body);
+		}
 		CommentBox.Text = "";
 		CommentPopup.IsOpen = false;
 		inlineCommentTarget = null;
@@ -691,6 +733,7 @@ public partial class DiffDocumentView : UserControl
 
 	void OnCommentCancel(object? sender, RoutedEventArgs e)
 	{
+		editingDraftId = null;
 		CommentBox.Text = "";
 		CommentPopup.IsOpen = false;
 		inlineCommentTarget = null;
