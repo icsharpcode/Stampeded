@@ -52,6 +52,13 @@ static class ScreenshotWatcher
 		CliLog.Write("stranded", found == 0 ? "none" : $"{found} stranded container(s)");
 	}
 
+	/// <summary>Every open window, the newest first: a dialog is what a click has to reach
+	/// while it is up.</summary>
+	static IEnumerable<Window> OpenWindows()
+		=> (Avalonia.Application.Current?.ApplicationLifetime
+			as Avalonia.Controls.ApplicationLifetimes.IClassicDesktopStyleApplicationLifetime)
+			?.Windows.Reverse() ?? [];
+
 	public static void Attach(Window window)
 	{
 		var timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
@@ -70,7 +77,7 @@ static class ScreenshotWatcher
 				if (lines.Contains("comment"))
 					Documents.DiffDocumentView.ActiveView?.CommentAtCaretCommand();
 				if (lines.Contains("close-review"))
-					App.Workspace?.CloseReview();
+					App.Workspace?.CloseReviewAsync().HandleExceptions();
 				if (lines.Contains("callgraph") && Documents.DiffDocumentView.ActiveView is { } active)
 					active.ShowCallGraphCommand();
 				// open-range:<base>:<head> - opens a local review, for testing without a PR.
@@ -145,8 +152,10 @@ static class ScreenshotWatcher
 					string label = command["click:".Length..].Trim();
 					// Only what is on screen: every document's view stays attached, so an
 					// off-screen tab's button would otherwise be pressed instead of the one
-					// the capture shows.
-					var buttons = window.GetVisualDescendants().OfType<Button>()
+					// the capture shows. Dialogs are their own windows, and a modal one is the
+					// only thing that can be pressed while it is up - so it is searched first.
+					var buttons = OpenWindows()
+						.SelectMany(w => w.GetVisualDescendants().OfType<Button>())
 						.Where(b => b.IsEffectivelyVisible)
 						.ToList();
 					if ((buttons.FirstOrDefault(b => b.Name == label)
@@ -157,6 +166,18 @@ static class ScreenshotWatcher
 					else
 					{
 						CliLog.Write("action", $"click: no button labelled '{label}'");
+					}
+				}
+				// type:<text> - types into whatever holds focus, for flows that only exist once
+				// there is text (a draft comment, a filter, a branch name).
+				foreach (var command in lines.Where(l => l.StartsWith("type:", StringComparison.Ordinal)))
+				{
+					if (window.FocusManager?.GetFocusedElement() is Avalonia.Interactivity.Interactive focusedInput)
+					{
+						focusedInput.RaiseEvent(new Avalonia.Input.TextInputEventArgs {
+							RoutedEvent = Avalonia.Input.InputElement.TextInputEvent,
+							Text = command["type:".Length..],
+						});
 					}
 				}
 				// key:<gesture> - raises a key press on the window (e.g. "key:Ctrl+OemPlus"),
