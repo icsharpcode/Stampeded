@@ -210,13 +210,27 @@ public sealed record ThreadAnchor(bool OldSide, int BlobLine, string Key);
 /// </summary>
 public static class DiffDocumentBuilder
 {
+	/// <summary>
+	/// The aligned rows of two texts: which lines pair up, and which exist on one side only.
+	/// Runs that could sit in more than one place and still describe the same change are put
+	/// where they read best first, so everything downstream sees the readable cut.
+	/// </summary>
+	static IEnumerable<DiffLib.DiffElement<string>> Align(string[] oldLines, string[] newLines)
+	{
+		var sections = DiffLib.Diff.CalculateSections(oldLines, newLines, EqualityComparer<string>.Default);
+		var slid = DiffSlider.Shift(oldLines, newLines,
+			[.. sections.Select(s => new DiffRun(s.IsMatch, s.LengthInCollection1, s.LengthInCollection2))]);
+		return DiffLib.Diff.AlignElements(
+			oldLines, newLines,
+			slid.Select(r => new DiffLib.DiffSection(r.IsMatch, r.OldLength, r.NewLength)),
+			new DiffLib.Alignment.StringSimilarityDiffElementAligner());
+	}
+
 	public static DiffDocumentModel Build(string oldText, string newText)
 	{
 		var oldLines = SplitLines(oldText);
 		var newLines = SplitLines(newText);
-		var sections = DiffLib.Diff.CalculateSections(oldLines, newLines, EqualityComparer<string>.Default);
-		var aligned = DiffLib.Diff.AlignElements(
-			oldLines, newLines, sections, new DiffLib.Alignment.StringSimilarityDiffElementAligner());
+		var aligned = Align(oldLines, newLines);
 
 		var docLines = new List<string>();
 		var tags = new List<DiffLineTag>();
@@ -292,9 +306,7 @@ public static class DiffDocumentBuilder
 	{
 		var oldLines = SplitLines(oldText);
 		var newLines = SplitLines(newText);
-		var sections = DiffLib.Diff.CalculateSections(oldLines, newLines, EqualityComparer<string>.Default);
-		var aligned = DiffLib.Diff.AlignElements(
-			oldLines, newLines, sections, new DiffLib.Alignment.StringSimilarityDiffElementAligner());
+		var aligned = Align(oldLines, newLines);
 
 		var left = new List<string>();
 		var right = new List<string>();
