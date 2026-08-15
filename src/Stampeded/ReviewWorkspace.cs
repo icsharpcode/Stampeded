@@ -611,7 +611,7 @@ public sealed class ReviewWorkspace(string repoPath)
 
 	#endregion
 
-	#region Review phases: triage / sweep / record
+	#region Review phases: triage
 
 	public Core.Review.TriageTotals ComputeTriage() => Core.Review.TriageEstimate.Compute(Files);
 
@@ -652,81 +652,6 @@ public sealed class ReviewWorkspace(string repoPath)
 	}
 
 	public event Action? DepthChanged;
-
-	public sealed record SweepItem(string Title, string? Path, int Line);
-
-	/// <summary>The delocalized-consequence checklist, answered mechanically where possible.
-	/// These are prompts to a human, not verdicts - noise is acceptable, silence is not.</summary>
-	public async Task<IReadOnlyList<SweepItem>> ComputeSweepAsync()
-	{
-		var items = new List<SweepItem>();
-
-		// Removed members whose name still appears in the head worktree (surviving callers).
-		var removedNames = ChangeMap
-			.Where(e => e.Kind == "Removed")
-			.Select(e => MemberSimpleName(e.Display))
-			.Where(n => n.Length >= 3)
-			.Distinct()
-			.Take(20)
-			.ToList();
-		foreach (var name in removedNames)
-		{
-			if (WorktreePath is null)
-				break;
-			try
-			{
-				string hits = await ExternalTool.RunAsync("git", ["grep", "-n", "-w", "--", name], WorktreePath);
-				var first = hits.Split('\n', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault();
-				int count = hits.Count(c => c == '\n');
-				if (first is not null)
-				{
-					var parts = first.Split(':', 3);
-					int.TryParse(parts.ElementAtOrDefault(1), out int line);
-					items.Add(new SweepItem($"Removed '{name}' still mentioned {count + 1}x at head - surviving caller?",
-						parts[0], Math.Max(1, line)));
-				}
-			}
-			catch (ToolFailedException)
-			{
-				// exit 1 = no hits: the removal is clean.
-			}
-		}
-
-		foreach (var file in Files.Where(f => Core.Review.TriageEstimate.IsDependencyFile(f.Path)))
-			items.Add(new SweepItem($"Dependency/manifest change: {file.Path}", file.Path, 1));
-
-		bool testsTouched = Files.Any(f => Core.Review.TestPaths.IsTestPath(f.Path));
-		int nonTestMembers = ChangeMap.Count(e => !Core.Review.TestPaths.IsTestPath(e.RelPath));
-		if (nonTestMembers > 0 && !testsTouched)
-			items.Add(new SweepItem($"{nonTestMembers} changed member(s) but NO test file touched", null, 0));
-
-		foreach (var file in Files)
-		{
-			int newLine = 0;
-			foreach (var hunk in file.Hunks)
-			{
-				newLine = hunk.NewStart;
-				foreach (var line in hunk.Lines)
-				{
-					if (line.Kind == PatchLineKind.Added
-						&& (line.Text.Contains("TODO") || line.Text.Contains("FIXME") || line.Text.Contains("HACK")))
-					{
-						items.Add(new SweepItem($"Added TODO/FIXME in {file.Path}", file.Path, newLine));
-					}
-					if (line.Kind != PatchLineKind.Removed)
-						newLine++;
-				}
-			}
-		}
-
-		var (uncovered, measured) = UncoveredAddedLines();
-		if (Coverage is null)
-			items.Add(new SweepItem("No coverage run - added lines unverified (Tests pane > Run + Coverage)", null, 0));
-		else if (uncovered > 0)
-			items.Add(new SweepItem($"{uncovered} of {measured} measured added line(s) uncovered", null, 0));
-
-		return items;
-	}
 
 	static string MemberSimpleName(string display)
 	{

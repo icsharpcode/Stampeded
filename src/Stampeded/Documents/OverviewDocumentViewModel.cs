@@ -75,9 +75,6 @@ public sealed partial class OverviewState : ObservableObject
 	string testsLine = "Tests: not run in this session (Tests pane).";
 
 	[ObservableProperty]
-	string sweepHeader = "waiting for the change map";
-
-	[ObservableProperty]
 	string workingTreeLine = "";
 
 	/// <summary>Commits are reference material and start folded, unless there is
@@ -112,9 +109,9 @@ public sealed partial class OverviewState : ObservableObject
 
 /// <summary>
 /// The review brief, docked as a document and opened once a review loads: description,
-/// linked issues, commits, per-file cost/churn, changed members, CI state, coverage and
-/// the computed consequence sweep - everything the reading phases used to spread over
-/// wizard pages, in one scrollable surface with the panes available beside it.
+/// linked issues, commits, per-file cost/churn, changed members, CI state and coverage -
+/// everything the reading phases used to spread over wizard pages, in one scrollable
+/// surface with the panes available beside it.
 /// </summary>
 public class OverviewDocumentViewModel : Document
 {
@@ -123,7 +120,6 @@ public class OverviewDocumentViewModel : Document
 	static readonly IBrush Removed = new SolidColorBrush(Color.Parse("#F85149"));
 
 	readonly ReviewWorkspace workspace;
-	bool sweepRunning;
 
 	public OverviewState State { get; } = new();
 	public ObservableCollection<IssueRef> LinkedIssues { get; } = [];
@@ -132,7 +128,6 @@ public class OverviewDocumentViewModel : Document
 	public ObservableCollection<MemberRow> ImplMembers { get; } = [];
 	public ObservableCollection<MemberRow> TestGroups { get; } = [];
 	public ObservableCollection<CheckLine> CheckLines { get; } = [];
-	public ObservableCollection<ReviewWorkspace.SweepItem> SweepItems { get; } = [];
 
 	public OverviewDocumentViewModel(ReviewWorkspace workspace)
 	{
@@ -144,11 +139,7 @@ public class OverviewDocumentViewModel : Document
 		workspace.ChurnChanged += () => Dispatcher.UIThread.Post(RebuildFiles);
 		workspace.ChangeMapChanged += () => Dispatcher.UIThread.Post(OnChangeMap);
 		workspace.ChecksLoaded += () => Dispatcher.UIThread.Post(RebuildChecks);
-		workspace.CoverageChanged += () => Dispatcher.UIThread.Post(() => {
-			RebuildCoverage();
-			// The sweep's uncovered-lines finding goes stale after a coverage run.
-			RunSweepOnceAsync().HandleExceptions();
-		});
+		workspace.CoverageChanged += () => Dispatcher.UIThread.Post(RebuildCoverage);
 		workspace.TestResultsChanged += () => Dispatcher.UIThread.Post(RebuildTests);
 		workspace.StatusMessage += message => Dispatcher.UIThread.Post(() => State.ToolStatus = message);
 		workspace.CommitScopeChanged += () => Dispatcher.UIThread.Post(RebuildCommitScope);
@@ -365,28 +356,6 @@ public class OverviewDocumentViewModel : Document
 			: map.Count == 0
 				? "none (non-code changes only)"
 				: $"{map.Count} member(s); {ImplMembers.Count} implementation, tests grouped by type";
-		RunSweepOnceAsync().HandleExceptions();
-	}
-
-	async Task RunSweepOnceAsync()
-	{
-		if (sweepRunning || !workspace.ChangeMapComputed || workspace.HeadSha is null)
-			return;
-		sweepRunning = true;
-		try
-		{
-			var items = await workspace.ComputeSweepAsync();
-			SweepItems.Clear();
-			foreach (var item in items)
-				SweepItems.Add(item);
-			State.SweepHeader = items.Count == 0
-				? "no findings"
-				: $"{items.Count} finding(s); prompts, not verdicts - double-click to jump";
-		}
-		finally
-		{
-			sweepRunning = false;
-		}
 	}
 
 	void RebuildChecks()
@@ -447,12 +416,6 @@ public class OverviewDocumentViewModel : Document
 		var file = workspace.Files.FirstOrDefault(f => f.Path == row.Path);
 		if (file is not null)
 			workspace.OpenFileAsync(file).HandleExceptions();
-	}
-
-	public void OpenSweepItem(ReviewWorkspace.SweepItem item)
-	{
-		if (item.Path is not null)
-			workspace.NavigateToFileLineAsync(item.Path, Math.Max(1, item.Line), oldSide: false, record: true).HandleExceptions();
 	}
 
 	public void OpenPrOnGitHub()

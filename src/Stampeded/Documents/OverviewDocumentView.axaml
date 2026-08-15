@@ -233,24 +233,6 @@
         </StackPanel>
       </Expander>
 
-      <Expander Classes="block" IsExpanded="True">
-        <Expander.Header>
-          <DockPanel>
-            <TextBlock Classes="sectiontitle" Text="Consequence sweep" />
-            <TextBlock Classes="sectiondetail" Text="{Binding State.SweepHeader}" />
-          </DockPanel>
-        </Expander.Header>
-        <StackPanel>
-          <ListBox x:Name="SweepList" ScrollViewer.VerticalScrollBarVisibility="Disabled"
-                   ScrollViewer.HorizontalScrollBarVisibility="Disabled" ItemsSource="{Binding SweepItems}" DoubleTapped="OnSweepDoubleTapped">
-            <ListBox.ItemTemplate>
-              <DataTemplate>
-                <TextBlock FontSize="13" Text="{Binding Title}" TextWrapping="Wrap" />
-              </DataTemplate>
-            </ListBox.ItemTemplate>
-          </ListBox>
-        </StackPanel>
-      </Expander>
     </StackPanel>
   </ScrollViewer>
 </UserControl>

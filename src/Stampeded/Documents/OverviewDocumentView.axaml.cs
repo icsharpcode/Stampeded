@@ -106,10 +106,4 @@ public partial class OverviewDocumentView : UserControl
 		if (Vm is { } vm && TestList.SelectedItem is MemberRow row)
 			vm.OpenMember(row);
 	}
-
-	void OnSweepDoubleTapped(object? sender, TappedEventArgs e)
-	{
-		if (Vm is { } vm && SweepList.SelectedItem is ReviewWorkspace.SweepItem item)
-			vm.OpenSweepItem(item);
-	}
 }
