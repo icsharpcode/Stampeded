@@ -37,6 +37,8 @@ public partial class MainViewModel : ObservableObject
 
 	public void ZoomReset() => Zoom = 1.0;
 
+	partial void OnZoomChanged(double value) => ZoomState.Set(value);
+
 	public MainViewModel()
 	{
 		// Before anything reads the list. Both views that show it - this menu and the start

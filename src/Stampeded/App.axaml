@@ -1,6 +1,7 @@
 <Application xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:dockTheme="using:Dock.Avalonia.Themes.Simple"
+             xmlns:local="using:Stampeded"
              x:Class="Stampeded.App"
              RequestedThemeVariant="Default">
   <Application.Resources>
@@ -28,5 +29,13 @@
     <SimpleTheme />
     <StyleInclude Source="avares://AvaloniaEdit/Themes/Simple/AvaloniaEdit.xaml" />
     <dockTheme:DockSimpleTheme CacheDocumentTabContent="True" />
+    <!-- Popups sit in the window's overlay layer, outside the LayoutTransformControl that
+         scales its content, so the window zoom never reached them. Scaling their host here
+         reaches all of them at once - context menus, tooltips, the comment editor - and from
+         the top-left, so a popup still starts where it was placed and grows away from it. -->
+    <Style Selector="OverlayPopupHost">
+      <Setter Property="RenderTransformOrigin" Value="0%,0%" />
+      <Setter Property="RenderTransform" Value="{x:Static local:ZoomState.PopupScale}" />
+    </Style>
   </Application.Styles>
 </Application>
