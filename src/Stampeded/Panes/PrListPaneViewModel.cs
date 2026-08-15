@@ -71,8 +71,11 @@ public class PrListPaneViewModel : Tool
 				return;
 			}
 			var prs = await workspace.GitHub.ListOpenPrsAsync();
-			// Drafts are not asking for review yet: they sink to the bottom.
-			foreach (var pr in prs.OrderBy(p => p.IsDraft ? 1 : 0))
+			// What still needs a reader comes first. A pull request someone has already
+			// approved or asked for changes on has had its review, and a draft is not asking
+			// for one yet - so both sink, drafts furthest. The sort is stable, so within each
+			// group the order gh returned (most recently updated first) survives.
+			foreach (var pr in prs.OrderBy(p => p.IsDraft ? 2 : p.IsApproved || p.ChangesRequested ? 1 : 0))
 				Items.Add(pr);
 			State.Status = $"{prs.Count} open pull request(s)";
 		}
