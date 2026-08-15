@@ -256,6 +256,24 @@ static class ScreenshotWatcher
 					var modifiers = parts.Length == 3 ? ParseModifiers(parts[2]) : Avalonia.Input.KeyModifiers.None;
 					RaisePointer(window, new Avalonia.Point(x, y), pressing, modifiers);
 				}
+				// context:<x>,<y> - asks for the context menu at a point. A synthesized right
+				// button does not produce this: the request is raised for the platform's own
+				// gesture, not by the control that would show the menu.
+				foreach (var command in lines.Where(l => l.StartsWith("context:", StringComparison.Ordinal)))
+				{
+					var coords = command["context:".Length..].Split(',');
+					if (coords.Length == 2
+						&& double.TryParse(coords[0], out double cx) && double.TryParse(coords[1], out double cy)
+						&& Avalonia.Input.InputExtensions.InputHitTest(window, new Avalonia.Point(cx, cy)) is Interactive hit)
+					{
+						hit.RaiseEvent(new Avalonia.Input.ContextRequestedEventArgs());
+						CliLog.Write("action", $"context {cx:0},{cy:0} -> {hit.GetType().Name}");
+					}
+					else
+					{
+						CliLog.Write("action", $"context: nothing at '{command}'");
+					}
+				}
 				// type:<text> - types into whatever holds focus, for flows that only exist once
 				// there is text (a draft comment, a filter, a branch name).
 				foreach (var command in lines.Where(l => l.StartsWith("type:", StringComparison.Ordinal)))
