@@ -358,6 +358,32 @@ public sealed class ReviewWorkspace(string repoPath)
 		}
 		using (Busy.Begin("Computing change map"))
 			await ComputeChangeMapAsync();
+		await PruneCachedWorktreesAsync(ct);
+	}
+
+	/// <summary>How many worktrees of a repository outlive the review that made them. Enough
+	/// to come back to the last few reviews without checking them out again, few enough that
+	/// a year of reading does not fill a disk.</summary>
+	const int KeptWorktrees = 6;
+
+	async Task PruneCachedWorktreesAsync(CancellationToken ct)
+	{
+		try
+		{
+			var inUse = new List<string>();
+			if (HeadSha is not null)
+				inUse.Add(HeadSha);
+			if (BaseWorktreePath is not null && BaseSha is not null)
+				inUse.Add(BaseSha);
+			int removed = await Worktrees.PruneToRecentAsync(inUse, KeptWorktrees, ct);
+			if (removed > 0)
+				CliLog.Write("action", $"pruned {removed} cached worktree(s), kept {KeptWorktrees}");
+		}
+		catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ToolFailedException)
+		{
+			// Housekeeping: a worktree that will not go away costs disk, not a review.
+			CliLog.Write("action", $"worktree cache not pruned: {ex.Message}");
+		}
 	}
 
 	/// <summary>

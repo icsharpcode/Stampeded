@@ -31,7 +31,7 @@ public sealed class WorktreeManager(string repoPath)
 		int removed = 0;
 		if (Directory.Exists(repoDir))
 		{
-			var keep = keepShas.Select(s => s[..9]).ToHashSet();
+			var keep = keepShas.Select(s => s.Length > 9 ? s[..9] : s).ToHashSet();
 			foreach (var dir in Directory.EnumerateDirectories(repoDir))
 			{
 				if (keep.Contains(Path.GetFileName(dir)))
@@ -44,11 +44,41 @@ public sealed class WorktreeManager(string repoPath)
 		return removed;
 	}
 
+	/// <summary>
+	/// Keeps the named worktrees and the <paramref name="recent"/> most recently used others,
+	/// and deletes the rest. A worktree is a copy of the whole tree plus what building it
+	/// leaves behind, and one is made for every revision ever reviewed - left alone they are
+	/// the largest thing this tool puts on a disk, and the ones worth keeping are the few a
+	/// reader comes back to.
+	///
+	/// A directory in use by something outside this process - an editor opened on it, a test
+	/// run, a launched application - keeps working after its deletion on the platforms that
+	/// allow it, and is recreated the next time it is asked for.
+	/// </summary>
+	public async Task<int> PruneToRecentAsync(
+		IReadOnlyCollection<string> keepShas, int recent, CancellationToken ct = default)
+	{
+		string repoDir = Path.Combine(CacheRoot, Path.GetFileName(repoPath));
+		if (!Directory.Exists(repoDir))
+			return 0;
+		var pinned = keepShas.Select(s => s[..9]).ToHashSet();
+		var survivors = Directory.EnumerateDirectories(repoDir)
+			.Where(d => !pinned.Contains(Path.GetFileName(d)))
+			.OrderByDescending(Directory.GetLastWriteTimeUtc)
+			.Take(recent)
+			.Select(Path.GetFileName)
+			.OfType<string>();
+		return await PruneAsync([.. pinned, .. survivors], ct);
+	}
+
 	public async Task<string> GetOrCreateAsync(string sha, CancellationToken ct = default)
 	{
 		string dir = Path.GetFullPath(Path.Combine(CacheRoot, Path.GetFileName(repoPath), sha[..9]));
 		if (Directory.Exists(dir) && File.Exists(Path.Combine(dir, ".git")))
 		{
+			// Reuse counts as use: what the cache keeps is what a reader comes back to, not
+			// what was built in most recently.
+			Directory.SetLastWriteTimeUtc(dir, DateTime.UtcNow);
 			LinkSubmodulesFromSource(dir);
 			return dir;
 		}
