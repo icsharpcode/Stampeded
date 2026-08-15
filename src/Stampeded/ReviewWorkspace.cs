@@ -222,6 +222,7 @@ public sealed class ReviewWorkspace(string repoPath)
 		UncommittedFileCount = Math.Max(0, files.Count - committed.Count);
 		ct.ThrowIfCancellationRequested();
 
+		ResetScope();
 		CurrentPr = null;
 		LocalRange = (baseRef, headRef);
 		BaseSha = baseSha;
@@ -268,6 +269,7 @@ public sealed class ReviewWorkspace(string repoPath)
 		var files = await Git.DiffAsync(baseSha, headSha, ct);
 		ct.ThrowIfCancellationRequested();
 
+		ResetScope();
 		CurrentPr = detail;
 		LocalRange = null;
 		BaseSha = baseSha;
@@ -933,6 +935,24 @@ public sealed class ReviewWorkspace(string repoPath)
 		SemanticsChanged?.Invoke();
 	}
 
+	/// <summary>
+	/// Forgets what was in scope. A review that has just been opened is the whole change by
+	/// definition, and everything a scope holds belongs to the review it was entered from: the
+	/// range it would return to, the commits it steps through, the tree it diffs against. Left
+	/// behind, they describe a review that is no longer on screen, and the way out of a scope
+	/// leads back to it.
+	/// </summary>
+	void ResetScope()
+	{
+		CommitScope = null;
+		ScopeCommits = [];
+		CommitScopeIndex = 0;
+		SinceLastPassBase = null;
+		ScopeLine = "";
+		sinceLastPassTree = null;
+		fullRange = null;
+	}
+
 	/// <summary>Back to reading the whole change at once, out of whichever scope was on.
 	/// One exit for both: the button has always said "Whole change", and that is what it
 	/// means whether a commit or the work since the last pass was being read.</summary>
@@ -1289,9 +1309,7 @@ public sealed class ReviewWorkspace(string repoPath)
 		BaseSemantics = null;
 		CurrentPr = null;
 		LocalRange = null;
-		CommitScope = null;
-		ScopeCommits = [];
-		fullRange = null;
+		ResetScope();
 		DirtyWorktreePath = null;
 		UncommittedFileCount = 0;
 		BaseSha = null;
