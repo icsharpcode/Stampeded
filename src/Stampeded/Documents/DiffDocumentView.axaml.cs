@@ -1120,8 +1120,11 @@ public partial class DiffDocumentView : UserControl
 		}
 	}
 
-	// Position of the last left-button press; null while no press is in flight.
-	Avalonia.Point? clickStart;
+	// Where the last left-button press happened and which modifiers were held for it; null
+	// while no press is in flight. The modifiers belong to the press: a word double-clicked
+	// and then held while Ctrl goes down would otherwise navigate on release, having been
+	// asked only to select.
+	(Avalonia.Point Position, KeyModifiers Modifiers)? clickStart;
 
 	// WPF's default minimum drag distance; a release farther than this is a drag.
 	const double MinimumDragDistance = 4;
@@ -1129,7 +1132,7 @@ public partial class DiffDocumentView : UserControl
 	void OnTextAreaPointerPressedForClick(object? sender, PointerPressedEventArgs e)
 	{
 		clickStart = e.GetCurrentPoint(this).Properties.IsLeftButtonPressed
-			? e.GetPosition(this)
+			? (e.GetPosition(this), e.KeyModifiers)
 			: null;
 	}
 
@@ -1139,17 +1142,17 @@ public partial class DiffDocumentView : UserControl
 		clickStart = null;
 		if (e.InitialPressMouseButton != MouseButton.Left || start is null)
 			return;
-		var delta = e.GetPosition(this) - start.Value;
+		var delta = e.GetPosition(this) - start.Value.Position;
 		if (Math.Abs(delta.X) >= MinimumDragDistance || Math.Abs(delta.Y) >= MinimumDragDistance)
 			return;
 		// A stationary click has already placed the caret. Ctrl+Click navigates; a plain
 		// click on a symbol highlights its occurrences in this document.
-		if (e.KeyModifiers == KeyModifiers.Control)
+		if (start.Value.Modifiers == KeyModifiers.Control)
 		{
 			Editor.TextArea.ClearSelection();
 			NavigateToDefinitionAtCaret();
 		}
-		else if (e.KeyModifiers == KeyModifiers.None && Editor.TextArea.Selection.IsEmpty)
+		else if (start.Value.Modifiers == KeyModifiers.None && Editor.TextArea.Selection.IsEmpty)
 		{
 			HighlightOccurrencesAtCaretAsync().HandleExceptions();
 		}

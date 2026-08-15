@@ -33,7 +33,9 @@ sealed class SideBySidePane
 	string pairText = "";
 	string relPath = "";
 	string dockableId = "";
-	Point? clickStart;
+	// Where the press happened and which modifiers were held for it; the release only
+	// measures the distance, since a modifier pressed mid-click was not part of the gesture.
+	(Point Position, KeyModifiers Modifiers)? clickStart;
 
 	public SideBySidePane(ReviewTextEditor editor, bool oldSide)
 	{
@@ -154,18 +156,22 @@ sealed class SideBySidePane
 	}
 
 	void OnPointerPressed(object? sender, PointerPressedEventArgs e)
-		=> clickStart = e.GetCurrentPoint(editor).Properties.IsLeftButtonPressed ? e.GetPosition(editor) : null;
+		=> clickStart = e.GetCurrentPoint(editor).Properties.IsLeftButtonPressed
+			? (e.GetPosition(editor), e.KeyModifiers)
+			: null;
 
 	void OnPointerReleased(object? sender, PointerReleasedEventArgs e)
 	{
 		var start = clickStart;
 		clickStart = null;
+		// The modifiers of the press, not of the release: Ctrl pressed while the button is
+		// already down was not part of the gesture that started.
 		if (e.InitialPressMouseButton != MouseButton.Left || start is null
-			|| e.KeyModifiers != KeyModifiers.Control)
+			|| start.Value.Modifiers != KeyModifiers.Control)
 		{
 			return;
 		}
-		var delta = e.GetPosition(editor) - start.Value;
+		var delta = e.GetPosition(editor) - start.Value.Position;
 		if (Math.Abs(delta.X) >= MinimumDragDistance || Math.Abs(delta.Y) >= MinimumDragDistance)
 			return;
 		editor.TextArea.ClearSelection();
