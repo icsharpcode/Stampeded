@@ -213,6 +213,9 @@ static class ScreenshotWatcher
 						list.ScrollRowIntoView(index);
 					}
 				}
+				// open-url:<url or owner/repo[/pull/N]> - the Repository menu's "Open from URL".
+				foreach (var command in lines.Where(l => l.StartsWith("open-url:", StringComparison.Ordinal)))
+					App.OpenFromUrlAsync(command["open-url:".Length..].Trim()).HandleExceptions();
 				// open-file:<repo-relative path> - opens a file's diff without navigating into
 				// it, so what a reader first sees can be captured.
 				foreach (var command in lines.Where(l => l.StartsWith("open-file:", StringComparison.Ordinal)))

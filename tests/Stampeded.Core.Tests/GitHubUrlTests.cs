@@ -13,6 +13,15 @@ public class GitHubUrlTests
 	[TestCase("git@github.com:icsharpcode/ILSpy.git", "icsharpcode", "ILSpy", null)]
 	[TestCase("github.com/icsharpcode/ILSpy/", "icsharpcode", "ILSpy", null)]
 	[TestCase("icsharpcode/ILSpy", "icsharpcode", "ILSpy", null)]
+	// What a browser hands over: the tab that was open, the comment that was linked, the
+	// whitespace toggle. None of it names a different repository.
+	[TestCase("https://github.com/icsharpcode/ILSpy/pull/3933/files#diff-abc123", "icsharpcode", "ILSpy", 3933)]
+	[TestCase("https://github.com/icsharpcode/ILSpy/pull/3933#issuecomment-4001", "icsharpcode", "ILSpy", 3933)]
+	[TestCase("https://github.com/icsharpcode/ILSpy/pull/3933?w=1", "icsharpcode", "ILSpy", 3933)]
+	[TestCase("https://github.com/icsharpcode/ILSpy/pull/3933/commits/abcdef1", "icsharpcode", "ILSpy", 3933)]
+	[TestCase("https://github.com/icsharpcode/ILSpy/tree/master", "icsharpcode", "ILSpy", null)]
+	[TestCase("https://github.com/icsharpcode/ILSpy/issues/829", "icsharpcode", "ILSpy", null)]
+	[TestCase("https://github.com/icsharpcode/ILSpy/blob/master/README.md", "icsharpcode", "ILSpy", null)]
 	public void ParsesRepoAndPrForms(string input, string owner, string repo, int? pr)
 	{
 		Assert.That(GitHubUrl.TryParse(input, out string o, out string r, out int? n), Is.True);
