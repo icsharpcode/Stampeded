@@ -90,13 +90,20 @@ script `merge.tool` so a conflicted rebase runs without anything interactive.
 The app screenshots itself when a trigger file appears, because Wayland blocks external capture
 of its window: write the target PNG path into `/tmp/stampeded-screenshot-request`, optionally
 followed by command lines (`goto:<path>:<line>`, `pane:<id>`, `commit-scope`, `overview`, `sbs`,
+`press:<x>,<y>[:<modifiers>]` / `release:...`, `context:<x>,<y>`, `folder:<path>|cancel`,
 ... - see `ScreenshotWatcher`). The file is consumed on capture. Only one instance can serve a
 request, so shut down extra instances first.
+
+The capture is of whatever window is in front, so a modal dialog photographs itself; `click:`
+searches the newest window first for the same reason. A command that opens something runs
+*before* the capture but does not finish before it - anything asynchronous needs a second,
+plain screenshot request to be seen.
 
 Two lessons that cost a session each:
 
 - **Position bugs need a driven click, not a screenshot of colours.** Highlighting looked fixed
-  while the clickable spans were still wrong.
+  while the clickable spans were still wrong. `press:` and `release:` take separate modifiers,
+  which is what tells a gesture read from the press apart from one read from the release.
 - **Reproduce red before claiming a fix.** A crash that did not reproduce under the first
   hypothesis needed a live selection to trigger; without that step the fix would have been a
   guess.

@@ -109,7 +109,7 @@ static class ScreenshotWatcher
 			as Avalonia.Controls.ApplicationLifetimes.IClassicDesktopStyleApplicationLifetime)
 			?.Windows.Reverse() ?? [];
 
-	public static void Attach(Window window)
+	public static void Attach(Window mainWindow)
 	{
 		var timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
 		timer.Tick += (_, _) => {
@@ -122,6 +122,11 @@ static class ScreenshotWatcher
 				string target = lines.Length > 0 ? lines[0].Trim() : "";
 				if (target.Length == 0)
 					return;
+				// Whatever is in front, which is what someone looking at the screen would
+				// see and what their pointer would reach. A modal dialog is its own window,
+				// so capturing the main one photographed the wrong thing while a question
+				// was up, and coordinates were measured against a window behind it.
+				var window = OpenWindows().FirstOrDefault(w => w.IsVisible) ?? mainWindow;
 				// Optional extra lines are debug commands executed before the capture,
 				// so interactive UI (e.g. the inline comment editor) can be verified.
 				if (lines.Contains("comment"))
