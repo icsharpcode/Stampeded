@@ -105,6 +105,21 @@ public class ContextGapTests
 	}
 
 	[Test]
+	public void HidesToTheEndOfTheFileEvenWithAMemberDeclaredInTheRun()
+	{
+		// A change, then fifteen unchanged lines to the end of the file, the last member
+		// among them. Nothing follows the run, so no signature has to stay beside a change;
+		// keeping one would spell out the tail of the file for nothing.
+		var tags = Tags("+" + new string('.', 15));
+
+		var gaps = ContextGaps.Compute(tags, hasChanges: true, [8]);
+
+		Assert.That(gaps, Has.Count.EqualTo(1));
+		Assert.That(gaps[0].FirstLine, Is.EqualTo(2 + ContextGaps.Context));
+		Assert.That(gaps[0].LastLine, Is.EqualTo(16));
+	}
+
+	[Test]
 	public void RevealsFromEitherEndAStepAtATime()
 	{
 		var gaps = ContextGaps.Compute(Tags("+" + new string('.', 60) + "+"), hasChanges: true);

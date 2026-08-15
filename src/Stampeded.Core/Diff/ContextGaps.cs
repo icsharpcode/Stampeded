@@ -63,7 +63,14 @@ public static class ContextGaps
 				runStart = -1;
 			}
 		}
-		return memberStarts is { Count: > 0 } ? [.. gaps.Select(g => KeepMemberStart(g, memberStarts)).OfType<ContextGap>()] : gaps;
+		if (memberStarts is not { Count: > 0 })
+			return gaps;
+		// A gap reaching the last line has no hunk below it. There is no change under it to be
+		// read against a signature, so shrinking it would leave the tail of the file spelled
+		// out for nothing - or, when little is left over, drop the gap and show all of it.
+		return [.. gaps
+			.Select(g => g.LastLine == tags.Count ? g : KeepMemberStart(g, memberStarts))
+			.OfType<ContextGap>()];
 	}
 
 	/// <summary>
