@@ -52,6 +52,56 @@ static class ScreenshotWatcher
 		CliLog.Write("stranded", found == 0 ? "none" : $"{found} stranded container(s)");
 	}
 
+	/// <summary>
+	/// The one pointer the harness owns. A press and the release that ends it have to arrive on
+	/// the same pointer, or the release is not the other half of that gesture and nothing that
+	/// tracks a press (drag distance, click count, capture) sees it.
+	/// </summary>
+	static readonly Avalonia.Input.Pointer TestPointer =
+		new(9001, Avalonia.Input.PointerType.Mouse, isPrimary: true);
+
+	static Avalonia.Input.KeyModifiers ParseModifiers(string text)
+	{
+		var modifiers = Avalonia.Input.KeyModifiers.None;
+		foreach (var part in text.Split('+', StringSplitOptions.RemoveEmptyEntries))
+		{
+			modifiers |= part.Trim().ToLowerInvariant() switch {
+				"ctrl" or "control" => Avalonia.Input.KeyModifiers.Control,
+				"shift" => Avalonia.Input.KeyModifiers.Shift,
+				"alt" => Avalonia.Input.KeyModifiers.Alt,
+				"meta" or "win" => Avalonia.Input.KeyModifiers.Meta,
+				_ => Avalonia.Input.KeyModifiers.None,
+			};
+		}
+		return modifiers;
+	}
+
+	/// <summary>
+	/// Raises one half of a left-button gesture at a point in window coordinates, on whatever
+	/// is under it - the element a real press would reach, not the focused one.
+	/// </summary>
+	static void RaisePointer(Window window, Avalonia.Point point, bool pressing, Avalonia.Input.KeyModifiers modifiers)
+	{
+		var target = Avalonia.Input.InputExtensions.InputHitTest(window, point) as Interactive ?? window;
+		ulong timestamp = (ulong)Environment.TickCount64;
+		var properties = new Avalonia.Input.PointerPointProperties(
+			pressing ? Avalonia.Input.RawInputModifiers.LeftMouseButton : Avalonia.Input.RawInputModifiers.None,
+			pressing ? Avalonia.Input.PointerUpdateKind.LeftButtonPressed : Avalonia.Input.PointerUpdateKind.LeftButtonReleased);
+		if (pressing)
+		{
+			target.RaiseEvent(new Avalonia.Input.PointerPressedEventArgs(
+				target, TestPointer, window, point, timestamp, properties, modifiers));
+		}
+		else
+		{
+			target.RaiseEvent(new Avalonia.Input.PointerReleasedEventArgs(
+				target, TestPointer, window, point, timestamp, properties, modifiers,
+				Avalonia.Input.MouseButton.Left));
+		}
+		CliLog.Write("action", $"{(pressing ? "press" : "release")} {point.X:0},{point.Y:0} "
+			+ $"{modifiers} -> {target.GetType().Name}");
+	}
+
 	/// <summary>Every open window, the newest first: a dialog is what a click has to reach
 	/// while it is up.</summary>
 	static IEnumerable<Window> OpenWindows()
@@ -186,6 +236,25 @@ static class ScreenshotWatcher
 					{
 						CliLog.Write("action", $"click: no button labelled '{label}'");
 					}
+				}
+				// press:<x>,<y>[:<modifiers>] and release:<x>,<y>[:<modifiers>] - a pointer
+				// gesture in window coordinates, as a press and a release that can be given
+				// different modifiers. Held apart because that is the distinction a gesture can
+				// get wrong: which of the two the modifiers were read from.
+				foreach (var command in lines.Where(l =>
+					l.StartsWith("press:", StringComparison.Ordinal) || l.StartsWith("release:", StringComparison.Ordinal)))
+				{
+					bool pressing = command.StartsWith("press:", StringComparison.Ordinal);
+					var parts = command.Split(':', 3);
+					var coords = parts[1].Split(',');
+					if (parts.Length < 2 || coords.Length != 2
+						|| !double.TryParse(coords[0], out double x) || !double.TryParse(coords[1], out double y))
+					{
+						CliLog.Write("action", $"{(pressing ? "press" : "release")}: cannot read '{command}'");
+						continue;
+					}
+					var modifiers = parts.Length == 3 ? ParseModifiers(parts[2]) : Avalonia.Input.KeyModifiers.None;
+					RaisePointer(window, new Avalonia.Point(x, y), pressing, modifiers);
 				}
 				// type:<text> - types into whatever holds focus, for flows that only exist once
 				// there is text (a draft comment, a filter, a branch name).
