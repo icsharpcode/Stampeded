@@ -188,11 +188,11 @@
             <ListBox.ItemTemplate>
               <DataTemplate x:DataType="docs:CommitLine">
                 <StackPanel Orientation="Horizontal" ToolTip.Tip="{Binding Message}">
-                  <TextBlock Classes="mono" Opacity="0.7" Width="96" Margin="12,0,0,0"
-                             Text="{Binding ShortSha}" FontWeight="{Binding Weight}" />
+                  <SelectableTextBlock Classes="mono" Opacity="0.7" Width="96" Margin="12,0,0,0"
+                                       Text="{Binding ShortSha}" FontWeight="{Binding Weight}" />
                   <TextBlock Classes="mono" Width="56" TextAlignment="Right" Foreground="#2EA043" Text="{Binding Added}" />
                   <TextBlock Classes="mono" Width="52" TextAlignment="Right" Foreground="#F85149" Text="{Binding Removed}" Margin="0,0,10,0" />
-                  <TextBlock Classes="mono" Opacity="0.9" Text="{Binding Subject}" TextTrimming="CharacterEllipsis" />
+                  <SelectableTextBlock Classes="mono" Opacity="0.9" Text="{Binding Subject}" TextTrimming="CharacterEllipsis" />
                 </StackPanel>
               </DataTemplate>
             </ListBox.ItemTemplate>

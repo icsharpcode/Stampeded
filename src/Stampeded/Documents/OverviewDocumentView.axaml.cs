@@ -12,6 +12,11 @@ public partial class OverviewDocumentView : UserControl
 		// The description is full of links - the issues it closes, the discussions it came
 		// from - and they have to go somewhere when pressed.
 		DescriptionView.Engine = Editor.MarkdownLinks.NewEngine();
+		// A description is quoted in a review as often as it is read; the renderer paints a
+		// selection but has nothing that copies one. Handled by the page rather than the
+		// description: the blocks the markdown is drawn in never take focus, so the gesture
+		// arrives wherever the reader left it.
+		Controls.MarkdownSelection.Enable(this);
 		// Takes focus itself so 'o' has somewhere to land: the overview is a page of text and
 		// buttons, none of which would otherwise hold the keyboard.
 		Focusable = true;
