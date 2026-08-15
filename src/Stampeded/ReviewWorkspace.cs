@@ -2119,6 +2119,48 @@ public sealed class ReviewWorkspace(string repoPath)
 		}
 	}
 
+	/// <summary>
+	/// Merges the current pull request after asking, and says what happened either way.
+	/// The question names the branches and the method because this is the one command in the
+	/// tool that changes what everyone else sees and cannot be taken back from here.
+	/// </summary>
+	public async Task<string> MergeCurrentPrAsync(string method)
+	{
+		if (CurrentPr is not { } pr)
+			return "No pull request is open.";
+		Core.GitHub.MergeState state;
+		try
+		{
+			state = await GitHub.GetMergeStateAsync(pr.Number);
+		}
+		catch (ToolFailedException ex)
+		{
+			return $"Could not read the merge state: {ex.Message}";
+		}
+		if (!state.CanMerge)
+			return $"GitHub will not merge #{pr.Number} right now ({state.Describe}).";
+		if (MainWindowOrNull() is not { } owner)
+			return "";
+		bool merge = await new ConfirmWindow("Merge pull request",
+			$"#{pr.Number} {pr.Title}\n\n"
+				+ $"{pr.HeadRefName}  ->  {pr.BaseRefName}, by {method}.\n\n"
+				+ "This merges on GitHub, for everyone. It cannot be undone from here.",
+			$"Merge ({method})").ShowDialog<bool>(owner);
+		if (!merge)
+			return $"#{pr.Number} not merged.";
+		try
+		{
+			using var busy = Busy.Begin($"Merging #{pr.Number}");
+			await GitHub.MergePrAsync(pr.Number, method);
+			CliLog.Write("action", $"merged #{pr.Number} by {method}");
+			return $"#{pr.Number} merged into {pr.BaseRefName} by {method}.";
+		}
+		catch (ToolFailedException ex)
+		{
+			return $"Merge failed: {ex.Message}";
+		}
+	}
+
 	public async Task<(int Submitted, int Skipped)> SubmitReviewAsync(string eventType, string body)
 	{
 		if (CurrentPr is not { } pr)

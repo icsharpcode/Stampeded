@@ -68,6 +68,45 @@ public sealed record PrDetail(
 
 public sealed record CheckRun(string Name, string State, string Bucket, string? Link, string? Workflow);
 
+/// <summary>
+/// Whether GitHub would take a merge of this pull request right now, in its own words:
+/// <see cref="Mergeable"/> is MERGEABLE / CONFLICTING / UNKNOWN, <see cref="MergeStateStatus"/>
+/// is CLEAN, UNSTABLE, BLOCKED, BEHIND, DIRTY, DRAFT, HAS_HOOKS or UNKNOWN.
+/// </summary>
+public sealed record MergeState(string? Mergeable, string? MergeStateStatus)
+{
+	/// <summary>
+	/// UNSTABLE is a failing or pending check on a pull request GitHub would still merge, so
+	/// it is the reader's call and not a refusal. BLOCKED, BEHIND and DIRTY are refusals whose
+	/// remedy is not a merge; UNKNOWN is what GitHub answers without push access, and offering
+	/// a button that will be rejected is worse than not offering one.
+	/// </summary>
+	public bool CanMerge => Mergeable == "MERGEABLE"
+		&& MergeStateStatus is "CLEAN" or "UNSTABLE" or "HAS_HOOKS";
+
+	public string Describe => $"{Mergeable ?? "UNKNOWN"} / {MergeStateStatus ?? "UNKNOWN"}";
+}
+
+/// <summary>The merge methods the repository's settings allow.</summary>
+public sealed record MergeMethods(bool MergeCommitAllowed, bool SquashMergeAllowed, bool RebaseMergeAllowed)
+{
+	/// <summary>The gh flags for the allowed methods, in the order GitHub's own menu lists them.</summary>
+	public IReadOnlyList<string> Allowed
+	{
+		get
+		{
+			var methods = new List<string>();
+			if (MergeCommitAllowed)
+				methods.Add("merge");
+			if (SquashMergeAllowed)
+				methods.Add("squash");
+			if (RebaseMergeAllowed)
+				methods.Add("rebase");
+			return methods;
+		}
+	}
+}
+
 public sealed record PostedUser(string Login);
 
 public sealed record PostedComment(
@@ -92,6 +131,8 @@ public sealed record ReviewSubmission(string Body, string Event, IReadOnlyList<R
 [JsonSerializable(typeof(IReadOnlyList<PrSummary>))]
 [JsonSerializable(typeof(PrDetail))]
 [JsonSerializable(typeof(IReadOnlyList<CheckRun>))]
+[JsonSerializable(typeof(MergeState))]
+[JsonSerializable(typeof(MergeMethods))]
 [JsonSerializable(typeof(IReadOnlyList<PostedComment>))]
 [JsonSerializable(typeof(ReviewSubmission))]
 partial class GitHubJsonContext : JsonSerializerContext
@@ -110,6 +151,7 @@ public sealed class GitHubService(string repoPath)
 
 	string? viewerLogin;
 	string? defaultBranch;
+	MergeMethods? mergeMethods;
 
 	async Task<T> JsonAsync<T>(CancellationToken ct, params string[] args)
 	{
@@ -159,6 +201,21 @@ public sealed class GitHubService(string repoPath)
 		}
 		return JsonSerializer.Deserialize<IReadOnlyList<CheckRun>>(result.StandardOutput, JsonOptions) ?? [];
 	}
+
+	/// <summary>What GitHub says about merging this pull request right now. Not cached: it
+	/// changes with every push to either branch and with every review someone else leaves.</summary>
+	public Task<MergeState> GetMergeStateAsync(int number, CancellationToken ct = default)
+		=> JsonAsync<MergeState>(ct, "pr", "view", number.ToString(), "--json", "mergeable,mergeStateStatus");
+
+	/// <summary>The merge methods the repository allows; a setting, so it is read once.</summary>
+	public async Task<MergeMethods> GetMergeMethodsAsync(CancellationToken ct = default)
+		=> mergeMethods ??= await JsonAsync<MergeMethods>(ct,
+			"repo", "view", "--json", "mergeCommitAllowed,squashMergeAllowed,rebaseMergeAllowed");
+
+	/// <summary>Merges the pull request. <paramref name="method"/> is a gh flag name:
+	/// merge, squash or rebase.</summary>
+	public Task<string> MergePrAsync(int number, string method, CancellationToken ct = default)
+		=> ExternalTool.RunAsync("gh", ["pr", "merge", number.ToString(), $"--{method}"], repoPath, ct);
 
 	/// <summary>Log lines of the failed steps of a workflow run.</summary>
 	public Task<string> GetFailedLogAsync(long runId, CancellationToken ct = default)

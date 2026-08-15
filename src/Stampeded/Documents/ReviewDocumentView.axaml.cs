@@ -21,6 +21,8 @@ public partial class ReviewDocumentView : UserControl
 
 	void OnComment(object? s, RoutedEventArgs e) => Vm?.Submit("COMMENT");
 
+	void OnMerge(object? s, RoutedEventArgs e) => Vm?.Merge();
+
 	void OnOpen(object? s, TappedEventArgs e)
 	{
 		if (Vm is { } vm && CommentList.SelectedItem is ReviewCommentRow row)

@@ -34,6 +34,22 @@ public sealed partial class ReviewDocumentState : ObservableObject
 
 	[ObservableProperty]
 	bool isEmpty = true;
+
+	/// <summary>False unless a pull request is open and GitHub says it would take a merge.</summary>
+	[ObservableProperty]
+	bool canMerge;
+
+	/// <summary>GitHub's own words for the merge state, shown whether or not it allows one:
+	/// a disabled button that says nothing leaves the reader guessing at a repository
+	/// setting, a branch that is behind, or missing push access.</summary>
+	[ObservableProperty]
+	string mergeState = "";
+
+	/// <summary>The merge methods this repository allows, as gh flag names.</summary>
+	public ObservableCollection<string> MergeMethods { get; } = [];
+
+	[ObservableProperty]
+	string selectedMergeMethod = "";
 }
 
 /// <summary>
@@ -91,6 +107,55 @@ public sealed class ReviewDocumentViewModel : Document
 			? $"{drafts} draft(s) will be posted with this review; {workspace.PostedComments.Count} comment(s) already on the pull request."
 			: "Local review: comments need a pull request to post to.";
 		State.CanGiveVerdict = workspace.CanComment && !await workspace.IsOwnPullRequestAsync();
+		await RefreshMergeAsync();
+	}
+
+	/// <summary>
+	/// What GitHub says about merging, read fresh: it changes with every push to either branch
+	/// and with every review someone else leaves, so a state read when the review opened would
+	/// be stale exactly when it matters.
+	/// </summary>
+	async Task RefreshMergeAsync()
+	{
+		if (workspace.CurrentPr is not { } pr)
+		{
+			State.CanMerge = false;
+			State.MergeState = "";
+			return;
+		}
+		try
+		{
+			if (State.MergeMethods.Count == 0)
+			{
+				foreach (var method in (await workspace.GitHub.GetMergeMethodsAsync()).Allowed)
+					State.MergeMethods.Add(method);
+				// Squash first when the repository allows it: it is what most projects want
+				// from a review branch, and the others stay one click away.
+				State.SelectedMergeMethod = State.MergeMethods.FirstOrDefault(m => m == "squash")
+					?? State.MergeMethods.FirstOrDefault() ?? "";
+			}
+			var merge = await workspace.GitHub.GetMergeStateAsync(pr.Number);
+			State.MergeState = $"merge: {merge.Describe}";
+			State.CanMerge = merge.CanMerge && State.MergeMethods.Count > 0;
+		}
+		catch (ToolFailedException ex)
+		{
+			State.CanMerge = false;
+			State.MergeState = $"merge state unknown ({ex.Message})";
+		}
+	}
+
+	public void Merge()
+	{
+		MergeAsync().HandleExceptions();
+
+		async Task MergeAsync()
+		{
+			if (State.SelectedMergeMethod is not { Length: > 0 } method)
+				return;
+			State.Status = await workspace.MergeCurrentPrAsync(method);
+			await RefreshMergeAsync();
+		}
 	}
 
 	/// <summary>

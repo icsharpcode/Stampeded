@@ -54,6 +54,22 @@
                 ToolTip.Tip="Decline, posting every draft below. GitHub does not allow this on your own pull request." />
         <Button Content="Comment" Click="OnComment" IsEnabled="{Binding State.CanComment}"
                 ToolTip.Tip="Post the drafts without a verdict" />
+        <!-- Merging is not a verdict: it ends the pull request for everyone, so it stands
+             apart from the three that only record what this reader thinks. -->
+        <Border Width="1" Margin="6,2" Background="#40808080"
+                IsVisible="{Binding State.MergeState, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+        <StackPanel Orientation="Vertical" Spacing="2"
+                    IsVisible="{Binding State.MergeState, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+          <TextBlock FontSize="10" Opacity="0.7" Text="{Binding State.MergeState}" />
+          <StackPanel Orientation="Horizontal" Spacing="4">
+            <ComboBox ItemsSource="{Binding State.MergeMethods}" MinWidth="88"
+                      SelectedItem="{Binding State.SelectedMergeMethod}"
+                      IsEnabled="{Binding State.CanMerge}"
+                      ToolTip.Tip="Merge method; only the ones this repository allows are listed" />
+            <Button Content="Merge" Click="OnMerge" IsEnabled="{Binding State.CanMerge}"
+                    ToolTip.Tip="Merge this pull request on GitHub, for everyone. Asks first." />
+          </StackPanel>
+        </StackPanel>
       </StackPanel>
       <TextBox Text="{Binding State.Summary}" AcceptsReturn="True" MaxHeight="90" MinHeight="48"
                IsEnabled="{Binding State.CanComment}"
