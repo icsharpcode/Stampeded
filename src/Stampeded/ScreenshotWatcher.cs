@@ -146,6 +146,23 @@ static class ScreenshotWatcher
 						toggle.IsChecked = true;
 					}
 				}
+				// menu:<header> - invokes a menu item by its header, for commands that live only
+				// in the menu bar.
+				foreach (var command in lines.Where(l => l.StartsWith("menu:", StringComparison.Ordinal)))
+				{
+					string header = command["menu:".Length..].Trim();
+					// The logical tree, not the visual one: a submenu's items are not realized
+					// until the menu is opened, and this has to work without opening it.
+					if (Avalonia.LogicalTree.LogicalExtensions.GetLogicalDescendants(window).OfType<MenuItem>()
+						.FirstOrDefault(m => m.Header as string == header) is { } item)
+					{
+						item.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
+					}
+					else
+					{
+						CliLog.Write("action", $"menu: no item headed '{header}'");
+					}
+				}
 				// click:<name or label> - presses a button, for commands that have no gesture to
 				// raise and no view model the watcher can reach. The name wins over the label,
 				// which several buttons share ("Refresh" labels six of them).

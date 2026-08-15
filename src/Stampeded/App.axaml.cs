@@ -1,4 +1,5 @@
 using Avalonia;
+using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
 
@@ -38,13 +39,37 @@ public class App : Application
 			await (Workspace?.OpenPrAsync(pr) ?? Task.CompletedTask);
 	}
 
+	static bool IsRepository(string path)
+		=> Directory.Exists(Path.Combine(path, ".git")) || File.Exists(Path.Combine(path, ".git"));
+
+	/// <summary>
+	/// Asks which folder the clone should be made in, offering ~/Projects as a starting point
+	/// when it exists. Null when the question is declined - the answer decides where a
+	/// repository lands on disk, and there is no sensible default to assume on someone's
+	/// behalf.
+	/// </summary>
+	static async Task<string?> AskWhereToCloneAsync(Window window, string owner, string repo)
+	{
+		string projects = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Projects");
+		var options = new Avalonia.Platform.Storage.FolderPickerOpenOptions {
+			Title = $"Clone {owner}/{repo} into which folder?",
+			AllowMultiple = false,
+		};
+		if (Directory.Exists(projects))
+			options.SuggestedStartLocation = await window.StorageProvider.TryGetFolderFromPathAsync(new Uri(projects));
+		var picks = await window.StorageProvider.OpenFolderPickerAsync(options);
+		return picks.Count == 1 ? picks[0].Path.LocalPath : null;
+	}
+
 	/// <summary>Opens a GitHub repo/PR URL: an already-cloned repository (origin remote
-	/// matched against the current and recent repos) is reused, else gh clones it as a
-	/// blobless partial clone under ~/Projects.</summary>
+	/// matched against the current and recent repos) is reused; otherwise the folder to clone
+	/// into is asked for, and gh makes a blobless partial clone there.</summary>
 	public static async Task OpenFromUrlAsync(string input)
 	{
+		CliLog.Write("action", $"open from URL {input}");
 		if (!GitHubUrl.TryParse(input, out string owner, out string repo, out int? prNumber))
 		{
+			CliLog.Write("action", $"not a GitHub repository or PR URL: {input}");
 			Workspace?.PostStatus($"Not a GitHub repository or PR URL: {input}");
 			return;
 		}
@@ -66,10 +91,19 @@ public class App : Application
 				// No origin remote or the path is gone; not a match.
 			}
 		}
-		string projects = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Projects");
-		string target = Path.Combine(projects, repo);
-		if (Directory.Exists(target))
-			target = Path.Combine(projects, $"{owner}-{repo}");
+		// Nothing local matches, so it has to be cloned - and where a clone goes is the
+		// user's business, not a guess about how their disk is arranged.
+		if ((Current?.ApplicationLifetime as IClassicDesktopStyleApplicationLifetime)?.MainWindow is not { } window)
+			return;
+		string? parent = await AskWhereToCloneAsync(window, owner, repo);
+		if (parent is null)
+		{
+			Workspace?.PostStatus($"Opening {owner}/{repo} cancelled: no folder chosen to clone into.");
+			return;
+		}
+		string target = Path.Combine(parent, repo);
+		if (Directory.Exists(target) && !IsRepository(target))
+			target = Path.Combine(parent, $"{owner}-{repo}");
 		if (!Directory.Exists(target))
 		{
 			using var busy = Workspace?.Busy.Begin($"Cloning {owner}/{repo}");
@@ -78,10 +112,11 @@ public class App : Application
 			{
 				// Blobless partial clone: fast even for large repos; worktree checkouts
 				// fetch missing blobs on demand.
-				await ExternalTool.RunAsync("gh", ["repo", "clone", $"{owner}/{repo}", target, "--", "--filter=blob:none"], projects);
+				await ExternalTool.RunAsync("gh", ["repo", "clone", $"{owner}/{repo}", target, "--", "--filter=blob:none"], parent);
 			}
 			catch (ToolFailedException ex)
 			{
+				CliLog.Write("action", $"clone of {owner}/{repo} failed: {ex.Message}");
 				Workspace?.PostStatus($"Clone failed: {ex.Message}");
 				return;
 			}
