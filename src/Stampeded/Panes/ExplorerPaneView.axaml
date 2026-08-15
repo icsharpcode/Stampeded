@@ -21,7 +21,23 @@
             IsVisible="{Binding HasReview}">
       <StackPanel Spacing="3">
         <TextBlock FontSize="11" FontWeight="SemiBold" TextWrapping="Wrap"
+                   IsVisible="{Binding !InCommitScope}"
                    Text="{Binding CommitScopeLine}" />
+        <!-- In per-commit mode the header opens onto the whole message: the reasoning is
+             what the commit was written to carry, and it is worth reading before its diff.
+             Collapsed it is the same one-line header as before, and a long message scrolls
+             inside its own box rather than pushing the file list off the pane. -->
+        <Expander IsVisible="{Binding InCommitScope}" IsExpanded="True" Padding="0"
+                  HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
+          <Expander.Header>
+            <TextBlock FontSize="11" FontWeight="SemiBold" TextWrapping="Wrap"
+                       Text="{Binding CommitScopeLine}" />
+          </Expander.Header>
+          <ScrollViewer MaxHeight="150" VerticalScrollBarVisibility="Auto">
+            <SelectableTextBlock Text="{Binding CommitMessage}" TextWrapping="Wrap"
+                                 FontFamily="monospace" FontSize="11" Margin="4,2" />
+          </ScrollViewer>
+        </Expander>
         <!-- Wrapped: the pane is narrow, and a command that falls off its right edge is
              the same as not having it here at all. -->
         <WrapPanel Orientation="Horizontal">

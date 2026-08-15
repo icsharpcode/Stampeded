@@ -30,6 +30,12 @@ public partial class ExplorerPaneViewModel : Tool
 	[ObservableProperty]
 	string commitScopeLine = "Whole change";
 
+	/// <summary>The message of the commit being read, as it was written. In per-commit mode
+	/// it is the author's account of why the change is what it is, which is the thing a
+	/// reader wants before the diff - and too long for the one-line scope header.</summary>
+	[ObservableProperty]
+	string commitMessage = "";
+
 	/// <summary>Whether the review is of a pull request, which is what there is to open on
 	/// GitHub; a local range has no page.</summary>
 	[ObservableProperty]
@@ -53,6 +59,7 @@ public partial class ExplorerPaneViewModel : Tool
 		CommitScopeLine = workspace.CommitScope is { } commit
 			? $"Commit {workspace.CommitScopeIndex + 1} of {workspace.ScopeCommits.Count}: {commit.Subject}"
 			: "Whole change";
+		CommitMessage = workspace.CommitScope?.Message ?? "";
 	}
 
 	public void EnterCommitScope() => workspace.EnterCommitScopeAsync().HandleExceptions();
