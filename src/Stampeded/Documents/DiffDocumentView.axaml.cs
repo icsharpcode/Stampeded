@@ -200,7 +200,8 @@ public partial class DiffDocumentView : UserControl
 	/// belongs below the thread it answers, and the thread's box sits on its own line under
 	/// the commented code - anchoring to the caret alone would open the editor on top of
 	/// what is being replied to.</param>
-	public void CommentAtCaretCommand(int? anchorLine)
+	/// <param name="inReplyTo">The posted comment being answered, when this is a reply.</param>
+	public void CommentAtCaretCommand(int? anchorLine, long inReplyTo = 0)
 	{
 		if (viewModel is { Historical: true } || CaretBlobPosition() is not { } pos)
 			return;
@@ -216,8 +217,10 @@ public partial class DiffDocumentView : UserControl
 		CommentBox.Text = "";
 		var docLine = Editor.Document.GetLineByNumber(Editor.TextArea.Caret.Line);
 		string text = Editor.Document.GetText(docLine.Offset, docLine.Length);
-		inlineCommentTarget = new ReviewWorkspace.CommentTarget(pos.RelPath, pos.OldSide, pos.Line, text);
-		CommentTargetText.Text = $"{pos.RelPath}:{pos.Line}{(pos.OldSide ? " (base)" : "")}  |  {text.Trim()}";
+		inlineCommentTarget = new ReviewWorkspace.CommentTarget(
+			pos.RelPath, pos.OldSide, pos.Line, text, inReplyTo == 0 ? null : inReplyTo);
+		CommentTargetText.Text = (inReplyTo == 0 ? "" : "Reply  |  ")
+			+ $"{pos.RelPath}:{pos.Line}{(pos.OldSide ? " (base)" : "")}  |  {text.Trim()}";
 		var view = Editor.TextArea.TextView;
 		int anchorAt = Math.Clamp(anchorLine ?? Editor.TextArea.Caret.Line, 1, Editor.Document.LineCount);
 		var caretPosition = new AvaloniaEdit.TextViewPosition(anchorAt, 1);
@@ -327,7 +330,8 @@ public partial class DiffDocumentView : UserControl
 		return last;
 	}
 
-	sealed record ThreadComment(bool IsDraft, string Author, string Body, Guid? DraftId, string? ThreadId = null, bool Resolved = false, string? Url = null);
+	sealed record ThreadComment(bool IsDraft, string Author, string Body, Guid? DraftId, string? ThreadId = null,
+		bool Resolved = false, string? Url = null, long CommentId = 0);
 
 	sealed record ThreadData(bool OldSide, int BlobLine, List<ThreadComment> Comments, string? OutdatedQuote = null, bool Approximate = false);
 
@@ -345,7 +349,8 @@ public partial class DiffDocumentView : UserControl
 			return;
 		var threads = new Dictionary<string, ThreadData>();
 		void Add(string path, bool oldSide, int? blobLine, bool isDraft, string author, string body, Guid? draftId,
-			bool approximate = false, string? threadId = null, bool resolved = false, string? url = null)
+			bool approximate = false, string? threadId = null, bool resolved = false, string? url = null,
+			long commentId = 0)
 		{
 			string expected = oldSide ? viewModel!.File.OldPath : viewModel!.File.Path;
 			if (blobLine is not { } line || path != expected)
@@ -355,11 +360,11 @@ public partial class DiffDocumentView : UserControl
 				threads[key] = thread = new ThreadData(oldSide, line, [], Approximate: approximate);
 			else if (approximate && !thread.Approximate)
 				threads[key] = thread = thread with { Approximate = true, Comments = thread.Comments };
-			thread.Comments.Add(new ThreadComment(isDraft, author, body, draftId, threadId, resolved, url));
+			thread.Comments.Add(new ThreadComment(isDraft, author, body, draftId, threadId, resolved, url, commentId));
 		}
 		foreach (var posted in ws.PostedComments)
 			Add(posted.RelPath, posted.OldSide, posted.Line, false, posted.Author, posted.Body, null,
-				posted.IsApproximate, posted.ThreadId, posted.IsResolved, posted.Url);
+				posted.IsApproximate, posted.ThreadId, posted.IsResolved, posted.Url, posted.CommentId);
 		foreach (var draft in ws.Drafts)
 			Add(draft.Stored.Anchor.Path, draft.Stored.Anchor.OldSide, draft.CurrentLine, true, "you (draft)", draft.Stored.Body, draft.Stored.Id,
 				draft.IsApproximate);
@@ -616,7 +621,11 @@ public partial class DiffDocumentView : UserControl
 			Orientation = Avalonia.Layout.Orientation.Horizontal,
 			Spacing = 6,
 		};
-		if (thread.BlobLine > 0 && !thread.Approximate)
+		// The thread is answered through the id of a comment already in it; without one there
+		// is nothing to reply to, only a new remark on the same line, which is what "Comment
+		// Here" is for.
+		long replyTo = thread.Comments.FirstOrDefault(c => c.CommentId != 0)?.CommentId ?? 0;
+		if (thread.BlobLine > 0 && !thread.Approximate && replyTo != 0)
 		{
 			var reply = new Avalonia.Controls.Button { Content = "Reply", FontSize = 10, Padding = new Avalonia.Thickness(6, 1) };
 			reply.Click += (_, _) => {
@@ -624,7 +633,7 @@ public partial class DiffDocumentView : UserControl
 				if (docLine is { } dl)
 				{
 					MoveCaretToLine(dl);
-					CommentAtCaretCommand(LastThreadLineAfter(dl));
+					CommentAtCaretCommand(LastThreadLineAfter(dl), replyTo);
 				}
 			};
 			buttons.Children.Add(reply);

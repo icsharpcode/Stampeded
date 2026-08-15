@@ -127,6 +127,9 @@ public sealed record ReviewCommentDto(string Path, int Line, string Side, string
 
 public sealed record ReviewSubmission(string Body, string Event, IReadOnlyList<ReviewCommentDto> Comments);
 
+/// <summary>The whole payload of a reply: the thread it joins is named by the URL.</summary>
+public sealed record ReplyBody(string Body);
+
 [JsonSourceGenerationOptions(PropertyNameCaseInsensitive = true)]
 [JsonSerializable(typeof(IReadOnlyList<PrSummary>))]
 [JsonSerializable(typeof(PrDetail))]
@@ -135,6 +138,7 @@ public sealed record ReviewSubmission(string Body, string Event, IReadOnlyList<R
 [JsonSerializable(typeof(MergeMethods))]
 [JsonSerializable(typeof(IReadOnlyList<PostedComment>))]
 [JsonSerializable(typeof(ReviewSubmission))]
+[JsonSerializable(typeof(ReplyBody))]
 partial class GitHubJsonContext : JsonSerializerContext
 {
 }
@@ -350,6 +354,28 @@ public sealed class GitHubService(string repoPath)
 	}
 
 	/// <summary>
+	/// Answers an existing review comment inside its thread. A review submission cannot carry
+	/// this: its comments only take a path and a line, which starts a new thread on that line
+	/// however much it was meant as an answer. So a reply is its own request, and it is posted
+	/// on its own rather than as part of a pending review.
+	/// </summary>
+	public async Task ReplyToCommentAsync(int number, long commentId, string body, CancellationToken ct = default)
+	{
+		string json = JsonSerializer.Serialize(new ReplyBody(body), JsonOptions);
+		var result = await CliWrap.Cli.Wrap("gh")
+			.WithArguments(["api", "-X", "POST",
+				$"repos/{{owner}}/{{repo}}/pulls/{number}/comments/{commentId}/replies", "--input", "-"])
+			.WithWorkingDirectory(repoPath)
+			.WithStandardInputPipe(CliWrap.PipeSource.FromString(json))
+			.WithValidation(CliWrap.CommandResultValidation.None)
+			.ExecuteBufferedAsync(ct);
+		Infra.CliLog.Write("gh", $"reply to comment {commentId} -> exit {result.ExitCode}"
+			+ (result.ExitCode != 0 ? ": " + ExternalTool.FailureReason(result.StandardError, result.StandardOutput) : ""));
+		if (result.ExitCode != 0)
+			throw new ToolFailedException("gh", result.ExitCode, result.StandardError + result.StandardOutput);
+	}
+
+	/// <summary>
 	/// Marks a review as posted by this tool, once, on the first thing a reader will meet.
 	/// That is the first line comment - the file view, a thread and a mail notification all
 	/// show those, and none of them shows the summary the comments were batched into. With no
@@ -373,6 +399,11 @@ public sealed class GitHubService(string repoPath)
 			? submission
 			: submission with { Body = WithAttribution(submission.Body) };
 	}
+
+	/// <summary>The mark for a pass that is nothing but replies: those are posted one by one
+	/// rather than as a review, so the review body that would otherwise carry it is never
+	/// sent, and the first reply is the first thing a reader will meet.</summary>
+	public static string AttributedReply(string body) => WithAttribution(body);
 
 	static string WithAttribution(string body)
 		=> (body.Length > 0 ? body.TrimEnd() + "\n\n" : "")

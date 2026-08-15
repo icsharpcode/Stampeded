@@ -1752,10 +1752,13 @@ public sealed class ReviewWorkspace(string repoPath)
 
 	public sealed record DraftComment(StoredComment Stored, int? CurrentLine, bool IsApproximate = false);
 
-	public sealed record CommentTarget(string RelPath, bool OldSide, int Line, string LineText);
+	/// <summary><paramref name="InReplyTo"/> names the posted comment this one answers, when
+	/// the reader is replying rather than starting a thread.</summary>
+	public sealed record CommentTarget(string RelPath, bool OldSide, int Line, string LineText, long? InReplyTo = null);
 
 	public sealed record PostedCommentView(string RelPath, int? Line, bool OldSide, string Body, string Author,
-		bool IsApproximate = false, string? ThreadId = null, bool IsResolved = false, string? Url = null);
+		bool IsApproximate = false, string? ThreadId = null, bool IsResolved = false, string? Url = null,
+		long CommentId = 0);
 
 	public IReadOnlyList<DraftComment> Drafts { get; private set; } = [];
 	public IReadOnlyList<PostedCommentView> PostedComments { get; private set; } = [];
@@ -1798,7 +1801,7 @@ public sealed class ReviewWorkspace(string repoPath)
 		if (target.Line < 1 || target.Line > lines.Length)
 			return;
 		var anchor = CommentAnchor.Create(target.RelPath, target.OldSide, target.Line, lines);
-		Store.AddDraft(new StoredComment(Guid.NewGuid(), anchor, body, DateTimeOffset.Now));
+		Store.AddDraft(new StoredComment(Guid.NewGuid(), anchor, body, DateTimeOffset.Now, target.InReplyTo));
 		PendingCommentTarget = null;
 		RebuildDrafts();
 	}
@@ -1913,7 +1916,7 @@ public sealed class ReviewWorkspace(string repoPath)
 				var resolution = resolutionByComment.GetValueOrDefault(comment.Id);
 				views.Add(new PostedCommentView(
 					comment.Path, line, oldSide, comment.Body, comment.User?.Login ?? "?",
-					approximate, resolution.ThreadId, resolution.Resolved, comment.HtmlUrl));
+					approximate, resolution.ThreadId, resolution.Resolved, comment.HtmlUrl, comment.Id));
 			}
 			PostedComments = views;
 		}
@@ -2158,10 +2161,18 @@ public sealed class ReviewWorkspace(string repoPath)
 			return (0, 0);
 		var commentable = Files.ToDictionary(f => f, CommentableLines);
 		var payload = new List<ReviewCommentDto>();
+		var replies = new List<(long InReplyTo, string Body, Guid Id)>();
 		var submitted = new List<Guid>();
 		int skipped = 0;
 		foreach (var draft in Drafts)
 		{
+			// A reply belongs to a thread, not to a line: it goes as its own request and needs
+			// nothing from the diff, so it survives the line it hung on moving or disappearing.
+			if (draft.Stored.InReplyTo is { } inReplyTo)
+			{
+				replies.Add((inReplyTo, draft.Stored.Body, draft.Stored.Id));
+				continue;
+			}
 			var anchor = draft.Stored.Anchor;
 			var file = anchor.OldSide
 				? Files.FirstOrDefault(f => f.OldPath == anchor.Path)
@@ -2184,7 +2195,19 @@ public sealed class ReviewWorkspace(string repoPath)
 				draft.Stored.Body));
 			submitted.Add(draft.Stored.Id);
 		}
-		await GitHub.SubmitReviewAsync(pr.Number, new ReviewSubmission(body, eventType, payload));
+		// An empty review is refused by GitHub, and a pass whose whole content is replies has
+		// nothing to submit: the replies themselves are the review, and the first of them
+		// carries the mark the review body would have.
+		bool reviewSubmitted = payload.Count > 0 || body.Trim().Length > 0 || replies.Count == 0;
+		if (reviewSubmitted)
+			await GitHub.SubmitReviewAsync(pr.Number, new ReviewSubmission(body, eventType, payload));
+		for (int i = 0; i < replies.Count; i++)
+		{
+			var (inReplyTo, replyBody, id) = replies[i];
+			await GitHub.ReplyToCommentAsync(pr.Number, inReplyTo,
+				!reviewSubmitted && i == 0 ? GitHubService.AttributedReply(replyBody) : replyBody);
+			submitted.Add(id);
+		}
 		foreach (var id in submitted)
 			Store.RemoveDraft(id);
 		RebuildDrafts();

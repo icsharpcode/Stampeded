@@ -32,7 +32,8 @@ public sealed partial class CommentsState : ObservableObject
 	bool canComment = true;
 }
 
-public sealed record CommentRow(string RelPath, int? Line, bool OldSide, string Body, Guid? DraftId, string Author, string? Url = null)
+public sealed record CommentRow(string RelPath, int? Line, bool OldSide, string Body, Guid? DraftId, string Author,
+	string? Url = null, bool IsReply = false)
 {
 	/// <summary>Compact excerpt for the list row; the inline thread box (and the row
 	/// tooltip) carry the full text. Long bodies made the pane's layout pass crawl.</summary>
@@ -44,7 +45,7 @@ public sealed record CommentRow(string RelPath, int? Line, bool OldSide, string 
 	}
 
 	public string Header =>
-		$"{(DraftId is not null ? "draft" : Author)}  ·  {RelPath}:{(Line?.ToString() ?? "outdated")}{(OldSide ? " (base)" : "")}";
+		$"{(DraftId is not null ? IsReply ? "draft reply" : "draft" : Author)}  ·  {RelPath}:{(Line?.ToString() ?? "outdated")}{(OldSide ? " (base)" : "")}";
 
 	public bool IsDraft => DraftId is not null;
 }
@@ -83,7 +84,7 @@ public class CommentsPaneViewModel : Tool
 		{
 			Items.Add(new CommentRow(
 				draft.Stored.Anchor.Path, draft.CurrentLine, draft.Stored.Anchor.OldSide,
-				draft.Stored.Body, draft.Stored.Id, ""));
+				draft.Stored.Body, draft.Stored.Id, "", null, draft.Stored.InReplyTo is not null));
 		}
 		foreach (var posted in workspace.PostedComments)
 		{
@@ -91,7 +92,9 @@ public class CommentsPaneViewModel : Tool
 			Items.Add(new CommentRow(posted.RelPath, posted.Line, posted.OldSide, posted.Body, null, author, posted.Url));
 		}
 		State.CanComment = workspace.CanComment;
-		int outdated = workspace.Drafts.Count(d => d.CurrentLine is null);
+		// A reply posts into its thread by id, so a lost line does not put it at risk and it
+		// is not what "outdated" warns about.
+		int outdated = workspace.Drafts.Count(d => d.CurrentLine is null && d.Stored.InReplyTo is null);
 		State.Status = State.CanComment
 			? $"{workspace.Drafts.Count} draft(s){(outdated > 0 ? $" ({outdated} outdated)" : "")}, {workspace.PostedComments.Count} posted."
 			: "Local review: comments need a pull request to post to.";

@@ -3,7 +3,11 @@ using System.Text.Json.Serialization;
 
 namespace Stampeded.Core.Review;
 
-public sealed record StoredComment(Guid Id, CommentAnchor Anchor, string Body, DateTimeOffset CreatedAt);
+/// <summary>A drafted comment. <paramref name="InReplyTo"/> is the REST id of the posted
+/// comment it answers, which makes it a reply into that thread instead of a new one on the
+/// same line; null for a remark of its own.</summary>
+public sealed record StoredComment(Guid Id, CommentAnchor Anchor, string Body, DateTimeOffset CreatedAt,
+	long? InReplyTo = null);
 
 sealed record ReviewStateFile(string HeadSha, Dictionary<string, bool> Viewed, List<StoredComment>? Drafts, Dictionary<string, bool>? GuideChecks, Dictionary<string, string>? Depth = null);
 

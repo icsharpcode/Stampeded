@@ -77,4 +77,29 @@ public class DraftEditTests
 			Directory.Delete(dir, recursive: true);
 		}
 	}
+
+	[Test]
+	public void AReplyKeepsTheThreadItAnswersAcrossSessions()
+	{
+		// The thread id is what makes the draft a reply instead of a new comment on the same
+		// line, so losing it in storage would silently split the conversation.
+		string dir = Path.Combine(Path.GetTempPath(), "stampeded-test-" + Guid.NewGuid().ToString("N")[..8]);
+		try
+		{
+			var reply = new StoredComment(Guid.NewGuid(), Anchor(), "answering", DateTimeOffset.Now, InReplyTo: 4242);
+			var store = new ReviewStateStore(dir);
+			store.Open("repo", 1, "sha");
+			store.AddDraft(reply);
+			store.UpdateDraft(reply.Id, "answering, better");
+
+			var reopened = new ReviewStateStore(dir);
+			reopened.Open("repo", 1, "sha");
+
+			Assert.That(reopened.Drafts.Single().InReplyTo, Is.EqualTo(4242));
+		}
+		finally
+		{
+			Directory.Delete(dir, recursive: true);
+		}
+	}
 }
