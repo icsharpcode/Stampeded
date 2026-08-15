@@ -1072,12 +1072,12 @@ public partial class DiffDocumentView : UserControl
 			var (sideText, sideToDocLine) = m.GetSideText(oldSide);
 			structuralRanges.AddRange(DiffFolding.Members(sideText, sideToDocLine));
 		}
-		// The fold ranges start where each member's declaration does, which is exactly what
-		// the gaps need to know to keep a signature above a hunk in view. A patch gets none:
-		// it is already only what git chose to print, and the runs a gap would swallow are
-		// the commit message and the per-file headers that say what follows them.
+		// The same ranges the folds use say where each declaration begins and ends, which is
+		// what the gaps need to cut a run around the header of whatever a change is inside. A
+		// patch gets none: it is already only what git chose to print, and the runs a gap would
+		// swallow are the commit message and the per-file headers that say what follows them.
 		bool gaps = m.Hunks.Count > 0 && viewModel is not { IsPatch: true };
-		contextGaps?.Install(m.Tags, gaps, [.. structuralRanges.Select(r => r.StartLine)]);
+		contextGaps?.Install(m.Tags, gaps, structuralRanges);
 		RefreshFoldings();
 	}
 

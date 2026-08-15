@@ -45,6 +45,9 @@ public class DiffFoldingTests
 		// The type spans source lines 1..7, i.e. document lines 2..14.
 		Assert.That(ranges[0].StartLine, Is.EqualTo(2));
 		Assert.That(ranges[0].EndLine, Is.EqualTo(14));
+		// Its header ends at the brace on source line 2, which is document line 4: the header
+		// travels through the same map as the range it belongs to.
+		Assert.That(ranges[0].HeaderEndLine, Is.EqualTo(4));
 	}
 
 	[Test]

@@ -22,6 +22,11 @@ public class ContextGapTests
 		return tags;
 	}
 
+	/// <summary>A declaration in document lines: where it starts, where it ends, and where its
+	/// header - the part that is worth reading on its own - stops.</summary>
+	static FoldRange Decl(int start, int end, int headerEnd)
+		=> new(start, end, " ... ", DefaultClosed: false, FromHeaderEnd: true, headerEnd);
+
 	[Test]
 	public void HidesNothingWhenTheDocumentHasNoChanges()
 	{
@@ -52,67 +57,111 @@ public class ContextGapTests
 	}
 
 	[Test]
-	public void KeepsAMemberSignatureVisibleAboveTheHunkItBelongsTo()
+	public void CutsARunAroundTheSignatureTheChangeIsUnder()
 	{
-		// 40 unchanged lines, then a change. Without a member start the gap hides everything
+		// Forty unchanged lines, then a change: without any structure the run hides everything
 		// up to the hunk's own context.
 		var tags = Tags(new string('.', 40) + "+" + new string('.', 10));
-		var plain = ContextGaps.Compute(tags, hasChanges: true)[0];
-		Assert.That(plain.LastLine, Is.EqualTo(40 - ContextGaps.Context));
+		Assert.That(ContextGaps.Compute(tags, hasChanges: true)[0].LastLine,
+			Is.EqualTo(40 - ContextGaps.Context));
 
-		// A member declared 8 lines above the hunk is within reach: the gap now ends above
-		// it, so the signature and the lines under it are read with the change.
-		int signature = 41 - 8;
-		var kept = ContextGaps.Compute(tags, hasChanges: true, [signature])[0];
-		Assert.That(kept.LastLine, Is.EqualTo(signature - 1));
+		// A member declared at line 30, whose header ends on 31, holding the change: the run
+		// above it stays hidden, the signature is shown, and the four lines between it and the
+		// hunk's context are too few to be worth a control of their own.
+		var gaps = ContextGaps.Compute(tags, hasChanges: true, [Decl(30, 45, 31)]);
+
+		Assert.That(gaps[0], Is.EqualTo(new ContextGap(1, 29)));
+		Assert.That(gaps[1].FirstLine, Is.EqualTo(42 + ContextGaps.Context));
 	}
 
 	[Test]
-	public void LeavesAMemberThatStartsTooFarAbove()
-	{
-		var tags = Tags(new string('.', 40) + "+" + new string('.', 10));
-		int farAway = 41 - (ContextGaps.MemberReach + 6);
-
-		var gaps = ContextGaps.Compute(tags, hasChanges: true, [farAway]);
-
-		Assert.That(gaps[0].LastLine, Is.EqualTo(40 - ContextGaps.Context),
-			"the lines in between cost more than the signature is worth from there");
-	}
-
-	[Test]
-	public void PicksTheInnermostMemberWhenSeveralAreInReach()
+	public void HidesTheLinesBetweenASignatureAndTheHunkWhenThereAreEnoughOfThem()
 	{
 		var tags = Tags(new string('.', 40) + "+" + new string('.', 10));
 
-		// Both are inside the gap - one starting at line 29, a nested one at 33.
-		var gaps = ContextGaps.Compute(tags, hasChanges: true, [29, 33]);
+		// The signature sits on line 20, so fifteen lines of body lie between it and the
+		// hunk's context - a run of its own, and not one the reader has to scroll past.
+		var gaps = ContextGaps.Compute(tags, hasChanges: true, [Decl(20, 45, 20)]);
 
-		// The nearer declaration is the one the change sits in.
-		Assert.That(gaps[0].LastLine, Is.EqualTo(32));
+		Assert.That(gaps[0], Is.EqualTo(new ContextGap(1, 19)));
+		Assert.That(gaps[1], Is.EqualTo(new ContextGap(21, 40 - ContextGaps.Context)));
 	}
 
 	[Test]
-	public void DropsAGapLeftWithNothingWorthHiding()
+	public void PullsOutEveryEnclosingHeaderNotOnlyTheInnermost()
 	{
-		// The member starts so close to the top of the run that shrinking leaves a line or
-		// two - less than the control that would hide them.
-		var tags = Tags(new string('.', 12) + "+" + new string('.', 10));
-		var gaps = ContextGaps.Compute(tags, hasChanges: true, [2]);
+		var tags = Tags(new string('.', 40) + "+" + new string('.', 10));
 
-		// Only the run after the hunk is left; the one before it opened completely.
-		Assert.That(gaps.Any(g => g.FirstLine == 1), Is.False);
+		// A type over the whole file with a member inside it: both say what the change is part
+		// of, so both headers are shown, however far above they sit.
+		var gaps = ContextGaps.Compute(tags, hasChanges: true, [Decl(2, 51, 3), Decl(30, 45, 31)]);
+
+		Assert.That(gaps[0], Is.EqualTo(new ContextGap(4, 29)),
+			"the one line above the type header is not worth a control");
+		Assert.That(gaps.Any(g => g.Contains(2) || g.Contains(3) || g.Contains(30) || g.Contains(31)),
+			Is.False, "the headers themselves are shown");
+	}
+
+	[Test]
+	public void LeavesADeclarationTheChangeIsNotInsideAlone()
+	{
+		var tags = Tags(new string('.', 40) + "+" + new string('.', 10));
+
+		// A member that ends above the change says nothing about it, however close it sits.
+		var gaps = ContextGaps.Compute(tags, hasChanges: true, [Decl(10, 20, 11)]);
+
+		Assert.That(gaps[0], Is.EqualTo(new ContextGap(1, 40 - ContextGaps.Context)));
+	}
+
+	[Test]
+	public void KeepsAHeaderThatStartsAboveTheRunVisibleToItsEnd()
+	{
+		// The change is on the first line, so the run below it starts inside the header of the
+		// declaration holding both.
+		var tags = Tags("+" + new string('.', 40) + "+");
+
+		var gaps = ContextGaps.Compute(tags, hasChanges: true, [Decl(1, 42, 8)]);
+
 		Assert.That(gaps, Has.Count.EqualTo(1));
+		Assert.That(gaps[0].FirstLine, Is.EqualTo(9), "the rest of the signature is shown");
 	}
 
 	[Test]
-	public void HidesToTheEndOfTheFileEvenWithAMemberDeclaredInTheRun()
+	public void PlacesNoGapBetweenHeadersThatTouch()
 	{
-		// A change, then fifteen unchanged lines to the end of the file, the last member
-		// among them. Nothing follows the run, so no signature has to stay beside a change;
-		// keeping one would spell out the tail of the file for nothing.
+		var tags = Tags(new string('.', 40) + "+" + new string('.', 10));
+
+		// A type whose header ends on line 10 and a member declared on line 11: nothing lies
+		// between them to hide.
+		var gaps = ContextGaps.Compute(tags, hasChanges: true, [Decl(2, 51, 10), Decl(11, 45, 11)]);
+
+		Assert.That(gaps[0], Is.EqualTo(new ContextGap(12, 40 - ContextGaps.Context)));
+		Assert.That(gaps.Zip(gaps.Skip(1)).All(p => p.First.LastLine < p.Second.FirstLine), Is.True,
+			"gaps stay ordered and disjoint");
+	}
+
+	[Test]
+	public void ShowsAWholeRunWhoseFragmentsAreAllTooSmall()
+	{
+		// A short run with a header near its top: what is left on either side of that header is
+		// less than a control is worth, so the run is simply read.
+		var tags = Tags(new string('.', 12) + "+" + new string('.', 10));
+
+		var gaps = ContextGaps.Compute(tags, hasChanges: true, [Decl(4, 20, 5)]);
+
+		Assert.That(gaps.Any(g => g.FirstLine == 1), Is.False);
+		Assert.That(gaps, Has.Count.EqualTo(1), "only the run after the hunk is left");
+	}
+
+	[Test]
+	public void HidesToTheEndOfTheFileEvenWithADeclarationInTheRun()
+	{
+		// A change, then fifteen unchanged lines to the end of the file, the last member among
+		// them. A declaration starting below the change cannot hold it, so it says nothing
+		// about it; keeping its header would spell out the tail of the file for nothing.
 		var tags = Tags("+" + new string('.', 15));
 
-		var gaps = ContextGaps.Compute(tags, hasChanges: true, [8]);
+		var gaps = ContextGaps.Compute(tags, hasChanges: true, [Decl(8, 16, 8)]);
 
 		Assert.That(gaps, Has.Count.EqualTo(1));
 		Assert.That(gaps[0].FirstLine, Is.EqualTo(2 + ContextGaps.Context));

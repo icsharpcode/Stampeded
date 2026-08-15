@@ -57,11 +57,11 @@ public sealed class ContextGapView
 	public bool Hides(int line) => gaps.Any(g => g.Contains(line));
 
 	/// <summary>The gaps of a freshly loaded document, all closed.</summary>
-	/// <param name="memberStarts">Document lines where a member's declaration begins; a gap
-	/// ending just under one keeps it visible.</param>
-	public void Install(IReadOnlyList<DiffLineTag> tags, bool hasChanges, IReadOnlyList<int>? memberStarts = null)
+	/// <param name="declarations">The code's structural ranges, in document lines; a run hiding
+	/// the header of a declaration the change is inside is cut around it.</param>
+	public void Install(IReadOnlyList<DiffLineTag> tags, bool hasChanges, IReadOnlyList<FoldRange>? declarations = null)
 	{
-		gaps = ContextGaps.Compute(tags, hasChanges, memberStarts);
+		gaps = ContextGaps.Compute(tags, hasChanges, declarations);
 		Apply();
 	}
 

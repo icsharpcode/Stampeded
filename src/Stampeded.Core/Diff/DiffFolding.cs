@@ -7,7 +7,11 @@ namespace Stampeded.Core.Diff;
 /// </summary>
 /// <param name="FromHeaderEnd">Fold from the end of the first line instead of its start,
 /// so a member's signature stays visible while its body collapses.</param>
-public sealed record FoldRange(int StartLine, int EndLine, string Name, bool DefaultClosed, bool FromHeaderEnd);
+/// <param name="HeaderEndLine">Last line of the declaration itself - the one opening the body.
+/// A header wrapped over several lines is one thing to read, so whatever shows a signature
+/// shows all of it.</param>
+public sealed record FoldRange(int StartLine, int EndLine, string Name, bool DefaultClosed, bool FromHeaderEnd,
+	int HeaderEndLine);
 
 /// <summary>
 /// Structural folding for the diff views: the code's own regions, and nothing about the
@@ -34,7 +38,8 @@ public static class DiffFolding
 			int docEnd = sideToDocLine[region.EndLine - 1];
 			if (docEnd <= docStart)
 				continue;
-			ranges.Add(new FoldRange(docStart, docEnd, " ... ", DefaultClosed: false, FromHeaderEnd: true));
+			ranges.Add(new FoldRange(docStart, docEnd, " ... ", DefaultClosed: false, FromHeaderEnd: true,
+				HeaderEndLine: sideToDocLine[region.HeaderEndLine - 1]));
 		}
 		return ranges;
 	}

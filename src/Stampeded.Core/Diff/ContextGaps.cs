@@ -30,21 +30,23 @@ public static class ContextGaps
 	public const int Step = 20;
 
 	/// <summary>
-	/// How far above a hunk a member's first line is still worth showing. A change is read
-	/// against what it is part of, and the signature says that in one line; further away the
-	/// lines in between cost more than the answer is worth, and the reader can open them.
+	/// How many lines a piece of a cut run has to hide to be worth a control of its own. A run
+	/// cut around the headers a change sits under is read as one thing, and a bar standing for
+	/// three lines between a signature and the hunk under it costs the reader more attention
+	/// than the three lines do.
 	/// </summary>
-	public const int MemberReach = 12;
+	public const int MinFragment = 6;
 
 	/// <summary>
 	/// The gaps of a diff, closed. Nothing is hidden in a document without changes, which is
 	/// how a plain source view stays whole.
 	/// </summary>
-	/// <param name="memberStarts">1-based document lines where a member's declaration begins.
-	/// A gap ending just below one keeps it visible, so a change is read with the signature it
-	/// belongs to rather than in a fragment of a body.</param>
+	/// <param name="declarations">The code's structural ranges, in document lines. A run hiding
+	/// the header of a declaration the change is inside is cut around that header, so a hunk is
+	/// read with the lines saying what it is part of - the type, the #region, the signature -
+	/// and not as a fragment of a body. Empty for anything that is not C#.</param>
 	public static List<ContextGap> Compute(
-		IReadOnlyList<DiffLineTag> tags, bool hasChanges, IReadOnlyList<int>? memberStarts = null)
+		IReadOnlyList<DiffLineTag> tags, bool hasChanges, IReadOnlyList<FoldRange>? declarations = null)
 	{
 		var gaps = new List<ContextGap>();
 		if (!hasChanges)
@@ -63,38 +65,67 @@ public static class ContextGaps
 				runStart = -1;
 			}
 		}
-		if (memberStarts is not { Count: > 0 })
+		if (declarations is not { Count: > 0 })
 			return gaps;
-		// A gap reaching the last line has no hunk below it. There is no change under it to be
-		// read against a signature, so shrinking it would leave the tail of the file spelled
-		// out for nothing - or, when little is left over, drop the gap and show all of it.
-		return [.. gaps
-			.Select(g => g.LastLine == tags.Count ? g : KeepMemberStart(g, memberStarts))
-			.OfType<ContextGap>()];
+		var headers = Headers(tags, declarations);
+		return headers.Count == 0 ? gaps : [.. gaps.SelectMany(g => Split(g, headers))];
 	}
 
 	/// <summary>
-	/// Shrinks a gap that ends within <see cref="MemberReach"/> lines below a member's first
-	/// line, so that line and everything under it stay visible. Null when nothing worth hiding
-	/// is left over.
+	/// The header lines of the declarations a change is inside, as 1-based inclusive ranges of
+	/// document lines, in order. Containment is the whole test: a type declared five hundred
+	/// lines above still says what the change is part of, while the member just above the one
+	/// being changed says nothing about it however close it sits. A run below the last hunk
+	/// therefore contributes nothing - a declaration starting there holds no change.
 	/// </summary>
-	static ContextGap? KeepMemberStart(ContextGap gap, IReadOnlyList<int> memberStarts)
+	static List<(int First, int Last)> Headers(
+		IReadOnlyList<DiffLineTag> tags, IReadOnlyList<FoldRange> declarations)
 	{
-		int lowest = -1;
-		foreach (int line in memberStarts)
+		// Changed lines counted once, from the front, so asking about a range is one
+		// subtraction: a type's range covers most of a file, and there is one of these per
+		// member.
+		var changed = new int[tags.Count + 1];
+		for (int i = 0; i < tags.Count; i++)
+			changed[i + 1] = changed[i] + (tags[i].Kind == DiffLineKind.Context ? 0 : 1);
+		var headers = new List<(int First, int Last)>();
+		foreach (var range in declarations)
 		{
-			// Inside this gap, near its end - the end being where the hunk's own context
-			// begins - and the lowest such line, which is the innermost member.
-			if (line >= gap.FirstLine && line <= gap.LastLine
-				&& gap.LastLine - line + 1 <= MemberReach && line > lowest)
-			{
-				lowest = line;
-			}
+			int first = Math.Clamp(range.StartLine, 1, tags.Count);
+			int last = Math.Clamp(range.EndLine, first, tags.Count);
+			if (changed[last] > changed[first - 1])
+				headers.Add((first, Math.Clamp(range.HeaderEndLine, first, last)));
 		}
-		if (lowest < 0)
-			return gap;
-		var shrunk = gap with { LastLine = lowest - 1 };
-		return shrunk.HiddenCount >= 2 ? shrunk : null;
+		// The ranges arrive in the order they were parsed, with the #region folds appended last.
+		headers.Sort();
+		return headers;
+	}
+
+	/// <summary>
+	/// One run, cut around the headers inside it: what lies above a header stays hidden, the
+	/// header itself is shown, and what lies between it and the next header or the hunk is
+	/// hidden only when there is enough of it to be worth a control. A run holding no header is
+	/// left exactly as the scan produced it.
+	/// </summary>
+	static List<ContextGap> Split(ContextGap gap, List<(int First, int Last)> headers)
+	{
+		var pieces = new List<ContextGap>();
+		int cursor = gap.FirstLine;
+		foreach (var (first, last) in headers)
+		{
+			// A header above what is left of the run, or below its end, cuts nothing. Nested
+			// declarations opened on one line - a type and the member under it - arrive as
+			// ranges that touch or overlap, and the cursor merges them.
+			if (last < cursor || first > gap.LastLine)
+				continue;
+			if (first > cursor)
+				pieces.Add(new ContextGap(cursor, first - 1));
+			cursor = last + 1;
+		}
+		if (cursor == gap.FirstLine)
+			return [gap];
+		if (cursor <= gap.LastLine)
+			pieces.Add(new ContextGap(cursor, gap.LastLine));
+		return [.. pieces.Where(p => p.HiddenCount >= MinFragment)];
 	}
 
 	static void Add(List<ContextGap> gaps, int tagCount, int firstTag, int lastTag)

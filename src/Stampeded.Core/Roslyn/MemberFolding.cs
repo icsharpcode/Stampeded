@@ -5,8 +5,12 @@ using Microsoft.CodeAnalysis.Text;
 
 namespace Stampeded.Core.Roslyn;
 
-/// <summary>A foldable member region, 1-based inclusive source lines.</summary>
-public sealed record MemberFoldRegion(int StartLine, int EndLine);
+/// <summary>A foldable member region, 1-based inclusive source lines.
+/// <paramref name="HeaderEndLine"/> is the last line of the declaration itself - the one
+/// carrying the "{" or "=>" that opens the body - which is where a signature stops being
+/// readable on its own. It equals the start line for a single-line header and for a
+/// #region marker.</summary>
+public sealed record MemberFoldRegion(int StartLine, int EndLine, int HeaderEndLine);
 
 /// <summary>
 /// Computes IDE-style folding regions (types, methods and friends, properties,
@@ -31,7 +35,7 @@ public static class MemberFolding
 			int start = text.Lines.GetLinePosition(DeclarationStart(node)).Line + 1;
 			int end = text.Lines.GetLinePosition(node.Span.End).Line + 1;
 			if (end > start)
-				regions.Add(new MemberFoldRegion(start, end));
+				regions.Add(new MemberFoldRegion(start, end, Math.Clamp(HeaderEnd(node, text, start), start, end)));
 		}
 		AddRegionDirectives(tree, text, regions);
 		return regions;
@@ -62,13 +66,36 @@ public static class MemberFolding
 			int endLine = text.Lines.GetLinePosition(end.Span.End).Line + 1;
 			if (endLine <= start || regions.Any(r => Crosses(r, start, endLine)))
 				continue;
-			regions.Add(new MemberFoldRegion(start, endLine));
+			regions.Add(new MemberFoldRegion(start, endLine, start));
 		}
 
 		// Nested or disjoint is fine; overlapping without containment is not.
 		static bool Crosses(MemberFoldRegion other, int start, int end)
 			=> (start > other.StartLine && start <= other.EndLine && end > other.EndLine)
 				|| (other.StartLine > start && other.StartLine <= end && other.EndLine > end);
+	}
+
+	/// <summary>
+	/// The line the declaration's own text ends on: the one carrying the "{" or "=>" that opens
+	/// the body. A header runs over more than one line often enough - a wrapped parameter list,
+	/// a base list, a where clause - and it is the whole of it that says what the code below
+	/// belongs to, so half of it is worth no more than none. A declaration with no body at all
+	/// (an abstract member, a record written with a semicolon, an event field) has no such
+	/// token and ends where it starts.
+	/// </summary>
+	static int HeaderEnd(SyntaxNode node, SourceText text, int start)
+	{
+		// A type's brace is a token of its own; every other kind opens with a child node - a
+		// block, an arrow clause, an accessor list - whose first token is the one wanted. Asking
+		// the child nodes keeps an "=>" in a parameter default or a base list from being taken
+		// for the one that opens the body.
+		var token = node switch {
+			BaseTypeDeclarationSyntax type => type.OpenBraceToken,
+			_ => node.ChildNodes()
+				.FirstOrDefault(c => c is BlockSyntax or ArrowExpressionClauseSyntax or AccessorListSyntax)
+				?.GetFirstToken() ?? default,
+		};
+		return token.IsKind(SyntaxKind.None) ? start : text.Lines.GetLinePosition(token.SpanStart).Line + 1;
 	}
 
 	/// <summary>

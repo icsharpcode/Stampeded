@@ -157,7 +157,7 @@ public partial class SideBySideDocumentView : UserControl
 			var (sideText, sideToDocLine) = vm.Pair.GetSideText(oldSide);
 			ranges.AddRange(DiffFolding.Members(sideText, sideToDocLine));
 		}
-		contextGaps.Install(tags, hasChanges, [.. ranges.Select(r => r.StartLine)]);
+		contextGaps.Install(tags, hasChanges, ranges);
 		RefreshFoldings();
 	}
 
