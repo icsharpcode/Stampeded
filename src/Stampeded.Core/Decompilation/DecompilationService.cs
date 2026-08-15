@@ -29,35 +29,32 @@ public static class DecompilationService
 		var decompiler = new CSharpDecompiler(assemblyPath, settings);
 		var tree = decompiler.DecompileType(new FullTypeName(reflectionName));
 		var writer = new StringWriter();
-		var locator = new MemberLocatingTokenWriter(TokenWriter.Create(writer), targetMetadataToken);
+		var text = new TextWriterTokenWriter(writer);
+		var locator = new MemberLocatingTokenWriter(TokenWriter.InsertRequiredSpaces(text), text, targetMetadataToken);
 		tree.AcceptVisitor(new CSharpOutputVisitor(locator, FormattingOptionsFactory.CreateAllman()));
 		return new DecompiledType(writer.ToString(), locator.FoundLine ?? 1);
 	}
 
 	/// <summary>Watches identifiers as the syntax tree is written and remembers the line of
-	/// the declaration matching the target metadata token. Location tracking is a plain
-	/// NewLine() count, so it needs no support from the underlying writer.</summary>
-	sealed class MemberLocatingTokenWriter(TokenWriter inner, int targetToken) : DecoratingTokenWriter(inner)
+	/// the declaration matching the target metadata token. The line comes from the writer
+	/// that produces the text: comments and preprocessor directives end their own line
+	/// without going through NewLine(), so counting those calls drifts further off with
+	/// every documentation comment above the member.</summary>
+	sealed class MemberLocatingTokenWriter(TokenWriter inner, ILocatable position, int targetToken)
+		: DecoratingTokenWriter(inner)
 	{
-		int currentLine = 1;
 		int? identifierLine;
 		int? declarationLine;
 
 		// The identifier position is exact but some declarations write no Identifier node
 		// (indexers, operators); their StartNode line (which may point at leading
-		// attributes) is the fallback.
+		// documentation or attributes) is the fallback.
 		public int? FoundLine => identifierLine ?? declarationLine;
-
-		public override void NewLine()
-		{
-			currentLine++;
-			base.NewLine();
-		}
 
 		public override void StartNode(AstNode node)
 		{
 			if (declarationLine is null && node is EntityDeclaration && Matches(node))
-				declarationLine = currentLine;
+				declarationLine = position.Location.Line;
 			base.StartNode(node);
 		}
 
@@ -70,7 +67,7 @@ public static class DecompilationService
 				if (node is VariableInitializer)
 					node = node.Parent;
 				if (node is EntityDeclaration && Matches(node))
-					identifierLine = currentLine;
+					identifierLine = position.Location.Line;
 			}
 			base.WriteIdentifier(identifier);
 		}
