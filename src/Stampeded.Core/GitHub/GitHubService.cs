@@ -18,7 +18,8 @@ public sealed record PrSummary(
 	bool IsDraft,
 	DateTimeOffset UpdatedAt,
 	System.Text.Json.JsonElement? StatusCheckRollup = null,
-	string? HeadRefOid = null)
+	string? HeadRefOid = null,
+	string? ReviewDecision = null)
 {
 	/// <summary>"fail" / "pending" / "green" / "none", folded from the check rollup
 	/// (check runs carry status+conclusion, legacy status contexts carry state).</summary>
@@ -49,6 +50,9 @@ public sealed record PrSummary(
 	public bool ChecksFailed => ChecksBucket == "fail";
 	public bool ChecksPending => ChecksBucket == "pending";
 	public bool ChecksGreen => ChecksBucket == "green";
+
+	public bool IsApproved => ReviewDecision == "APPROVED";
+	public bool ChangesRequested => ReviewDecision == "CHANGES_REQUESTED";
 
 	public string NumberDisplay => $"#{Number}";
 }
@@ -129,7 +133,7 @@ public sealed class GitHubService(string repoPath)
 	public Task<IReadOnlyList<PrSummary>> ListOpenPrsAsync(CancellationToken ct = default)
 		=> JsonAsync<IReadOnlyList<PrSummary>>(ct,
 			"pr", "list",
-			"--json", "number,title,author,headRefName,baseRefName,isDraft,updatedAt,statusCheckRollup,headRefOid",
+			"--json", "number,title,author,headRefName,baseRefName,isDraft,updatedAt,statusCheckRollup,headRefOid,reviewDecision",
 			"--limit", "50");
 
 	public Task<PrDetail> GetPrAsync(int number, CancellationToken ct = default)
