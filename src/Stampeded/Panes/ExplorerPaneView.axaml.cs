@@ -43,7 +43,7 @@ public partial class ExplorerPaneView : UserControl
 
 	void OnOpenVsCode(object? sender, Avalonia.Interactivity.RoutedEventArgs e) => Vm?.OpenInVsCode();
 
-	void OnOpenFixtures(object? sender, Avalonia.Interactivity.RoutedEventArgs e) => Vm?.OpenFixturesInIlspy();
+	void OnOpenOnGitHub(object? sender, Avalonia.Interactivity.RoutedEventArgs e) => Vm?.OpenPrOnGitHub();
 
 	void OnOpenReview(object? sender, Avalonia.Interactivity.RoutedEventArgs e) => Vm?.OpenReview();
 

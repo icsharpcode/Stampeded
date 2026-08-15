@@ -30,10 +30,10 @@ public partial class ExplorerPaneViewModel : Tool
 	[ObservableProperty]
 	string commitScopeLine = "Whole change";
 
-	/// <summary>Whether the change touches decompiler test cases, which is what the
-	/// fixtures-in-ILSpy command needs to have anything to open.</summary>
+	/// <summary>Whether the review is of a pull request, which is what there is to open on
+	/// GitHub; a local range has no page.</summary>
 	[ObservableProperty]
-	bool hasFixtureTools;
+	bool hasPullRequest;
 
 	public ExplorerPaneViewModel(ReviewWorkspace workspace)
 	{
@@ -48,7 +48,7 @@ public partial class ExplorerPaneViewModel : Tool
 	void UpdateCommitScope()
 	{
 		HasReview = workspace.HeadSha is not null;
-		HasFixtureTools = workspace.HasDecompilerTestCases;
+		HasPullRequest = workspace.CurrentPr is not null;
 		InCommitScope = workspace.CommitScope is not null;
 		CommitScopeLine = workspace.CommitScope is { } commit
 			? $"Commit {workspace.CommitScopeIndex + 1} of {workspace.ScopeCommits.Count}: {commit.Subject}"
@@ -62,11 +62,15 @@ public partial class ExplorerPaneViewModel : Tool
 	public void ExitCommitScope() => workspace.ExitCommitScopeAsync().HandleExceptions();
 
 	// The verification and close-out commands from the overview page, kept where the reading
-	// happens rather than a tab away. Opening on GitHub and bouncing stay behind in the menu:
-	// they belong to deciding about the change, not to reading it.
+	// happens rather than a tab away. Bouncing stays behind in the menu: it belongs to
+	// deciding about the change, not to reading it.
 	public void OpenInVsCode() => workspace.OpenInVsCodeAsync(oldSide: false).HandleExceptions();
 
-	public void OpenFixturesInIlspy() => workspace.OpenAffectedFixturesInILSpyAsync().HandleExceptions();
+	public void OpenPrOnGitHub()
+	{
+		if (workspace.CurrentPr is { } pr)
+			workspace.OpenOnGitHubAsync(pr.Number).HandleExceptions();
+	}
 
 	public void OpenReview() => workspace.OpenReviewDocument();
 
