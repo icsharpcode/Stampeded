@@ -14,7 +14,7 @@ public partial class MainViewModel : ObservableObject
 
 	public BusyTracker Busy { get; }
 
-	public ObservableCollection<string> Recent { get; } = new(RecentRepos.Load());
+	public ObservableCollection<string> Recent { get; }
 
 	[ObservableProperty]
 	string windowTitle = "Stampeded!";
@@ -39,6 +39,11 @@ public partial class MainViewModel : ObservableObject
 
 	public MainViewModel()
 	{
+		// Before anything reads the list. Both views that show it - this menu and the start
+		// page - snapshot it while this constructor runs, so a repository recorded at the end
+		// of it was missing from both until the next start.
+		RecentRepos.Record(Program.RepoPath);
+		Recent = new(RecentRepos.Load());
 		var workspace = new ReviewWorkspace(Program.RepoPath);
 		Busy = workspace.Busy;
 		App.Workspace = workspace;
@@ -51,7 +56,6 @@ public partial class MainViewModel : ObservableObject
 		StartPage = workspace.StartPage;
 		workspace.ReviewChanged += UpdateTitle;
 		UpdateTitle();
-		RecentRepos.Record(Program.RepoPath);
 	}
 
 	void UpdateTitle()
