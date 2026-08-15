@@ -70,7 +70,7 @@
       </StackPanel>
     </Border>
     <DockPanel Grid.Row="1">
-      <TextBlock DockPanel.Dock="Top" Classes="section" Text="CHANGED FILES" />
+      <TextBlock DockPanel.Dock="Top" Classes="section" Text="{Binding ChangedFilesHeader}" />
       <panes:PrFilesPaneView x:Name="FilesSection" DataContext="{Binding Files}" />
     </DockPanel>
     <GridSplitter Grid.Row="2" Height="4" HorizontalAlignment="Stretch" Background="#30808080" />

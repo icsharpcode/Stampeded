@@ -36,6 +36,11 @@ public partial class ExplorerPaneViewModel : Tool
 	[ObservableProperty]
 	bool canEnterSinceLastPass;
 
+	/// <summary>The heading over the file list, carrying how much there is to read. It counts
+	/// what the list holds, so in a scope it is the scope's size and not the review's.</summary>
+	[ObservableProperty]
+	string changedFilesHeader = "CHANGED FILES";
+
 	[ObservableProperty]
 	string commitScopeLine = "Whole change";
 
@@ -63,6 +68,9 @@ public partial class ExplorerPaneViewModel : Tool
 	void UpdateCommitScope()
 	{
 		HasReview = workspace.HeadSha is not null;
+		ChangedFilesHeader = workspace.HeadSha is null
+			? "CHANGED FILES"
+			: $"CHANGED FILES  ({workspace.Files.Count})";
 		HasPullRequest = workspace.CurrentPr is not null;
 		InCommitScope = workspace.CommitScope is not null;
 		InScope = workspace.InScope;
