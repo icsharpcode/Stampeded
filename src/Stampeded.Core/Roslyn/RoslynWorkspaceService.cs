@@ -67,7 +67,10 @@ public sealed class RoslynWorkspaceService : IDisposable
 		worktreePath = worktree;
 		try
 		{
+			// Both solution formats: a repository that has moved to XML solutions has no
+			// *.sln at all, and taking it for "no solution here" costs it every semantic.
 			string? sln = Directory.EnumerateFiles(worktree, "*.sln", SearchOption.TopDirectoryOnly)
+				.Concat(Directory.EnumerateFiles(worktree, "*.slnx", SearchOption.TopDirectoryOnly))
 				.OrderByDescending(f => new FileInfo(f).Length)
 				.FirstOrDefault();
 			if (sln is not null)
