@@ -728,11 +728,12 @@ public sealed class ReviewWorkspace(string repoPath)
 	/// <summary>Removes cached worktrees except the current review's base and head.</summary>
 	public async Task PruneWorktreeCacheAsync()
 	{
+		// The review's own base and head: inside a scope those are not what BaseSha and
+		// HeadSha say, and keeping the scope's instead would delete the worktrees the
+		// semantic workspaces are loaded from.
 		var keep = new List<string>();
-		if (BaseSha is not null)
-			keep.Add(BaseSha);
-		if (HeadSha is not null)
-			keep.Add(HeadSha);
+		if (ReviewRange is { } range)
+			keep.AddRange([range.Base, range.Head]);
 		int removed = await Worktrees.PruneAsync(keep);
 		StatusMessage?.Invoke($"Pruned {removed} cached worktree(s).");
 	}
