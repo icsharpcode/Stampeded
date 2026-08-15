@@ -34,6 +34,9 @@
       <Setter Property="TextTrimming" Value="CharacterEllipsis" />
     </Style>
   </UserControl.Styles>
+  <!-- One scroll region for the whole page: every list below grows to its full height and
+       the page scrolls past it. A list that scrolls inside a page that also scrolls puts two
+       bars side by side and hides rows behind whichever one the wheel does not move. -->
   <ScrollViewer Padding="8">
     <StackPanel>
       <DockPanel>
@@ -137,7 +140,9 @@
         <Expander.Header>
           <TextBlock Classes="sectiontitle" Text="Description" />
         </Expander.Header>
-        <md:MarkdownScrollViewer x:Name="DescriptionView" Markdown="{Binding State.Description}" MaxHeight="240" />
+        <!-- No height cap: capped, it scrolls the description inside the page instead of
+             with it. A description long enough to be in the way folds away with its section. -->
+        <md:MarkdownScrollViewer x:Name="DescriptionView" Markdown="{Binding State.Description}" />
       </Expander>
 
       <Expander Classes="block" IsExpanded="{Binding State.CommitsExpanded}" IsVisible="{Binding State.CommitsHeader, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
@@ -148,7 +153,8 @@
           </DockPanel>
         </Expander.Header>
         <StackPanel>
-          <ListBox x:Name="CommitsList" ItemsSource="{Binding CommitLines}" DoubleTapped="OnCommitDoubleTapped"
+          <ListBox x:Name="CommitsList" ScrollViewer.VerticalScrollBarVisibility="Disabled"
+                   ScrollViewer.HorizontalScrollBarVisibility="Disabled" ItemsSource="{Binding CommitLines}" DoubleTapped="OnCommitDoubleTapped"
                    ToolTip.Tip="Double-click opens the commit on GitHub">
             <ListBox.ItemTemplate>
               <DataTemplate x:DataType="docs:CommitLine">
@@ -173,7 +179,8 @@
           </DockPanel>
         </Expander.Header>
         <StackPanel>
-          <ListBox x:Name="FilesList" ItemsSource="{Binding FileCosts}" DoubleTapped="OnFileDoubleTapped">
+          <ListBox x:Name="FilesList" ScrollViewer.VerticalScrollBarVisibility="Disabled"
+                   ScrollViewer.HorizontalScrollBarVisibility="Disabled" ItemsSource="{Binding FileCosts}" DoubleTapped="OnFileDoubleTapped">
             <ListBox.ItemTemplate>
               <DataTemplate x:DataType="docs:FileCostRow">
                 <StackPanel Orientation="Horizontal">
@@ -198,7 +205,8 @@
           </DockPanel>
         </Expander.Header>
         <StackPanel>
-          <ListBox x:Name="ImplList" ItemsSource="{Binding ImplMembers}" DoubleTapped="OnImplDoubleTapped">
+          <ListBox x:Name="ImplList" ScrollViewer.VerticalScrollBarVisibility="Disabled"
+                   ScrollViewer.HorizontalScrollBarVisibility="Disabled" ItemsSource="{Binding ImplMembers}" DoubleTapped="OnImplDoubleTapped">
             <ListBox.ItemTemplate>
               <DataTemplate x:DataType="docs:MemberRow">
                 <TextBlock Classes="mono" Foreground="{Binding Foreground}"
@@ -206,7 +214,8 @@
               </DataTemplate>
             </ListBox.ItemTemplate>
           </ListBox>
-          <ListBox x:Name="TestList" ItemsSource="{Binding TestGroups}" DoubleTapped="OnTestDoubleTapped">
+          <ListBox x:Name="TestList" ScrollViewer.VerticalScrollBarVisibility="Disabled"
+                   ScrollViewer.HorizontalScrollBarVisibility="Disabled" ItemsSource="{Binding TestGroups}" DoubleTapped="OnTestDoubleTapped">
             <ListBox.ItemTemplate>
               <DataTemplate x:DataType="docs:MemberRow">
                 <TextBlock Classes="mono" Foreground="{Binding Foreground}"
@@ -225,7 +234,8 @@
           </DockPanel>
         </Expander.Header>
         <StackPanel>
-          <ListBox x:Name="SweepList" ItemsSource="{Binding SweepItems}" DoubleTapped="OnSweepDoubleTapped">
+          <ListBox x:Name="SweepList" ScrollViewer.VerticalScrollBarVisibility="Disabled"
+                   ScrollViewer.HorizontalScrollBarVisibility="Disabled" ItemsSource="{Binding SweepItems}" DoubleTapped="OnSweepDoubleTapped">
             <ListBox.ItemTemplate>
               <DataTemplate>
                 <TextBlock FontSize="13" Text="{Binding Title}" TextWrapping="Wrap" />
