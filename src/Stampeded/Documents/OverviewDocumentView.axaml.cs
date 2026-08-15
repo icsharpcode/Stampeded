@@ -57,6 +57,8 @@ public partial class OverviewDocumentView : UserControl
 
 	void OnEnterCommitScope(object? sender, RoutedEventArgs e) => Vm?.EnterCommitScope();
 
+	void OnSinceLastPass(object? sender, RoutedEventArgs e) => Vm?.EnterSinceLastPass();
+
 	void OnPreviousCommit(object? sender, RoutedEventArgs e) => Vm?.StepCommitScope(-1);
 
 	void OnNextCommit(object? sender, RoutedEventArgs e) => Vm?.StepCommitScope(1);

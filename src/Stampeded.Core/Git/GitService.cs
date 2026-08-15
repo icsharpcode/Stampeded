@@ -108,6 +108,60 @@ public sealed class GitService(string repoPath)
 		}
 	}
 
+	/// <summary>Whether the object <paramref name="reference"/> names is really in the object
+	/// database. `rev-parse --verify` answers a full SHA with itself whether or not it is
+	/// there; only asking for the commit it names reads the database.</summary>
+	public async Task<bool> HasCommitAsync(string reference, CancellationToken ct = default)
+		=> await TryRevParseAsync($"{reference}^{{commit}}", ct) is not null;
+
+	/// <summary>Whether every commit of <paramref name="ancestor"/> is already contained in
+	/// <paramref name="descendant"/> - the difference between a push that added commits and
+	/// one that rewrote them. Counted with rev-list rather than asked of
+	/// `merge-base --is-ancestor`, whose answer is its exit code, which this process's tool
+	/// runner reports as a failed command with a log line to match.</summary>
+	public async Task<bool> IsAncestorAsync(string ancestor, string descendant, CancellationToken ct = default)
+		=> (await RunAsync(ct, "rev-list", "--count", $"{descendant}..{ancestor}")).Trim() == "0";
+
+	/// <summary>
+	/// The tree <paramref name="head"/>'s work makes when replayed onto <paramref name="onto"/>:
+	/// the content a rebase would produce, computed entirely in the object database, so no
+	/// worktree, index or ref is touched. <paramref name="mergeBase"/> names the base that
+	/// work was written against, for the case where the branch was rebased onto somewhere
+	/// else entirely and git's own merge base would be further back than the work.
+	///
+	/// Null when the replay conflicts: merge-tree still prints a tree then, but one with
+	/// conflict markers in it, and there is no honest way to show that as the author's code.
+	/// Any other failure is the caller's to report.
+	/// </summary>
+	public async Task<string?> ReplayTreeAsync(string onto, string head, string? mergeBase, CancellationToken ct = default)
+	{
+		string[] args = mergeBase is null
+			? ["merge-tree", "--write-tree", onto, head]
+			: ["merge-tree", "--write-tree", $"--merge-base={mergeBase}", onto, head];
+		try
+		{
+			return (await RunAsync(ct, args)).Trim();
+		}
+		catch (ToolFailedException ex) when (ex.ExitCode == 1)
+		{
+			return null;
+		}
+	}
+
+	/// <summary>
+	/// Keeps the two commits a re-review needs reachable: the head being read now, and the
+	/// head of the pass before it. Neither is safe on its own - the PR head ref is
+	/// force-updated by every fetch, refs/stampeded/pr/N has no reflog, and a rewritten
+	/// branch's old tip is referenced by nothing at all - so without a ref of the tool's own,
+	/// the commit the reader compared against last time is prunable.
+	/// </summary>
+	public async Task PinReviewHeadsAsync(string key, string head, string? previousHead, CancellationToken ct = default)
+	{
+		await RunAsync(ct, "update-ref", $"refs/stampeded/review/{key}/head", head);
+		if (previousHead is not null)
+			await RunAsync(ct, "update-ref", $"refs/stampeded/review/{key}/prev", previousHead);
+	}
+
 	/// <summary>Updates the remote-tracking refs for every branch on origin. Sync states are
 	/// computed against commits that have to be in the object database, so a branch whose PR
 	/// head was never fetched reads as "differs" until this has run.</summary>

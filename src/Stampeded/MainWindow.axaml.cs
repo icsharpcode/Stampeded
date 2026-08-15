@@ -177,12 +177,12 @@ public partial class MainWindow : Window
 	void OnEnterCommitScope(object? s, RoutedEventArgs e) => App.Workspace?.EnterCommitScopeAsync().HandleExceptions();
 	void OnNextCommit(object? s, RoutedEventArgs e) => App.Workspace?.StepCommitScopeAsync(1).HandleExceptions();
 	void OnPreviousCommit(object? s, RoutedEventArgs e) => App.Workspace?.StepCommitScopeAsync(-1).HandleExceptions();
-	void OnExitCommitScope(object? s, RoutedEventArgs e) => App.Workspace?.ExitCommitScopeAsync().HandleExceptions();
+	void OnExitCommitScope(object? s, RoutedEventArgs e) => App.Workspace?.ExitScopeAsync().HandleExceptions();
 	void OnBounce(object? s, RoutedEventArgs e) => App.Workspace?.PrepareBounceBody();
 	void OnOpenVsCode(object? s, RoutedEventArgs e) => App.Workspace?.OpenInVsCodeAsync(oldSide: false).HandleExceptions();
 	void OnOpenFixtures(object? s, RoutedEventArgs e) => App.Workspace?.OpenAffectedFixturesInILSpyAsync().HandleExceptions();
 
-	void OnInterdiff(object? s, RoutedEventArgs e) => App.Workspace?.OpenInterdiffAsync().HandleExceptions();
+	void OnSinceLastPass(object? s, RoutedEventArgs e) => App.Workspace?.EnterSinceLastPassScopeAsync().HandleExceptions();
 
 	void OnOpenStart(object? s, RoutedEventArgs e) => App.Workspace?.OpenStart();
 

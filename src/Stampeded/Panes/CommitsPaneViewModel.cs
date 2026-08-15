@@ -69,8 +69,9 @@ public class CommitsPaneViewModel : Tool
 	{
 		Commits.Clear();
 		CommitFiles.Clear();
-		if (workspace.BaseSha is not { } baseSha || workspace.HeadSha is not { } headSha)
+		if (workspace.CommitRange is not { } range)
 			return;
+		(string baseSha, string headSha) = range;
 		State.Status = "Loading commits...";
 		try
 		{

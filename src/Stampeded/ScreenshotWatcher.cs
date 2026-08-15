@@ -177,12 +177,14 @@ static class ScreenshotWatcher
 					ReportStrandedContainers(window);
 				if (lines.Contains("overview"))
 					App.Workspace?.OpenOverview();
+				if (lines.Contains("since-last-pass"))
+					App.Workspace?.EnterSinceLastPassScopeAsync().HandleExceptions();
 				if (lines.Contains("commit-scope"))
 					App.Workspace?.EnterCommitScopeAsync().HandleExceptions();
 				if (lines.Contains("commit-next"))
 					App.Workspace?.StepCommitScopeAsync(1).HandleExceptions();
 				if (lines.Contains("commit-exit"))
-					App.Workspace?.ExitCommitScopeAsync().HandleExceptions();
+					App.Workspace?.ExitScopeAsync().HandleExceptions();
 				if (lines.Contains("sbs"))
 					App.Workspace?.OpenSideBySideAsync().HandleExceptions();
 				if (lines.Contains("vscode"))

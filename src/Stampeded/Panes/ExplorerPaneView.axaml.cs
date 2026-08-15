@@ -35,6 +35,8 @@ public partial class ExplorerPaneView : UserControl
 
 	void OnEnterCommitScope(object? sender, Avalonia.Interactivity.RoutedEventArgs e) => Vm?.EnterCommitScope();
 
+	void OnSinceLastPass(object? sender, Avalonia.Interactivity.RoutedEventArgs e) => Vm?.EnterSinceLastPass();
+
 	void OnPreviousCommit(object? sender, Avalonia.Interactivity.RoutedEventArgs e) => Vm?.StepCommit(-1);
 
 	void OnNextCommit(object? sender, Avalonia.Interactivity.RoutedEventArgs e) => Vm?.StepCommit(1);

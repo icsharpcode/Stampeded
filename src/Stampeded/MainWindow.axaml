@@ -37,6 +37,7 @@
         <!-- Reading scope. The gestures are written into the headers rather than set as
              InputGesture so the diff view stays their only handler. -->
         <MenuItem Header="Commit by Commit" Click="OnEnterCommitScope" />
+        <MenuItem Header="Since Last Pass" Click="OnSinceLastPass" />
         <MenuItem Header="Next Commit  ( Ctrl+] )" Click="OnNextCommit" />
         <MenuItem Header="Previous Commit  ( Ctrl+[ )" Click="OnPreviousCommit" />
         <MenuItem Header="Whole Change" Click="OnExitCommitScope" />
@@ -80,7 +81,6 @@
         <MenuItem Header="Open Affected Fixtures in ILSpy" Click="OnOpenFixtures" />
         <MenuItem Header="Close Review" Click="OnCloseReview" />
         <MenuItem Header="Rebase PR onto Target Branch" Click="OnRebasePr" />
-        <MenuItem Header="Show Interdiff Since Last Pass" Click="OnInterdiff" />
         <MenuItem Header="Show Semantic Load Log" Click="OnShowSemanticLog" />
         <MenuItem Header="Prune Worktree Cache" Click="OnPruneWorktrees" />
       </MenuItem>

@@ -95,6 +95,14 @@ public sealed partial class OverviewState : ObservableObject
 	[ObservableProperty]
 	bool canEnterCommitScope;
 
+	/// <summary>True while the review is narrowed at all - by a commit, or to what has
+	/// changed since the last pass.</summary>
+	[ObservableProperty]
+	bool inScope;
+
+	[ObservableProperty]
+	bool canEnterSinceLastPass;
+
 	[ObservableProperty]
 	string toolStatus = "";
 
@@ -190,17 +198,22 @@ public class OverviewDocumentViewModel : Document
 	{
 		State.CanEnterCommitScope = workspace.CanEnterCommitScope;
 		State.InCommitScope = workspace.CommitScope is not null;
+		State.InScope = workspace.InScope;
+		State.CanEnterSinceLastPass = workspace.CanEnterSinceLastPassScope;
 		State.CommitScopeLine = workspace.CommitScope is { } commit
 			? $"Commit {workspace.CommitScopeIndex + 1} of {workspace.ScopeCommits.Count}:  "
 				+ $"{commit.ShortSha}  {commit.Subject}"
+			: workspace.InSinceLastPassScope ? workspace.ScopeLine
 			: "";
 	}
 
 	public void EnterCommitScope() => workspace.EnterCommitScopeAsync().HandleExceptions();
 
+	public void EnterSinceLastPass() => workspace.EnterSinceLastPassScopeAsync().HandleExceptions();
+
 	public void StepCommitScope(int direction) => workspace.StepCommitScopeAsync(direction).HandleExceptions();
 
-	public void ExitCommitScope() => workspace.ExitCommitScopeAsync().HandleExceptions();
+	public void ExitCommitScope() => workspace.ExitScopeAsync().HandleExceptions();
 
 	void RebuildLinkedIssues()
 	{

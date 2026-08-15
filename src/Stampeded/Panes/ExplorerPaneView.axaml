@@ -42,8 +42,11 @@
              the same as not having it here at all. -->
         <WrapPanel Orientation="Horizontal">
           <Button Content="Commit by commit" FontSize="10" Padding="6,1" Margin="0,0,4,3" Click="OnEnterCommitScope"
-                  IsVisible="{Binding !InCommitScope}"
+                  IsVisible="{Binding !InScope}"
                   ToolTip.Tip="Read the change one commit at a time, in the order it was written" />
+          <Button Content="Since last pass" FontSize="10" Padding="6,1" Margin="0,0,4,3" Click="OnSinceLastPass"
+                  IsVisible="{Binding !InScope}" IsEnabled="{Binding CanEnterSinceLastPass}"
+                  ToolTip.Tip="Read only what changed since you last opened this review; after a rebase, the author's own edits without the commits it brought in" />
           <Button Content="Prev" FontSize="10" Padding="6,1" Margin="0,0,4,3" Click="OnPreviousCommit"
                   IsVisible="{Binding InCommitScope}"
                   ToolTip.Tip="Previous commit (Ctrl+[ in a diff)" />
@@ -51,7 +54,7 @@
                   IsVisible="{Binding InCommitScope}"
                   ToolTip.Tip="Next commit (Ctrl+] in a diff)" />
           <Button Content="Whole change" FontSize="10" Padding="6,1" Margin="0,0,4,3" Click="OnExitCommitScope"
-                  IsVisible="{Binding InCommitScope}" />
+                  IsVisible="{Binding InScope}" />
           <!-- Verification and close-out, the commands used repeatedly during a pass. -->
           <Button Content="VS Code" FontSize="10" Padding="6,1" Margin="0,0,4,3" Click="OnOpenVsCode"
                   ToolTip.Tip="Open the head worktree in VS Code for building and debugging this revision" />

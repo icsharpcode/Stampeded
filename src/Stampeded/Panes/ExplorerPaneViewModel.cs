@@ -27,6 +27,15 @@ public partial class ExplorerPaneViewModel : Tool
 	[ObservableProperty]
 	bool hasReview;
 
+	/// <summary>Whether the review is narrowed to anything less than the whole change - by a
+	/// commit or by what has changed since the last pass. Both leave the same way.</summary>
+	[ObservableProperty]
+	bool inScope;
+
+	/// <summary>Whether there is an earlier pass to compare against.</summary>
+	[ObservableProperty]
+	bool canEnterSinceLastPass;
+
 	[ObservableProperty]
 	string commitScopeLine = "Whole change";
 
@@ -56,17 +65,22 @@ public partial class ExplorerPaneViewModel : Tool
 		HasReview = workspace.HeadSha is not null;
 		HasPullRequest = workspace.CurrentPr is not null;
 		InCommitScope = workspace.CommitScope is not null;
+		InScope = workspace.InScope;
+		CanEnterSinceLastPass = workspace.CanEnterSinceLastPassScope;
 		CommitScopeLine = workspace.CommitScope is { } commit
 			? $"Commit {workspace.CommitScopeIndex + 1} of {workspace.ScopeCommits.Count}: {commit.Subject}"
+			: workspace.InSinceLastPassScope ? workspace.ScopeLine
 			: "Whole change";
 		CommitMessage = workspace.CommitScope?.Message ?? "";
 	}
 
 	public void EnterCommitScope() => workspace.EnterCommitScopeAsync().HandleExceptions();
 
+	public void EnterSinceLastPass() => workspace.EnterSinceLastPassScopeAsync().HandleExceptions();
+
 	public void StepCommit(int direction) => workspace.StepCommitScopeAsync(direction).HandleExceptions();
 
-	public void ExitCommitScope() => workspace.ExitCommitScopeAsync().HandleExceptions();
+	public void ExitCommitScope() => workspace.ExitScopeAsync().HandleExceptions();
 
 	// The verification and close-out commands from the overview page, kept where the reading
 	// happens rather than a tab away. Bouncing stays behind in the menu: it belongs to

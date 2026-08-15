@@ -228,8 +228,9 @@ public sealed class ReviewWorkspace(string repoPath)
 		HeadSha = headSha;
 		Files = files;
 		IndexAddedLines(files);
-		Store.OpenLocal(Path.GetFileName(RepoPath), $"{baseRef}..{headRef}", headSha);
+		Store.OpenLocal(Path.GetFileName(RepoPath), $"{baseRef}..{headRef}", headSha, baseSha);
 		await ApplyReReviewCarryOverAsync(ct);
+		await PinReviewHeadsAsync(ct);
 		ComputeChurnAsync().HandleExceptions();
 		history.Clear();
 		CloseDocumentsExceptStart();
@@ -273,8 +274,9 @@ public sealed class ReviewWorkspace(string repoPath)
 		HeadSha = headSha;
 		Files = files;
 		IndexAddedLines(files);
-		Store.Open(Path.GetFileName(RepoPath), number, headSha);
+		Store.Open(Path.GetFileName(RepoPath), number, headSha, baseSha);
 		await ApplyReReviewCarryOverAsync(ct);
+		await PinReviewHeadsAsync(ct);
 		ComputeChurnAsync().HandleExceptions();
 		history.Clear();
 		CloseDocumentsExceptStart();
@@ -492,9 +494,13 @@ public sealed class ReviewWorkspace(string repoPath)
 
 	#region Re-review (head moved since the last pass)
 
-	/// <summary>Head of the previous pass, when this open superseded one; null on a first
-	/// pass or when the previous head's objects are gone.</summary>
+	/// <summary>Head of the previous pass: what the reader compared against last time. Null
+	/// on a first pass, or when that head's objects are no longer in the repository.</summary>
 	public string? LastPassHead { get; private set; }
+
+	/// <summary>The base that head was read against, so the work of that pass is identified
+	/// as a range and not just a tip.</summary>
+	public string? LastPassBase { get; private set; }
 
 	/// <summary>Files the interdiff (last pass head -> current head) touched.</summary>
 	public IReadOnlySet<string>? TouchedSinceLastPass { get; private set; }
@@ -507,14 +513,33 @@ public sealed class ReviewWorkspace(string repoPath)
 	async Task ApplyReReviewCarryOverAsync(CancellationToken ct)
 	{
 		LastPassHead = null;
+		LastPassBase = null;
 		TouchedSinceLastPass = null;
-		if (Store.Superseded is not { } superseded || HeadSha is null)
+		sinceLastPassTree = null;
+		if (HeadSha is null)
+			return;
+		// The baseline comes from the store rather than from the move this open discovered:
+		// a reader who closes the app between two passes still wants the diff against what
+		// they read last time.
+		if (Store.PreviousHead is { } previous)
+		{
+			if (await Git.HasCommitAsync(previous, ct))
+			{
+				LastPassHead = previous;
+				LastPassBase = Store.PreviousBase;
+			}
+			else
+			{
+				StatusMessage?.Invoke($"The head you read last time ({previous[..9]}) is no longer in this "
+					+ "repository, so there is nothing to compare this pass against.");
+			}
+		}
+		if (Store.Superseded is not { } superseded)
 			return;
 		try
 		{
 			var changes = await Git.DiffNameStatusAsync(superseded.PreviousHead, HeadSha, ct);
 			var touched = changes.Select(c => c.Path).ToHashSet(StringComparer.Ordinal);
-			LastPassHead = superseded.PreviousHead;
 			TouchedSinceLastPass = touched;
 			var carried = ReReview.CarryOverViewed(superseded.PreviousViewed, touched);
 			foreach (var path in carried)
@@ -533,12 +558,44 @@ public sealed class ReviewWorkspace(string repoPath)
 		}
 	}
 
-	/// <summary>The raw interdiff (last pass head -> current head) as a document.</summary>
+	/// <summary>The key a local review's state file is named by: the range as it was opened,
+	/// falling back to the resolved commits when the review was not opened from refs.</summary>
+	string LocalRangeKey((string Base, string Head) range)
+		=> LocalRange is { } local ? $"{local.Base}..{local.Head}" : $"{range.Base[..9]}..{range.Head[..9]}";
+
+	/// <summary>The ref-name component this review's pinned commits live under. A pull
+	/// request is named by its number; a local range by its text, with everything a ref name
+	/// cannot carry replaced.</summary>
+	string ReviewRefKey()
+		=> CurrentPr is { } pr
+			? $"pr/{pr.Number}"
+			: "local/" + new string((LocalRange is { } range ? $"{range.Base}..{range.Head}" : HeadSha ?? "")
+				.Select(c => char.IsAsciiLetterOrDigit(c) || c is '-' or '_' ? c : '-').ToArray());
+
+	async Task PinReviewHeadsAsync(CancellationToken ct)
+	{
+		if (HeadSha is not { } head)
+			return;
+		try
+		{
+			await Git.PinReviewHeadsAsync(ReviewRefKey(), head, LastPassHead, ct);
+		}
+		catch (ToolFailedException ex)
+		{
+			// Losing the pin costs the next pass its comparison point, not this one its review.
+			StatusMessage?.Invoke($"Could not pin the reviewed head {head[..9]}: {ex.Message} "
+				+ "A later force-push may leave nothing to compare against.");
+		}
+	}
+
+	/// <summary>The raw interdiff (last pass head -> current head) as a document: what the
+	/// scope shows when the reviewed work cannot be replayed onto the current base, and the
+	/// commits the rebase brought in cannot be told from the author's own.</summary>
 	public async Task OpenInterdiffAsync()
 	{
 		if (LastPassHead is null || HeadSha is null)
 		{
-			StatusMessage?.Invoke("No earlier pass recorded for this head - the interdiff needs a previous review at another head.");
+			StatusMessage?.Invoke("No earlier pass is recorded for this review - Stampeded compares against the head you last opened it at, and this is the first.");
 			return;
 		}
 		try
@@ -866,8 +923,13 @@ public sealed class ReviewWorkspace(string repoPath)
 	/// <summary>Reads the review one commit at a time, starting at the oldest.</summary>
 	public async Task EnterCommitScopeAsync(int index = 0)
 	{
-		if (BaseSha is not { } baseSha || HeadSha is not { } headSha)
+		// The two scopes are alternatives, not layers: the since-last-pass scope diffs
+		// against a tree, which has no history for a commit list to come from.
+		if (InSinceLastPassScope)
+			await ExitScopeAsync();
+		if (ReviewRange is not { } range)
 			return;
+		(string baseSha, string headSha) = range;
 		if (ScopeCommits.Count == 0)
 		{
 			var commits = await Git.LogAsync($"{baseSha}..{headSha}", null, follow: false, limit: 200);
@@ -919,28 +981,43 @@ public sealed class ReviewWorkspace(string repoPath)
 	/// </summary>
 	async Task ApplyScopeOverlaysAsync()
 	{
-		if (CommitScope is not { } commit || BaseSha is not { } parent)
+		if (BaseSha is not { } origin || HeadSha is not { } displayed)
 			return;
-		var head = new Dictionary<string, string>(StringComparer.Ordinal);
-		var origin = new Dictionary<string, string>(StringComparer.Ordinal);
-		foreach (var file in Files.Where(f => !f.IsBinary))
+		var headText = new Dictionary<string, string>(StringComparer.Ordinal);
+		var originText = new Dictionary<string, string>(StringComparer.Ordinal);
+		try
 		{
-			if (file.Kind != FileChangeKind.Deleted)
-				head[file.NewPath] = await Git.ShowFileAsync(commit.Sha, file.NewPath);
-			if (file.Kind != FileChangeKind.Added)
-				origin[file.OldPath] = await Git.ShowFileAsync(parent, file.OldPath);
+			foreach (var file in Files.Where(f => !f.IsBinary))
+			{
+				if (file.Kind != FileChangeKind.Deleted)
+					headText[file.NewPath] = await Git.ShowFileAsync(displayed, file.NewPath);
+				if (file.Kind != FileChangeKind.Added)
+					originText[file.OldPath] = await Git.ShowFileAsync(origin, file.OldPath);
+			}
 		}
-		Semantics?.SetTextOverlay(head);
-		BaseSemantics?.SetTextOverlay(origin);
+		catch (ToolFailedException ex)
+		{
+			// Without the overlay the workspaces still answer, but about the review's head
+			// rather than what is on screen - which is worth saying rather than leaving the
+			// reader to wonder why a symbol resolves oddly.
+			StatusMessage?.Invoke($"Semantics for this scope are the review's, not the scope's: {ex.Message}");
+			return;
+		}
+		Semantics?.SetTextOverlay(headText);
+		BaseSemantics?.SetTextOverlay(originText);
 		SemanticsChanged?.Invoke();
 	}
 
-	/// <summary>Back to reading the whole change at once.</summary>
-	public async Task ExitCommitScopeAsync()
+	/// <summary>Back to reading the whole change at once, out of whichever scope was on.
+	/// One exit for both: the button has always said "Whole change", and that is what it
+	/// means whether a commit or the work since the last pass was being read.</summary>
+	public async Task ExitScopeAsync()
 	{
 		if (fullRange is not { } range)
 			return;
 		CommitScope = null;
+		SinceLastPassBase = null;
+		ScopeLine = "";
 		Semantics?.ClearTextOverlay();
 		BaseSemantics?.ClearTextOverlay();
 		BaseSha = range.Base;
@@ -951,12 +1028,134 @@ public sealed class ReviewWorkspace(string repoPath)
 			: await Git.DiffAsync(range.Base, range.Head);
 		IndexAddedLines(Files);
 		if (CurrentPr is { } pr)
-			Store.Open(Path.GetFileName(RepoPath), pr.Number, range.Head);
+			Store.Open(Path.GetFileName(RepoPath), pr.Number, range.Head, range.Base);
 		else
-			Store.OpenLocal(Path.GetFileName(RepoPath), $"{range.Base[..9]}..{range.Head[..9]}", range.Head);
+			// Keyed by the refs the review was opened with, exactly as OpenLocalRangeAsync
+			// keyed it: a key built from SHAs instead names a state file nobody wrote, and
+			// the review's own - its viewed flags, depth marks and drafts - is orphaned.
+			Store.OpenLocal(Path.GetFileName(RepoPath), LocalRangeKey(range), range.Head, range.Base);
 		ResetChangeMap();
 		CloseDocumentsExceptStart();
-		CliLog.Write("action", "commit scope off");
+		CliLog.Write("action", "scope off");
+		ReviewChanged?.Invoke();
+		CommitScopeChanged?.Invoke();
+		OpenOverview();
+		ComputeChangeMapAsync().HandleExceptions();
+	}
+
+	#endregion
+
+	#region Reading only what changed since the last pass
+
+	/// <summary>
+	/// The tree the review is diffed against while only the work since the reader's last
+	/// pass is in scope: everything they already read, replayed onto the current base. A
+	/// tree and not a commit on purpose - after a rebase there is no commit whose diff to
+	/// the head is the author's own edits, because the rebase mixed the new base into every
+	/// one of them.
+	/// </summary>
+	public string? SinceLastPassBase { get; private set; }
+
+	public bool InSinceLastPassScope => SinceLastPassBase is not null;
+
+	/// <summary>True while the review is narrowed to anything less than the whole change.</summary>
+	public bool InScope => CommitScope is not null || InSinceLastPassScope;
+
+	/// <summary>What the reader is being shown, for the panes that head the file list. Empty
+	/// when the whole change is in scope.</summary>
+	public string ScopeLine { get; private set; } = "";
+
+	public bool CanEnterSinceLastPassScope
+		=> LastPassHead is not null && DirtyWorktreePath is null && ReviewRange is not null;
+
+	/// <summary>The range whose commits are being read. The since-last-pass scope diffs
+	/// against a synthetic tree, which has no history, so its commits are the ones written
+	/// since the previous pass - however the rewrite arranged them.</summary>
+	public (string Base, string Head)? CommitRange
+		=> InSinceLastPassScope && LastPassHead is { } previous && HeadSha is { } head
+			? (previous, head)
+			: BaseSha is { } b && HeadSha is { } h ? (b, h) : null;
+
+	/// <summary>The replay is a pure function of (base, last pass head), so it is computed
+	/// once and kept for as long as the review is open.</summary>
+	string? sinceLastPassTree;
+
+	/// <summary>
+	/// Narrows the review to what changed since the reader's last pass: the same scoping the
+	/// per-commit reader gets, over the author's own edits rather than one commit.
+	///
+	/// Viewed flags, depth marks and drafts stay in the review's own state file, unlike the
+	/// per-commit scope which keys its own. That is deliberate: this scope's head IS the
+	/// review's head at the same revision, so a file read here has genuinely been read for
+	/// the review - the same bargain the re-review carry-over already makes for the files a
+	/// push did not touch.
+	/// </summary>
+	public async Task EnterSinceLastPassScopeAsync()
+	{
+		if (LastPassHead is not { } previous)
+		{
+			StatusMessage?.Invoke("No earlier pass is recorded for this review - Stampeded compares against the "
+				+ "head you last opened it at, and this is the first.");
+			return;
+		}
+		if (DirtyWorktreePath is not null)
+		{
+			StatusMessage?.Invoke("This review includes uncommitted work, which was never part of a pass; "
+				+ "there is nothing to compare it against.");
+			return;
+		}
+		if (InScope)
+			await ExitScopeAsync();
+		if (ReviewRange is not { } range)
+			return;
+		using var busy = Busy.Begin("Diffing against your last pass");
+		if (sinceLastPassTree is null)
+		{
+			try
+			{
+				sinceLastPassTree = await Git.ReplayTreeAsync(range.Base, previous, LastPassBase);
+			}
+			catch (ToolFailedException ex)
+			{
+				StatusMessage?.Invoke($"Diff since last pass failed: {ex.Message}");
+				return;
+			}
+		}
+		if (sinceLastPassTree is null)
+		{
+			StatusMessage?.Invoke($"The work you read at {previous[..9]} does not replay onto {range.Base[..9]} "
+				+ "without conflicts, so there is no clean diff of the author's edits alone. Showing the raw "
+				+ "interdiff instead - it includes the commits the rebase brought in.");
+			await OpenInterdiffAsync();
+			return;
+		}
+		var files = await Git.DiffAsync(sinceLastPassTree, range.Head);
+		if (files.Count == 0)
+		{
+			StatusMessage?.Invoke($"Nothing has changed since your last pass at {previous[..9]}"
+				+ (await Git.IsAncestorAsync(previous, range.Head) ? "." : " - the branch was only rebased."));
+			return;
+		}
+		bool rewritten = !await Git.IsAncestorAsync(previous, range.Head);
+		// Counted while Files is still the whole change: a reader who works through a scope
+		// where everything is ticked can otherwise approve a change they never read, and this
+		// is what the review still owes them.
+		int wholeChange = Files.Count;
+		int neverViewed = Files.Count(f => !Store.IsViewed(f.Path));
+		fullRange ??= (range.Base, range.Head);
+		SinceLastPassBase = sinceLastPassTree;
+		BaseSha = sinceLastPassTree;
+		HeadSha = range.Head;
+		Files = files;
+		IndexAddedLines(Files);
+		ScopeLine = $"Since your pass at {previous[..9]}{(rewritten ? " (head rewritten)" : "")}: "
+			+ $"{files.Count} file(s). Whole change: {neverViewed} of {wholeChange} file(s) never viewed.";
+		await ApplyScopeOverlaysAsync();
+		ResetChangeMap();
+		CloseDocumentsExceptStart();
+		CliLog.Write("action", $"since-last-pass scope {previous[..9]} -> {range.Head[..9]} "
+			+ $"({(rewritten ? "rewritten" : "fast-forward")}), base tree {sinceLastPassTree[..9]}, {files.Count} file(s)");
+		StatusMessage?.Invoke(ScopeLine);
 		ReviewChanged?.Invoke();
 		CommitScopeChanged?.Invoke();
 		OpenOverview();
@@ -1787,6 +1986,15 @@ public sealed class ReviewWorkspace(string repoPath)
 			PostStatus("Comments need a pull request; this is a local review.");
 			return;
 		}
+		if (target.OldSide && InSinceLastPassScope)
+		{
+			// The left side here is the reader's last pass replayed onto the current base,
+			// not the pull request's base. GitHub reads a LEFT line against the latter, so
+			// this comment would be posted against a line nobody wrote.
+			PostStatus("The left side of this scope is your last pass, not the pull request's base, so a "
+				+ "comment there has no line to land on. Press 'Whole change' to comment on removed code.");
+			return;
+		}
 		PendingCommentTarget = target;
 		if (activatePane && CommentsPane is not null && Factory is not null)
 			Factory.SetActiveDockable(CommentsPane);
@@ -2160,6 +2368,15 @@ public sealed class ReviewWorkspace(string repoPath)
 	{
 		if (CurrentPr is not { } pr)
 			return (0, 0);
+		if (InScope)
+		{
+			// Drafts are matched against the files in scope, so submitting from one would
+			// keep every draft written elsewhere local and report it as outdated - which is
+			// not what happened to it.
+			StatusMessage?.Invoke($"A review is submitted for the whole change; press 'Whole change' first. "
+				+ $"Your {Drafts.Count} draft(s) are kept.");
+			return (0, Drafts.Count);
+		}
 		var commentable = Files.ToDictionary(f => f, CommentableLines);
 		var payload = new List<ReviewCommentDto>();
 		var replies = new List<(long InReplyTo, string Body, Guid Id)>();
