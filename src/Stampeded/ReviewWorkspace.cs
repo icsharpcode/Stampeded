@@ -544,7 +544,7 @@ public sealed class ReviewWorkspace(string repoPath)
 		try
 		{
 			string patch = await ExternalTool.RunAsync("git", ["diff", LastPassHead, HeadSha], RepoPath);
-			OpenTextDocument($"interdiff:{LastPassHead[..9]}", $"interdiff {LastPassHead[..9]}..{HeadSha[..9]}", patch);
+			OpenPatchDocument($"interdiff:{LastPassHead[..9]}", $"interdiff {LastPassHead[..9]}..{HeadSha[..9]}", patch, HeadSha);
 		}
 		catch (ToolFailedException ex)
 		{
@@ -784,7 +784,7 @@ public sealed class ReviewWorkspace(string repoPath)
 			try
 			{
 				string patch = await ExternalTool.RunAsync("git", ["show", sha], RepoPath);
-				OpenTextDocument($"show:{sha}", $"commit {sha[..9]}", patch);
+				OpenPatchDocument($"show:{sha}", $"commit {sha[..9]}", patch, sha);
 			}
 			catch (ToolFailedException)
 			{
@@ -1268,6 +1268,19 @@ public sealed class ReviewWorkspace(string repoPath)
 		var stub = new FileDiff(title, title, FileChangeKind.Modified, false, []);
 		ShowDocument(id, () => new SideBySideDocumentViewModel(stub, DiffDocumentBuilder.BuildPair(leftText, rightText)) {
 			Title = title,
+		});
+	}
+
+	/// <summary>Opens (or activates) a unified patch as a coloured diff tab. Historical:
+	/// the document spans several files, so no line of it maps to a blob of the review.</summary>
+	public void OpenPatchDocument(string id, string title, string patch, string sha)
+	{
+		var stub = new FileDiff(title, title, FileChangeKind.Modified, false, []);
+		ShowDocument(id, () => new DiffDocumentViewModel(stub, PatchDocumentBuilder.Build(patch)) {
+			Title = title,
+			Historical = true,
+			HistoricalSha = sha,
+			IsPatch = true,
 		});
 	}
 

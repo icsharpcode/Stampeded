@@ -28,6 +28,10 @@ public class DiffDocumentViewModel(FileDiff file, DiffDocumentModel model) : Doc
 	/// <summary>The commit shown when <see cref="Historical"/> (blame runs against it).</summary>
 	public string? HistoricalSha { get; init; }
 
+	/// <summary>True for a whole unified patch (a commit, an interdiff) rather than one
+	/// file's two blobs: the document is many files plus git's own headers.</summary>
+	public bool IsPatch { get; init; }
+
 	(int Line, bool OldSide)? pendingCaret;
 
 	public event Action<int, bool>? CaretRequested;

@@ -373,7 +373,7 @@ public static class DiffDocumentBuilder
 		return text.Split('\n');
 	}
 
-	static IReadOnlyList<HunkSpan> ComputeHunks(List<DiffLineTag> tags)
+	internal static IReadOnlyList<HunkSpan> ComputeHunks(List<DiffLineTag> tags)
 	{
 		var hunks = new List<HunkSpan>();
 		int runStart = 0; // 1-based; 0 = not in a run
