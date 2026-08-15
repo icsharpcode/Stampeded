@@ -484,5 +484,4 @@ public class OverviewDocumentViewModel : Document
 
 	public void Bounce() => workspace.PrepareBounceBody();
 
-	public void OpenRecord() => workspace.OpenReviewRecord();
 }

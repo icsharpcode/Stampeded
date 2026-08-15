@@ -598,8 +598,6 @@ public sealed class ReviewWorkspace(string repoPath)
 
 	public sealed record SweepItem(string Title, string? Path, int Line);
 
-	public IReadOnlyList<SweepItem>? LastSweep { get; private set; }
-
 	/// <summary>The delocalized-consequence checklist, answered mechanically where possible.
 	/// These are prompts to a human, not verdicts - noise is acceptable, silence is not.</summary>
 	public async Task<IReadOnlyList<SweepItem>> ComputeSweepAsync()
@@ -670,7 +668,6 @@ public sealed class ReviewWorkspace(string repoPath)
 		else if (uncovered > 0)
 			items.Add(new SweepItem($"{uncovered} of {measured} measured added line(s) uncovered", null, 0));
 
-		LastSweep = items;
 		return items;
 	}
 
@@ -680,34 +677,6 @@ public sealed class ReviewWorkspace(string repoPath)
 		string noArgs = paren < 0 ? display : display[..paren];
 		int dot = noArgs.LastIndexOf('.');
 		return dot < 0 ? noArgs : noArgs[(dot + 1)..];
-	}
-
-	/// <summary>The honest close-out artifact: what was reviewed at what depth, what was
-	/// verified, and what was deliberately not looked at.</summary>
-	public void OpenReviewRecord()
-	{
-		var text = new System.Text.StringBuilder();
-		text.AppendLine(CurrentPr is { } pr ? $"Review record: #{pr.Number} {pr.Title}" : "Review record");
-		text.AppendLine($"Head: {HeadSha}");
-		text.AppendLine();
-		foreach (var group in Files.GroupBy(f => GetDepth(f.Path) is "" ? "(unplanned)" : GetDepth(f.Path)).OrderBy(g => g.Key))
-		{
-			text.AppendLine($"---- {group.Key} ----");
-			foreach (var file in group)
-				text.AppendLine($"  {(Store.IsViewed(file.Path) ? "viewed " : "NOT viewed")}  {file.Path}");
-		}
-		text.AppendLine();
-		var (uncovered, measured) = UncoveredAddedLines();
-		text.AppendLine(Coverage is null
-			? "Coverage: not measured."
-			: $"Coverage: {uncovered} uncovered of {measured} measured added line(s).");
-		text.AppendLine($"Sweep findings: {(LastSweep is null ? "sweep not run" : $"{LastSweep.Count} item(s)")}");
-		text.AppendLine($"Draft comments pending: {Drafts.Count}");
-		text.AppendLine();
-		text.AppendLine("Not reviewed (trust or unviewed):");
-		foreach (var file in Files.Where(f => GetDepth(f.Path) == "trust" || !Store.IsViewed(f.Path)))
-			text.AppendLine($"  {file.Path}");
-		OpenTextDocument($"record:{CurrentPr?.Number ?? 0}", "Review record", text.ToString());
 	}
 
 	/// <summary>Triage's bounce outcome as a first-class action: drafts a review body naming
@@ -1207,7 +1176,6 @@ public sealed class ReviewWorkspace(string repoPath)
 		removedLinesByFile = [];
 		Coverage = null;
 		Checks = null;
-		LastSweep = null;
 		PostedComments = [];
 		CommentsLoaded = false;
 		LastPassHead = null;

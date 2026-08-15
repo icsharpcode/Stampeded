@@ -41,7 +41,6 @@
         <MenuItem Header="Previous Commit  ( Ctrl+[ )" Click="OnPreviousCommit" />
         <MenuItem Header="Whole Change" Click="OnExitCommitScope" />
         <Separator />
-        <MenuItem Header="Review Record..." Click="OnReviewRecord" />
         <MenuItem Header="Bounce..." Click="OnBounce" />
       </MenuItem>
       <MenuItem Header="_View">
