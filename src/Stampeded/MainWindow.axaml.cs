@@ -33,7 +33,32 @@ public partial class MainWindow : Window
 	protected override void OnKeyDown(KeyEventArgs e)
 	{
 		base.OnKeyDown(e);
-		if (e.Handled || !e.KeyModifiers.HasFlag(KeyModifiers.Control))
+		if (e.Handled)
+			return;
+		// The navigation keys the Navigate menu advertises. They are not characters anyone
+		// types, so the window may claim them: a reader who left focus in a pane still expects
+		// F12 to work on the file they are looking at. The diff view handles them first while
+		// it has focus, which is why this only runs on what came back unhandled.
+		switch ((e.Key, e.KeyModifiers))
+		{
+			case (Key.F12, KeyModifiers.None):
+				View?.GoToDefinitionCommand();
+				e.Handled = true;
+				return;
+			case (Key.F12, KeyModifiers.Shift):
+				View?.FindReferencesCommand();
+				e.Handled = true;
+				return;
+			case (Key.Left, KeyModifiers.Alt):
+				App.Workspace?.GoBackAsync().HandleExceptions();
+				e.Handled = true;
+				return;
+			case (Key.Right, KeyModifiers.Alt):
+				App.Workspace?.GoForwardAsync().HandleExceptions();
+				e.Handled = true;
+				return;
+		}
+		if (!e.KeyModifiers.HasFlag(KeyModifiers.Control))
 			return;
 		switch (e.Key)
 		{

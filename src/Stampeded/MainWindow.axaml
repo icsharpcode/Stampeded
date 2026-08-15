@@ -27,10 +27,12 @@
         <MenuItem Header="Next File  ( ] )" Click="OnNextFile" />
         <MenuItem Header="Previous File  ( [ )" Click="OnPrevFile" />
         <Separator />
-        <MenuItem Header="Toggle Viewed + Advance" InputGesture="V" Click="OnToggleViewed" />
+        <!-- Single letters belong to the diff view alone, so they stay in the headers rather
+             than becoming an InputGesture: "v" typed into a comment has to stay a "v". -->
+        <MenuItem Header="Toggle Viewed + Advance  ( v )" Click="OnToggleViewed" />
         <MenuItem Header="Overview / Back to File  ( o )" Click="OnToggleOverview" />
-        <MenuItem Header="Toggle Blame Margin" InputGesture="B" Click="OnToggleBlame" />
-        <MenuItem Header="Comment at Caret" InputGesture="C" Click="OnCommentAtCaret" />
+        <MenuItem Header="Toggle Blame Margin  ( b )" Click="OnToggleBlame" />
+        <MenuItem Header="Comment at Caret  ( c )" Click="OnCommentAtCaret" />
         <Separator />
         <!-- Reading scope. The gestures are written into the headers rather than set as
              InputGesture so the diff view stays their only handler. -->
