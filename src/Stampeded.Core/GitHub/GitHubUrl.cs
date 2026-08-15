@@ -35,6 +35,23 @@ public static partial class GitHubUrl
 		return true;
 	}
 
+	/// <summary>
+	/// True when any remote of a checkout names this repository, given the output of
+	/// `git config --get-regexp ^remote\..*\.url`. A checkout is the right one whether the
+	/// URL names what it calls origin or a fork it also tracks - which is how a link to
+	/// someone's fork of a repository already on disk should still open that checkout.
+	/// </summary>
+	public static bool AnyRemoteMatches(string gitConfigOutput, string owner, string repo)
+	{
+		foreach (string line in gitConfigOutput.Split('\n', StringSplitOptions.RemoveEmptyEntries))
+		{
+			int space = line.IndexOf(' ');
+			if (space > 0 && RemoteMatches(line[(space + 1)..].Trim(), owner, repo))
+				return true;
+		}
+		return false;
+	}
+
 	/// <summary>True when a git remote URL names the same owner/repo.</summary>
 	public static bool RemoteMatches(string remoteUrl, string owner, string repo)
 		=> TryParse(remoteUrl, out string remoteOwner, out string remoteRepo, out _)

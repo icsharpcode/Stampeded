@@ -79,9 +79,13 @@ public class App : Application
 		{
 			try
 			{
-				string remote = (await ExternalTool.RunAsync("git", ["-C", candidate, "remote", "get-url", "origin"], candidate)).Trim();
-				if (GitHubUrl.RemoteMatches(remote, owner, repo))
+				// Every remote, not just origin: a checkout that tracks both a repository and
+				// a fork of it is the right checkout for a URL naming either.
+				string remotes = await ExternalTool.RunAsync(
+					"git", ["-C", candidate, "config", "--get-regexp", @"^remote\..*\.url"], candidate);
+				if (GitHubUrl.AnyRemoteMatches(remotes, owner, repo))
 				{
+					CliLog.Write("action", $"{owner}/{repo} is checked out at {candidate}");
 					await OpenRepositoryAsync(candidate, prNumber);
 					return;
 				}

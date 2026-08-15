@@ -37,6 +37,20 @@ public class GitHubUrlTests
 	}
 
 	[Test]
+	public void MatchesAnyRemoteOfACheckout()
+	{
+		// What git config prints for a checkout that tracks a repository and a fork of it.
+		string config = "remote.origin.url git@github.com:icsharpcode/ILSpy.git\n"
+			+ "remote.sailro.url git@github.com:sailro/ILSpy.git";
+
+		Assert.That(GitHubUrl.AnyRemoteMatches(config, "icsharpcode", "ILSpy"), Is.True);
+		Assert.That(GitHubUrl.AnyRemoteMatches(config, "sailro", "ILSpy"), Is.True,
+			"a fork names the same checkout");
+		Assert.That(GitHubUrl.AnyRemoteMatches(config, "other", "ILSpy"), Is.False);
+		Assert.That(GitHubUrl.AnyRemoteMatches("", "icsharpcode", "ILSpy"), Is.False);
+	}
+
+	[Test]
 	public void RemoteMatchingIsCaseInsensitiveAndIgnoresGitSuffix()
 	{
 		Assert.That(GitHubUrl.RemoteMatches("git@github.com:ICSharpCode/ilspy.git", "icsharpcode", "ILSpy"), Is.True);
