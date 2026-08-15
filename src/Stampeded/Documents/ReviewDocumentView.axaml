@@ -1,0 +1,63 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:docs="using:Stampeded.Documents"
+             x:Class="Stampeded.Documents.ReviewDocumentView"
+             x:DataType="docs:ReviewDocumentViewModel">
+  <Grid RowDefinitions="Auto,*,Auto" Margin="8">
+    <DockPanel Grid.Row="0" Margin="0,0,0,6">
+      <Button DockPanel.Dock="Right" Content="Refresh" FontSize="11" Padding="8,2" Margin="6,0,0,0"
+              Click="OnRefresh" IsEnabled="{Binding State.CanComment}"
+              ToolTip.Tip="Re-read the posted comments from GitHub" />
+      <TextBlock Opacity="0.8" TextWrapping="Wrap" VerticalAlignment="Center" Text="{Binding State.Status}" />
+    </DockPanel>
+
+    <TextBlock Grid.Row="1" Opacity="0.7" TextWrapping="Wrap" IsVisible="{Binding State.IsEmpty}"
+               Text="No comments on this review yet. Press 'c' on a diff line to draft one; drafts stay local until this review is submitted." />
+
+    <ListBox Grid.Row="1" x:Name="CommentList" ItemsSource="{Binding Comments}"
+             IsVisible="{Binding !State.IsEmpty}" DoubleTapped="OnOpen"
+             ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+      <ListBox.ItemTemplate>
+        <DataTemplate x:DataType="docs:ReviewCommentRow">
+          <Border Margin="0,3" Padding="8,6" CornerRadius="3" BorderThickness="1" BorderBrush="#40808080">
+            <StackPanel Spacing="5">
+              <DockPanel>
+                <TextBlock DockPanel.Dock="Right" FontSize="11" Foreground="#D29922" Margin="8,0,0,0"
+                           Text="{Binding Who}" />
+                <TextBlock FontFamily="monospace" FontSize="11" Opacity="0.7"
+                           TextTrimming="CharacterEllipsis" Text="{Binding Header}" />
+              </DockPanel>
+              <!-- The lines the comment is about, so the verdict is decided here rather than
+                   after a jump into the file. Double-click still opens the file at the line. -->
+              <Border Background="#20808080" CornerRadius="2" Padding="6,4"
+                      IsVisible="{Binding Context, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+                <!-- Code does not wrap, and a comment is often about the end of a long line,
+                     so the quote scrolls instead of hiding what it was written about. -->
+                <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
+                  <SelectableTextBlock FontFamily="monospace" FontSize="11" Text="{Binding Context}" />
+                </ScrollViewer>
+              </Border>
+              <SelectableTextBlock Text="{Binding Body}" TextWrapping="Wrap" FontSize="13" />
+            </StackPanel>
+          </Border>
+        </DataTemplate>
+      </ListBox.ItemTemplate>
+    </ListBox>
+
+    <DockPanel Grid.Row="2" Margin="0,8,0,0">
+      <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="6" Margin="6,0,0,0"
+                  VerticalAlignment="Bottom">
+        <!-- GitHub rejects a verdict on your own pull request; a comment review is all it takes. -->
+        <Button Content="Approve" FontWeight="SemiBold" Click="OnApprove" IsEnabled="{Binding State.CanGiveVerdict}"
+                ToolTip.Tip="Approve, posting every draft below. GitHub does not allow this on your own pull request." />
+        <Button Content="Request Changes" Click="OnRequestChanges" IsEnabled="{Binding State.CanGiveVerdict}"
+                ToolTip.Tip="Decline, posting every draft below. GitHub does not allow this on your own pull request." />
+        <Button Content="Comment" Click="OnComment" IsEnabled="{Binding State.CanComment}"
+                ToolTip.Tip="Post the drafts without a verdict" />
+      </StackPanel>
+      <TextBox Text="{Binding State.Summary}" AcceptsReturn="True" MaxHeight="90" MinHeight="48"
+               IsEnabled="{Binding State.CanComment}"
+               PlaceholderText="Review summary (optional)..." />
+    </DockPanel>
+  </Grid>
+</UserControl>

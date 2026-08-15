@@ -1255,6 +1255,10 @@ public sealed class ReviewWorkspace(string repoPath)
 			Avalonia.Threading.DispatcherPriority.Loaded);
 	}
 
+	/// <summary>Every comment of this review under the lines it is about, with the verdict.</summary>
+	public void OpenReviewDocument()
+		=> ShowDocument("review", () => new Documents.ReviewDocumentViewModel(this) { Title = "Review" });
+
 	/// <summary>Two arbitrary texts side by side (e.g. base-vs-head test run outputs).</summary>
 	public void OpenSideBySideText(string id, string title, string leftText, string rightText)
 	{
@@ -2087,6 +2091,34 @@ public sealed class ReviewWorkspace(string repoPath)
 
 	/// <summary>Submits drafts that sit on commentable diff lines as a review; drafts that
 	/// don't (outdated or outside the diff) stay local. Returns (submitted, skipped).</summary>
+	/// <summary>
+	/// Submits a review after the two checks that can refuse one, and reports what happened in
+	/// a line meant for a reader. Both places that submit - the Comments pane and the review
+	/// view - go through this, so a verdict cannot be refused in one and slip through the other.
+	/// </summary>
+	public async Task<string> SubmitReviewCheckedAsync(string eventType, string body)
+	{
+		if (eventType == "APPROVE" && ApprovalGate?.Invoke() is { Ok: false } gate)
+			return $"Approval blocked by the review guide - incomplete: {gate.Detail}  (override in the Guide pane)";
+		// The buttons are disabled for these on your own pull request, but the check that
+		// disables them is asynchronous, so a submission can still get here first.
+		if (eventType is "APPROVE" or "REQUEST_CHANGES" && await IsOwnPullRequestAsync())
+		{
+			return $"GitHub does not accept {(eventType == "APPROVE" ? "an approval" : "a change request")} "
+				+ "on your own pull request. Submit it as a comment instead; the drafts are kept.";
+		}
+		try
+		{
+			var (submitted, skipped) = await SubmitReviewAsync(eventType, body);
+			return $"Review submitted ({eventType}): {submitted} comment(s) posted"
+				+ (skipped > 0 ? $", {skipped} kept local (outdated/off-diff)" : "") + ".";
+		}
+		catch (ToolFailedException ex)
+		{
+			return ex.Message;
+		}
+	}
+
 	public async Task<(int Submitted, int Skipped)> SubmitReviewAsync(string eventType, string body)
 	{
 		if (CurrentPr is not { } pr)

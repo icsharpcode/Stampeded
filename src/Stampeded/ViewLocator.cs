@@ -19,6 +19,7 @@ public class ViewLocator : IDataTemplate
 		[typeof(TextDocumentViewModel)] = () => new Documents.TextDocumentView(),
 		[typeof(StartDocumentViewModel)] = () => new Documents.StartDocumentView(),
 		[typeof(OverviewDocumentViewModel)] = () => new Documents.OverviewDocumentView(),
+		[typeof(ReviewDocumentViewModel)] = () => new Documents.ReviewDocumentView(),
 		[typeof(PrListPaneViewModel)] = () => new Panes.PrListPaneView(),
 		[typeof(ExplorerPaneViewModel)] = () => new Panes.ExplorerPaneView(),
 		[typeof(PrFilesPaneViewModel)] = () => new Panes.PrFilesPaneView(),

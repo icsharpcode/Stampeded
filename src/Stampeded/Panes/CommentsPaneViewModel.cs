@@ -157,33 +157,14 @@ public class CommentsPaneViewModel : Tool
 
 	public void Submit(string eventType)
 	{
-		if (eventType == "APPROVE" && workspace.ApprovalGate?.Invoke() is { Ok: false } gate)
-		{
-			State.Status = $"Approval blocked by the review guide - incomplete: {gate.Detail}  (override in the Guide pane)";
-			return;
-		}
-		SubmitAsync(eventType).HandleExceptions();
+		SubmitAsync().HandleExceptions();
 
-		async Task SubmitAsync(string type)
+		async Task SubmitAsync()
 		{
-			// The button is disabled for these on the user's own PR, but the check that
-			// disables it is asynchronous, so a submission can still get here first.
-			if (type is "APPROVE" or "REQUEST_CHANGES" && await workspace.IsOwnPullRequestAsync())
-			{
-				State.Status = $"GitHub does not accept {(type == "APPROVE" ? "an approval" : "a change request")} "
-					+ "on your own pull request. Submit it as a comment instead; the drafts are kept.";
-				return;
-			}
-			try
-			{
-				var (submitted, skipped) = await workspace.SubmitReviewAsync(type, State.ReviewBody.Trim());
+			string body = State.ReviewBody.Trim();
+			State.Status = await workspace.SubmitReviewCheckedAsync(eventType, body);
+			if (State.Status.StartsWith("Review submitted", StringComparison.Ordinal))
 				State.ReviewBody = "";
-				State.Status = $"Review submitted ({type}): {submitted} comment(s) posted{(skipped > 0 ? $", {skipped} kept local (outdated/off-diff)" : "")}.";
-			}
-			catch (ToolFailedException ex)
-			{
-				State.Status = ex.Message;
-			}
 		}
 	}
 }

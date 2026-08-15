@@ -42,6 +42,9 @@
           <Button Content="Fixtures in ILSpy" FontSize="10" Padding="6,1" Margin="0,0,4,3" Click="OnOpenFixtures"
                   IsVisible="{Binding HasFixtureTools}"
                   ToolTip.Tip="Open the compiled test-case assemblies this change affects in the ILSpy built from the review head (run the decompiler tests first)" />
+          <Button Content="Approve / Decline" FontSize="10" Padding="6,1" Margin="0,0,4,3" FontWeight="SemiBold"
+                  Click="OnOpenReview"
+                  ToolTip.Tip="Open the review: every comment under the lines it is about, and the verdict" />
           <Button Content="Review record" FontSize="10" Padding="6,1" Margin="0,0,4,3" Click="OnReviewRecord"
                   ToolTip.Tip="Write the close-out artifact: reviewed at which depth, verified how, skipped what" />
           <Button Content="Close review" FontSize="10" Padding="6,1" Margin="0,0,4,3" Click="OnCloseReview"
