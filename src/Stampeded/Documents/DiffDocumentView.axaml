@@ -39,7 +39,7 @@
           <TextBlock x:Name="CommentTargetText" FontSize="11" Opacity="0.7"
                      TextTrimming="CharacterEllipsis" />
           <TextBox x:Name="CommentBox" AcceptsReturn="True" MinHeight="56" MaxHeight="150"
-                   TextWrapping="Wrap" FontSize="13" KeyDown="OnCommentBoxKeyDown"
+                   TextWrapping="Wrap" FontSize="13"
                    TextChanged="OnCommentTextChanged" />
           <StackPanel Orientation="Horizontal" Spacing="6" HorizontalAlignment="Right">
             <TextBlock FontSize="10" Opacity="0.6" VerticalAlignment="Center"

@@ -68,6 +68,11 @@ public partial class DiffDocumentView : UserControl
 		contextGaps = new ContextGapView(Editor);
 		contextGaps.Changed += RefreshFoldings;
 		Editor.TextArea.AddHandler(KeyDownEvent, OnEditorKeyDown, RoutingStrategies.Tunnel);
+		// handledEventsToo, because a TextBox that accepts returns handles Enter itself -
+		// modifiers and all - before any handler declared on it runs. So Ctrl+Enter reached
+		// this box as a newline and nothing else; the save is what the reader was promised.
+		// The newline it inserted first goes away with the trim the save already does.
+		CommentBox.AddHandler(KeyDownEvent, OnCommentBoxKeyDown, RoutingStrategies.Bubble, handledEventsToo: true);
 		// Click-vs-drag discrimination (ported from ILSpy's DecompilerTextView): the press
 		// only records its position; the release compares against it, so press-and-drag
 		// over a link selects text instead of navigating away on release.

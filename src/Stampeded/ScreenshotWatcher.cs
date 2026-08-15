@@ -295,11 +295,14 @@ static class ScreenshotWatcher
 					// whatever holds focus is exactly what a window-level raise would miss.
 					var focused = window.FocusManager?.GetFocusedElement() as Avalonia.Interactivity.Interactive
 						?? window;
-					focused.RaiseEvent(new Avalonia.Input.KeyEventArgs {
+					var keyArgs = new Avalonia.Input.KeyEventArgs {
 						RoutedEvent = Avalonia.Input.InputElement.KeyDownEvent,
 						Key = gesture.Key,
 						KeyModifiers = gesture.KeyModifiers,
-					});
+					};
+					focused.RaiseEvent(keyArgs);
+					CliLog.Write("action", $"key {gesture.KeyModifiers}+{gesture.Key} -> "
+						+ $"{focused.GetType().Name}, handled={keyArgs.Handled}");
 				}
 				// select:<list-name>:<index> - drives a named ListBox's selection, so
 				// selection-dependent UI can be captured.
