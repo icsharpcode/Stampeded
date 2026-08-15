@@ -20,5 +20,6 @@
   </ItemGroup>
   <ItemGroup>
     <AvaloniaResource Include="Assets/**/*.svg" />
+    <EmbeddedResource Include="Editor/ILAsm-Mode.xshd" />
   </ItemGroup>
 </Project>

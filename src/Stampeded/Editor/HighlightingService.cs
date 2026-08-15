@@ -16,7 +16,10 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
+using System.Xml;
+
 using AvaloniaEdit.Highlighting;
+using AvaloniaEdit.Highlighting.Xshd;
 
 using Stampeded.Themes;
 
@@ -30,6 +33,20 @@ namespace Stampeded.Editor
 	/// </summary>
 	static class HighlightingService
 	{
+		static HighlightingService()
+		{
+			// AvaloniaEdit ships no IL grammar, and IL is what a decompiler's own diffs are
+			// full of. ILSpy's is vendored beside this file and registered once here, so a
+			// .il file reads like one wherever the editor opens it.
+			using var stream = typeof(HighlightingService).Assembly
+				.GetManifestResourceStream("Stampeded.Editor.ILAsm-Mode.xshd");
+			if (stream is null)
+				return;
+			using var reader = XmlReader.Create(stream);
+			HighlightingManager.Instance.RegisterHighlighting(
+				"ILAsm", [".il"], HighlightingLoader.Load(reader, HighlightingManager.Instance));
+		}
+
 		public static IHighlightingDefinition? GetByExtension(string fileExtension)
 		{
 			var definition = HighlightingManager.Instance.GetDefinitionByExtension(fileExtension);
