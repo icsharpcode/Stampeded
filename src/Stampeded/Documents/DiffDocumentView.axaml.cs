@@ -1007,8 +1007,34 @@ public partial class DiffDocumentView : UserControl
 		contextGaps?.Reveal(line);
 		Editor.TextArea.Caret.Line = line;
 		Editor.TextArea.Caret.Column = 1;
-		Editor.ScrollToLine(line);
 		Editor.TextArea.Focus();
+		ScrollToLineWhenLaidOut(line);
+	}
+
+	int? pendingScrollLine;
+
+	/// <summary>
+	/// Scrolls to a line once the editor is able to reach it. A document being opened has no
+	/// scroll viewer until its template is applied, and one that has just been given its text
+	/// has an extent measured from estimated line heights, so a scroll issued now does nothing
+	/// or stops short of the line. Repeating it after the next layout pass, when the lines
+	/// above have real heights, lands on it.
+	/// </summary>
+	void ScrollToLineWhenLaidOut(int line)
+	{
+		Editor.ScrollToLine(line);
+		pendingScrollLine = line;
+		Editor.LayoutUpdated -= ScrollAfterLayout;
+		Editor.LayoutUpdated += ScrollAfterLayout;
+	}
+
+	void ScrollAfterLayout(object? sender, EventArgs e)
+	{
+		Editor.LayoutUpdated -= ScrollAfterLayout;
+		if (pendingScrollLine is not { } line)
+			return;
+		pendingScrollLine = null;
+		Editor.ScrollToLine(line);
 	}
 
 	/// <summary>
