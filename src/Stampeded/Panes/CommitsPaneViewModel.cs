@@ -15,6 +15,11 @@ public sealed partial class CommitsState : ObservableObject
 {
 	[ObservableProperty]
 	string status = "Open a review to list its commits.";
+
+	/// <summary>The selected commit's whole message. The list can only show the subject,
+	/// and a commit whose reasoning lives in its body says nothing there.</summary>
+	[ObservableProperty]
+	string selectedMessage = "";
 }
 
 public sealed record CommitRow(CommitInfo Commit, bool IsUncommitted = false)
@@ -96,6 +101,7 @@ public class CommitsPaneViewModel : Tool
 
 	public void SelectCommit(CommitRow row)
 	{
+		State.SelectedMessage = row.IsUncommitted ? "" : row.Commit.Message;
 		if (row.IsUncommitted)
 			LoadUncommittedFilesAsync().HandleExceptions();
 		else

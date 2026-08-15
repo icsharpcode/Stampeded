@@ -188,7 +188,7 @@ public sealed class GitService(string repoPath)
 	public async Task<IReadOnlyList<BlameLine>> BlameAsync(string rev, string path, CancellationToken ct = default)
 		=> GitBlameParser.Parse(await RunAsync(ct, "blame", "--porcelain", rev, "--", path));
 
-	const string LogFormat = "--format=%H%x09%h%x09%an%x09%ad%x09%s";
+	const string LogFormat = "--format=%H%x09%h%x09%an%x09%ad%x09%s%n%b%x00";
 
 	public async Task<IReadOnlyList<CommitInfo>> LogAsync(
 		string? range, string? path, bool follow, int limit, CancellationToken ct = default)

@@ -6,25 +6,34 @@
   <DockPanel>
     <TextBlock DockPanel.Dock="Bottom" Margin="6,4" Opacity="0.7" TextWrapping="Wrap"
                Text="{Binding State.Status}" />
-    <Grid ColumnDefinitions="3*,4,2*">
-      <ListBox Grid.Column="0" x:Name="CommitList" ItemsSource="{Binding Commits}"
-               SelectionChanged="OnCommitSelected" FontFamily="monospace" FontSize="12">
-        <ListBox.ItemTemplate>
-          <DataTemplate x:DataType="panes:CommitRow">
-            <TextBlock Text="{Binding Display}" TextTrimming="CharacterEllipsis"
-                       FontWeight="{Binding Weight}" />
-          </DataTemplate>
-        </ListBox.ItemTemplate>
-      </ListBox>
-      <GridSplitter Grid.Column="1" />
-      <ListBox Grid.Column="2" x:Name="FilesList" ItemsSource="{Binding CommitFiles}"
-               DoubleTapped="OnFileOpened" FontFamily="monospace" FontSize="12">
-        <ListBox.ItemTemplate>
-          <DataTemplate x:DataType="panes:CommitFileRow">
-            <TextBlock Text="{Binding Display}" TextTrimming="CharacterEllipsis" />
-          </DataTemplate>
-        </ListBox.ItemTemplate>
-      </ListBox>
+    <!-- The message takes a share of the pane rather than a fixed height, so a long body
+         never leaves the lists with two visible rows; the splitter settles the rest. -->
+    <Grid RowDefinitions="3*,4,2*">
+      <Grid Grid.Row="0" ColumnDefinitions="3*,4,2*">
+        <ListBox Grid.Column="0" x:Name="CommitList" ItemsSource="{Binding Commits}"
+                 SelectionChanged="OnCommitSelected" FontFamily="monospace" FontSize="12">
+          <ListBox.ItemTemplate>
+            <DataTemplate x:DataType="panes:CommitRow">
+              <TextBlock Text="{Binding Display}" TextTrimming="CharacterEllipsis"
+                         FontWeight="{Binding Weight}" />
+            </DataTemplate>
+          </ListBox.ItemTemplate>
+        </ListBox>
+        <GridSplitter Grid.Column="1" />
+        <ListBox Grid.Column="2" x:Name="FilesList" ItemsSource="{Binding CommitFiles}"
+                 DoubleTapped="OnFileOpened" FontFamily="monospace" FontSize="12">
+          <ListBox.ItemTemplate>
+            <DataTemplate x:DataType="panes:CommitFileRow">
+              <TextBlock Text="{Binding Display}" TextTrimming="CharacterEllipsis" />
+            </DataTemplate>
+          </ListBox.ItemTemplate>
+        </ListBox>
+      </Grid>
+      <GridSplitter Grid.Row="1" ResizeDirection="Rows" HorizontalAlignment="Stretch" />
+      <ScrollViewer Grid.Row="2" Margin="6,2,6,0">
+        <SelectableTextBlock Text="{Binding State.SelectedMessage}" TextWrapping="Wrap"
+                             FontFamily="monospace" FontSize="12" />
+      </ScrollViewer>
     </Grid>
   </DockPanel>
 </UserControl>

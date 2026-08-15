@@ -154,7 +154,7 @@
                    ToolTip.Tip="Double-click opens the commit on GitHub">
             <ListBox.ItemTemplate>
               <DataTemplate x:DataType="docs:CommitLine">
-                <StackPanel Orientation="Horizontal">
+                <StackPanel Orientation="Horizontal" ToolTip.Tip="{Binding Message}">
                   <TextBlock Classes="mono" Opacity="0.7" Width="96" Margin="12,0,0,0"
                              Text="{Binding ShortSha}" FontWeight="{Binding Weight}" />
                   <TextBlock Classes="mono" Width="56" TextAlignment="Right" Foreground="#2EA043" Text="{Binding Added}" />

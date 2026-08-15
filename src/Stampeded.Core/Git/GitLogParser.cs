@@ -1,6 +1,10 @@
 namespace Stampeded.Core.Git;
 
-public sealed record CommitInfo(string Sha, string ShortSha, string Author, string Date, string Subject);
+public sealed record CommitInfo(string Sha, string ShortSha, string Author, string Date, string Subject, string Body = "")
+{
+	/// <summary>The message as it was written: subject, blank line, body.</summary>
+	public string Message => Body.Length == 0 ? Subject : $"{Subject}\n\n{Body}";
+}
 
 public sealed record BranchInfo(string Name, string Sha, string Date, string Subject);
 
@@ -8,17 +12,27 @@ public sealed record BranchInfo(string Name, string Sha, string Date, string Sub
 /// `git diff --name-status` output.</summary>
 public static class GitLogParser
 {
+	/// <summary>
+	/// Parses one record per commit, NUL-terminated: a header line of five tab-separated
+	/// fields, then the body until the NUL. The body is the only multi-line field, which is
+	/// why it needs a terminator no commit message can contain - and why it comes after the
+	/// newline rather than after a tab, so a subject with tabs in it stays whole.
+	/// </summary>
 	public static IReadOnlyList<CommitInfo> Parse(string output)
 	{
 		var commits = new List<CommitInfo>();
-		foreach (var line in output.ReplaceLineEndings("\n").Split('\n'))
+		foreach (var record in output.ReplaceLineEndings("\n").Split('\0'))
 		{
-			if (line.Length == 0)
+			var trimmed = record.TrimStart('\n');
+			if (trimmed.Length == 0)
 				continue;
-			var parts = line.Split('\t', 5);
+			int firstBreak = trimmed.IndexOf('\n');
+			string header = firstBreak < 0 ? trimmed : trimmed[..firstBreak];
+			string body = firstBreak < 0 ? "" : trimmed[(firstBreak + 1)..].TrimEnd('\n');
+			var parts = header.Split('\t', 5);
 			if (parts.Length < 5)
 				continue;
-			commits.Add(new CommitInfo(parts[0], parts[1], parts[2], parts[3], parts[4]));
+			commits.Add(new CommitInfo(parts[0], parts[1], parts[2], parts[3], parts[4], body));
 		}
 		return commits;
 	}

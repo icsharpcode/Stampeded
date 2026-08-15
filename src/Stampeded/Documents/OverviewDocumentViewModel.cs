@@ -17,6 +17,10 @@ public sealed record CommitLine(string ShortSha, string Added, string Removed, s
 	/// <summary>The pending working-tree row rather than a commit.</summary>
 	public bool IsUncommitted { get; init; }
 
+	/// <summary>The whole commit message, for the row's tooltip; the row itself has one
+	/// line and this project keeps its reasoning in the body.</summary>
+	public string? Message { get; init; }
+
 	public FontWeight Weight => IsUncommitted ? FontWeight.SemiBold : FontWeight.Normal;
 }
 
@@ -266,7 +270,9 @@ public class OverviewDocumentViewModel : Document
 				// The one being read is marked, so the series says where in it you are.
 				bool inScope = workspace.CommitScope?.Sha == commit.Sha;
 				CommitLines.Add(new CommitLine(commit.ShortSha, $"+{added}", $"-{removed}",
-					inScope ? $"> {commit.Subject}" : commit.Subject));
+					inScope ? $"> {commit.Subject}" : commit.Subject) {
+					Message = commit.Message,
+				});
 			}
 			if (commits.Count > 8)
 				CommitLines.Add(new CommitLine("", "", "", $"... and {commits.Count - 8} more (Commits pane)"));
