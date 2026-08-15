@@ -1369,11 +1369,22 @@ public sealed class ReviewWorkspace(string repoPath)
 	static bool IsReady(RoslynWorkspaceService? sem)
 		=> sem is { State: SemanticState.Ready or SemanticState.SyntaxOnly };
 
+	/// <summary>Whether head-side semantics have finished loading. A review opens as soon as
+	/// its diff is read, so the commands that need a compilation are offered only once there
+	/// is one: asked earlier they cannot answer "not yet", only "no definition found", which
+	/// reads as a fact about the code.</summary>
+	public bool SemanticsReady => IsReady(Semantics);
+
 	async Task<Microsoft.CodeAnalysis.ISymbol?> SymbolAtAsync(bool oldSide, string relPath, int line, int column)
 	{
 		var sem = SemanticsFor(oldSide);
 		if (!IsReady(sem))
+		{
+			StatusMessage?.Invoke(oldSide
+				? "Base-side semantics are still loading; navigation from removed lines is not available yet."
+				: "Semantics are still loading; navigation is not available yet.");
 			return null;
+		}
 		int? position = await sem!.GetPositionAsync(relPath, line, column, CancellationToken.None);
 		if (position is null)
 			return null;
@@ -1566,7 +1577,12 @@ public sealed class ReviewWorkspace(string repoPath)
 		{
 			string? root = oldSide ? BaseWorktreePath : WorktreePath;
 			if (root is null)
+			{
+				// The worktrees are checked out by the semantic load, which a review no longer
+				// waits for; a file outside the diff has nowhere to be read from until then.
+				StatusMessage?.Invoke($"The {(oldSide ? "base" : "head")} worktree is still being prepared; {relPath} cannot be opened yet.");
 				return;
+			}
 			string absolute = Path.Combine(root, relPath);
 			if (!File.Exists(absolute))
 				return;

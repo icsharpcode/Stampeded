@@ -752,6 +752,17 @@ public partial class DiffDocumentView : UserControl
 	public void FindReferencesCommand() => ShowReferencesAtCaret();
 	public void HighlightOccurrencesCommand() => HighlightOccurrencesAtCaretAsync().HandleExceptions();
 
+	/// <summary>The semantic commands are offered only once there is a compilation to ask;
+	/// before that they would answer as if the code had no definitions or callers.</summary>
+	void OnContextMenuOpening(object? sender, System.ComponentModel.CancelEventArgs e)
+	{
+		bool ready = App.Workspace is { SemanticsReady: true };
+		CtxGoToDefinition.IsEnabled = ready;
+		CtxFindReferences.IsEnabled = ready;
+		CtxHighlightOccurrences.IsEnabled = ready;
+		CtxCallGraph.IsEnabled = ready;
+	}
+
 	void OnCtxGoToDefinition(object? s, RoutedEventArgs e) => GoToDefinitionCommand();
 	void OnCtxFindReferences(object? s, RoutedEventArgs e) => FindReferencesCommand();
 	/// <summary>Places the caret and highlights occurrences there, for driving checks.</summary>

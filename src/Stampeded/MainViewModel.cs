@@ -19,6 +19,11 @@ public partial class MainViewModel : ObservableObject
 	[ObservableProperty]
 	string windowTitle = "Stampeded!";
 
+	/// <summary>Whether the commands that need a compilation can be offered yet; a review is
+	/// open and readable long before its semantics have loaded.</summary>
+	[ObservableProperty]
+	bool semanticsReady;
+
 	[ObservableProperty]
 	Documents.StartDocumentViewModel? startPage;
 
@@ -57,6 +62,8 @@ public partial class MainViewModel : ObservableObject
 		workspace.OpenStart();
 		StartPage = workspace.StartPage;
 		workspace.ReviewChanged += UpdateTitle;
+		workspace.SemanticsChanged += () =>
+			Avalonia.Threading.Dispatcher.UIThread.Post(() => SemanticsReady = workspace.SemanticsReady);
 		UpdateTitle();
 	}
 

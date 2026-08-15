@@ -614,10 +614,11 @@ public class StartDocumentViewModel : Document
 			: ("loading...", false));
 		Set(7, (workspace.GeneratedSourcesStatus, workspace.GeneratedSourcesDone));
 
-		// Load-bearing: both semantic sides terminal, CI and churn in; the map and
-		// comments trail behind harmlessly (and may legitimately stay empty).
-		bool ready = reviewOpen && PrepareItems[1].Done && PrepareItems[2].Done
-			&& PrepareItems[4].Done && PrepareItems[5].Done;
+		// The diff is the only thing a review cannot start without: it is what the reader
+		// reads. Semantics, the change map, CI, churn and comments all arrive into a window
+		// that is already being used, and the commands that need them stay disabled until
+		// they do - which beats a minute of watching a checklist fill in.
+		bool ready = reviewOpen;
 		if (ready && openOverviewWhenReady && State.IsPreparing)
 		{
 			openOverviewWhenReady = false;

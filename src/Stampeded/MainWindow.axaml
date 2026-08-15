@@ -85,9 +85,14 @@
         <MenuItem Header="Prune Worktree Cache" Click="OnPruneWorktrees" />
       </MenuItem>
       <MenuItem Header="_Navigate">
-        <MenuItem Header="Go to Definition" InputGesture="F12" Click="OnGoToDefinition" />
-        <MenuItem Header="Find References" InputGesture="Shift+F12" Click="OnFindReferences" />
-        <MenuItem Header="Highlight Occurrences (click; Esc clears)" Click="OnHighlightOccurrences" />
+        <!-- Disabled until semantics are loaded: these are the commands that need a
+             compilation, and the window opens as soon as the diff is read. -->
+        <MenuItem Header="Go to Definition" InputGesture="F12" Click="OnGoToDefinition"
+                  IsEnabled="{Binding SemanticsReady}" />
+        <MenuItem Header="Find References" InputGesture="Shift+F12" Click="OnFindReferences"
+                  IsEnabled="{Binding SemanticsReady}" />
+        <MenuItem Header="Highlight Occurrences (click; Esc clears)" Click="OnHighlightOccurrences"
+                  IsEnabled="{Binding SemanticsReady}" />
         <Separator />
         <MenuItem Header="Back" InputGesture="Alt+Left" Click="OnBack" />
         <MenuItem Header="Forward" InputGesture="Alt+Right" Click="OnForward" />
