@@ -41,6 +41,13 @@ public partial class ExplorerPaneViewModel : Tool
 	[ObservableProperty]
 	string changedFilesHeader = "CHANGED FILES";
 
+	/// <summary>What is being read, in two or three words. A scope changes what every list and
+	/// every diff in the window means, and a reader who has forgotten which one they are in
+	/// reads the wrong thing without noticing - so it is named where the files are, not only
+	/// in the sentence describing it.</summary>
+	[ObservableProperty]
+	string scopeBadge = "";
+
 	[ObservableProperty]
 	string commitScopeLine = "Whole change";
 
@@ -75,6 +82,10 @@ public partial class ExplorerPaneViewModel : Tool
 		InCommitScope = workspace.CommitScope is not null;
 		InScope = workspace.InScope;
 		CanEnterSinceLastPass = workspace.CanEnterSinceLastPassScope;
+		ScopeBadge = workspace.CommitScope is not null
+			? $"COMMIT {workspace.CommitScopeIndex + 1} OF {workspace.ScopeCommits.Count}"
+			: workspace.InSinceLastPassScope ? "SINCE YOUR LAST PASS"
+			: "";
 		CommitScopeLine = workspace.CommitScope is { } commit
 			? $"Commit {workspace.CommitScopeIndex + 1} of {workspace.ScopeCommits.Count}: {commit.Subject}"
 			: workspace.InSinceLastPassScope ? workspace.ScopeLine

@@ -4,6 +4,12 @@
              x:Class="Stampeded.Panes.ExplorerPaneView"
              x:DataType="panes:ExplorerPaneViewModel">
   <UserControl.Styles>
+    <!-- A scope is not a detail of the header, it is what everything below the header means,
+         so it is worth a colour of its own rather than a sentence to read. -->
+    <Style Selector="Border.scoped">
+      <Setter Property="Background" Value="#1A3794FF" />
+      <Setter Property="BorderBrush" Value="#3794FF" />
+    </Style>
     <Style Selector="TextBlock.section">
       <Setter Property="FontSize" Value="11" />
       <Setter Property="FontWeight" Value="SemiBold" />
@@ -18,8 +24,14 @@
     <!-- While stepping, the commit is what the list below contains, so the stepper sits
          with it rather than somewhere the reader has to go back to. -->
     <Border Grid.Row="0" Padding="6,3" BorderThickness="0,0,0,1" BorderBrush="#803794FF"
+            Classes.scoped="{Binding InScope}"
             IsVisible="{Binding HasReview}">
       <StackPanel Spacing="3">
+        <Border IsVisible="{Binding InScope}" Background="#3794FF" CornerRadius="2"
+                Padding="5,1" HorizontalAlignment="Left">
+          <TextBlock Text="{Binding ScopeBadge}" FontSize="9" FontWeight="Bold"
+                     Foreground="White" />
+        </Border>
         <TextBlock FontSize="11" FontWeight="SemiBold" TextWrapping="Wrap"
                    IsVisible="{Binding !InCommitScope}"
                    Text="{Binding CommitScopeLine}" />
@@ -54,7 +66,7 @@
                   IsVisible="{Binding InCommitScope}"
                   ToolTip.Tip="Next commit (Ctrl+] in a diff)" />
           <Button Content="Whole change" FontSize="10" Padding="6,1" Margin="0,0,4,3" Click="OnExitCommitScope"
-                  IsVisible="{Binding InScope}" />
+                  FontWeight="SemiBold" IsVisible="{Binding InScope}" />
           <!-- Verification and close-out, the commands used repeatedly during a pass. -->
           <Button Content="VS Code" FontSize="10" Padding="6,1" Margin="0,0,4,3" Click="OnOpenVsCode"
                   ToolTip.Tip="Open the head worktree in VS Code for building and debugging this revision" />
