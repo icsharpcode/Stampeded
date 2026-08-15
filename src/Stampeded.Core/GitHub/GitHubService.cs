@@ -120,6 +120,14 @@ public sealed record PostedComment(
 	[property: JsonPropertyName("diff_hunk")] string? DiffHunk,
 	[property: JsonPropertyName("html_url")] string? HtmlUrl = null);
 
+/// <summary>One submitted review of a pull request: who, what they said of it, and the head
+/// they said it of - which is not always the one on screen.</summary>
+public sealed record PrReview(
+	PostedUser? User,
+	string? State,
+	[property: JsonPropertyName("commit_id")] string? CommitId,
+	[property: JsonPropertyName("submitted_at")] DateTimeOffset? SubmittedAt);
+
 /// <summary>Resolution state of one GitHub review thread and the REST ids of its comments.</summary>
 public sealed record ThreadResolution(string ThreadId, bool IsResolved, IReadOnlyList<long> CommentIds);
 
@@ -137,6 +145,7 @@ public sealed record ReplyBody(string Body);
 [JsonSerializable(typeof(MergeState))]
 [JsonSerializable(typeof(MergeMethods))]
 [JsonSerializable(typeof(IReadOnlyList<PostedComment>))]
+[JsonSerializable(typeof(IReadOnlyList<PrReview>))]
 [JsonSerializable(typeof(ReviewSubmission))]
 [JsonSerializable(typeof(ReplyBody))]
 partial class GitHubJsonContext : JsonSerializerContext
@@ -230,6 +239,12 @@ public sealed class GitHubService(string repoPath)
 	public Task<IReadOnlyList<PostedComment>> GetReviewCommentsAsync(int number, CancellationToken ct = default)
 		=> JsonAsync<IReadOnlyList<PostedComment>>(ct,
 			"api", $"repos/{{owner}}/{{repo}}/pulls/{number}/comments", "--paginate");
+
+	/// <summary>Every review submitted on the pull request, oldest first - several per person
+	/// when they came back to it.</summary>
+	public Task<IReadOnlyList<PrReview>> GetReviewsAsync(int number, CancellationToken ct = default)
+		=> JsonAsync<IReadOnlyList<PrReview>>(ct,
+			"api", $"repos/{{owner}}/{{repo}}/pulls/{number}/reviews", "--paginate");
 
 	/// <summary>Review-thread resolution states via GraphQL (REST does not expose them).</summary>
 	public async Task<IReadOnlyList<ThreadResolution>> GetThreadResolutionsAsync(int number, CancellationToken ct = default)

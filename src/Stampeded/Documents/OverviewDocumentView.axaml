@@ -123,6 +123,28 @@
           </ItemsControl.ItemTemplate>
         </ItemsControl>
       </DockPanel>
+      <!-- Who has already read this, and what they said of it - which is what a reader
+           arriving at a pull request wants before deciding what is left to do. -->
+      <DockPanel Margin="0,2,0,0" IsVisible="{Binding State.ReviewersHeader, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+        <TextBlock DockPanel.Dock="Left" Classes="statusline" Opacity="0.9" VerticalAlignment="Center"
+                   Text="Reviews:" />
+        <TextBlock DockPanel.Dock="Left" Classes="statusline" Opacity="0.7" VerticalAlignment="Center"
+                   Margin="6,0,0,0" Text="{Binding State.ReviewersHeader}" />
+        <ItemsControl ItemsSource="{Binding Reviewers}" Margin="10,0,0,0">
+          <ItemsControl.ItemsPanel>
+            <ItemsPanelTemplate>
+              <WrapPanel Orientation="Horizontal" />
+            </ItemsPanelTemplate>
+          </ItemsControl.ItemsPanel>
+          <ItemsControl.ItemTemplate>
+            <DataTemplate x:DataType="docs:ReviewerLine">
+              <TextBlock Classes="mono" Margin="0,0,10,0" VerticalAlignment="Center"
+                         Foreground="{Binding Foreground}" Text="{Binding Text}"
+                         ToolTip.Tip="A verdict shown with a commit was given on an earlier head" />
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+      </DockPanel>
       <TextBlock Classes="statusline" Opacity="0.95" Margin="0,2,0,0" Text="{Binding State.CoverageLine}" />
       <TextBlock Classes="statusline" Opacity="0.95" Text="{Binding State.TestsLine}" />
       <DockPanel Margin="0,2,0,0" IsVisible="{Binding LinkedIssues.Count}">

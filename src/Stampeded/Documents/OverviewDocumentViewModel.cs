@@ -31,6 +31,9 @@ public sealed record MemberRow(IBrush Foreground, string Text, ReviewWorkspace.C
 
 public sealed record CheckLine(string Marker, string Name, string? Link);
 
+/// <summary>One reviewer's standing, coloured by it.</summary>
+public sealed record ReviewerLine(IBrush Foreground, string Text);
+
 public sealed record IssueRef(string Display, int Number);
 
 public sealed partial class OverviewState : ObservableObject
@@ -73,6 +76,9 @@ public sealed partial class OverviewState : ObservableObject
 
 	[ObservableProperty]
 	string testsLine = "Tests: not run in this session (Tests pane).";
+
+	[ObservableProperty]
+	string reviewersHeader = "";
 
 	[ObservableProperty]
 	string workingTreeLine = "";
@@ -128,6 +134,7 @@ public class OverviewDocumentViewModel : Document
 	public ObservableCollection<MemberRow> ImplMembers { get; } = [];
 	public ObservableCollection<MemberRow> TestGroups { get; } = [];
 	public ObservableCollection<CheckLine> CheckLines { get; } = [];
+	public ObservableCollection<ReviewerLine> Reviewers { get; } = [];
 
 	public OverviewDocumentViewModel(ReviewWorkspace workspace)
 	{
@@ -139,6 +146,7 @@ public class OverviewDocumentViewModel : Document
 		workspace.ChurnChanged += () => Dispatcher.UIThread.Post(RebuildFiles);
 		workspace.ChangeMapChanged += () => Dispatcher.UIThread.Post(OnChangeMap);
 		workspace.ChecksLoaded += () => Dispatcher.UIThread.Post(RebuildChecks);
+		workspace.ReviewersChanged += () => Dispatcher.UIThread.Post(RebuildReviewers);
 		workspace.CoverageChanged += () => Dispatcher.UIThread.Post(RebuildCoverage);
 		workspace.TestResultsChanged += () => Dispatcher.UIThread.Post(RebuildTests);
 		workspace.StatusMessage += message => Dispatcher.UIThread.Post(() => State.ToolStatus = message);
@@ -179,6 +187,7 @@ public class OverviewDocumentViewModel : Document
 		RebuildLinkedIssues();
 		RebuildFiles();
 		RebuildChecks();
+		RebuildReviewers();
 		RebuildCoverage();
 		RebuildTests();
 		OnChangeMap();
@@ -385,6 +394,44 @@ public class OverviewDocumentViewModel : Document
 				: $"CI: all {checks.Count} check(s) passing or skipped.";
 		foreach (var check in checks.Where(c => c.Bucket == "fail").Take(10))
 			CheckLines.Add(new CheckLine("FAIL", check.Name, check.Link));
+	}
+
+	static readonly IBrush ApprovedBrush = new SolidColorBrush(Color.Parse("#2EA043"));
+	static readonly IBrush ChangesBrush = new SolidColorBrush(Color.Parse("#F85149"));
+	static readonly IBrush StaleBrush = new SolidColorBrush(Color.Parse("#D29922"));
+
+	/// <summary>
+	/// Who has approved and who has asked for changes. A verdict given on an earlier head is
+	/// marked as one: it says what somebody thought of code that has since been rewritten,
+	/// which is not the same as their opinion of what is on screen.
+	/// </summary>
+	void RebuildReviewers()
+	{
+		Reviewers.Clear();
+		if (workspace.CurrentPr is null)
+		{
+			State.ReviewersHeader = "";
+			return;
+		}
+		if (workspace.Reviewers is not { } verdicts)
+		{
+			State.ReviewersHeader = "could not be read";
+			return;
+		}
+		string head = workspace.ReviewRange?.Head ?? workspace.HeadSha ?? "";
+		foreach (var verdict in verdicts)
+		{
+			bool stale = verdict.CommitId is { Length: > 0 } commit && commit != head;
+			string said = verdict.Approved ? "approved" : "requested changes";
+			Reviewers.Add(new ReviewerLine(
+				stale ? StaleBrush : verdict.Approved ? ApprovedBrush : ChangesBrush,
+				stale ? $"{verdict.Author} {said} at {verdict.CommitId![..9]}" : $"{verdict.Author} {said}"));
+		}
+		int approved = verdicts.Count(v => v.Approved);
+		int changes = verdicts.Count - approved;
+		State.ReviewersHeader = verdicts.Count == 0
+			? "nobody has reviewed this yet"
+			: $"{approved} approval(s), {changes} asking for changes";
 	}
 
 	void RebuildTests()

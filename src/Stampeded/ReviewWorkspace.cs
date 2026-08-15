@@ -63,6 +63,28 @@ public sealed class ReviewWorkspace(string repoPath)
 		ChecksLoaded?.Invoke();
 	}
 
+	/// <summary>Where each reviewer stands, or null before the answer has arrived (and for a
+	/// local review, which has no reviewers).</summary>
+	public IReadOnlyList<ReviewVerdict>? Reviewers { get; private set; }
+
+	public event Action? ReviewersChanged;
+
+	async Task LoadReviewersAsync(int number, CancellationToken ct)
+	{
+		try
+		{
+			Reviewers = ReviewVerdicts.Latest(await GitHub.GetReviewsAsync(number, ct));
+		}
+		catch (ToolFailedException ex)
+		{
+			// Who has approved is worth knowing, and not knowing it is worth saying: an empty
+			// list would read as nobody having reviewed.
+			CliLog.Write("gh", $"reviews unavailable: {ex.Message}");
+			Reviewers = null;
+		}
+		ReviewersChanged?.Invoke();
+	}
+
 	/// <summary>Set by the guide pane: whether approval should be allowed right now.</summary>
 	public Func<(bool Ok, string Detail)>? ApprovalGate { get; set; }
 
@@ -223,6 +245,7 @@ public sealed class ReviewWorkspace(string repoPath)
 		ct.ThrowIfCancellationRequested();
 
 		ResetScope();
+		Reviewers = null;
 		CurrentPr = null;
 		LocalRange = (baseRef, headRef);
 		BaseSha = baseSha;
@@ -270,6 +293,7 @@ public sealed class ReviewWorkspace(string repoPath)
 		ct.ThrowIfCancellationRequested();
 
 		ResetScope();
+		Reviewers = null;
 		CurrentPr = detail;
 		LocalRange = null;
 		BaseSha = baseSha;
@@ -292,6 +316,7 @@ public sealed class ReviewWorkspace(string repoPath)
 		LoadGeneratedSourcesAsync(ct).HandleExceptions();
 		ReattachDraftsAsync(ct).HandleExceptions();
 		LoadPostedCommentsAsync(number, ct).HandleExceptions();
+		LoadReviewersAsync(number, ct).HandleExceptions();
 	}
 
 	async Task LoadIssueUrlPrefixAsync(CancellationToken ct)
