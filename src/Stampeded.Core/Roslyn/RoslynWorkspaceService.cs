@@ -37,6 +37,7 @@ public sealed record ChangedMember(string Display, string Kind, int FirstLine);
 public sealed class RoslynWorkspaceService : IDisposable
 {
 	Workspace? workspace;
+	bool ownsWorkspace;
 	Solution? solution;
 	Solution? loadedSolution;
 	Dictionary<string, DocumentId>? documentsByPath;
@@ -60,6 +61,73 @@ public sealed class RoslynWorkspaceService : IDisposable
 	void Log(string message)
 	{
 		LoadLog += message + "\n";
+	}
+
+	/// <summary>
+	/// A view of another workspace's solution with some files replaced, added or taken away:
+	/// what the same projects looked like at another revision. The base side of a review is
+	/// this - the head's compilation with the changed files reading as they did before - which
+	/// is a solution the object database can supply, rather than a second checkout, a second
+	/// restore and a second design-time build of a tree that differs in a handful of files.
+	///
+	/// It shares the head's workspace and never disposes it: solutions are immutable, so the
+	/// two views cannot disturb each other.
+	/// </summary>
+	/// <param name="head">The loaded workspace to derive from.</param>
+	/// <param name="replaced">Repo-relative path to its text at the other revision.</param>
+	/// <param name="removed">Repo-relative paths the other revision does not have.</param>
+	/// <param name="added">Repo-relative path to text, for what only the other revision has.</param>
+	public void LoadFrom(
+		RoslynWorkspaceService head,
+		IReadOnlyDictionary<string, string> replaced,
+		IReadOnlyCollection<string> removed,
+		IReadOnlyDictionary<string, string> added)
+	{
+		worktreePath = head.worktreePath;
+		// The same workspace object, not owned: symbol lookups are asked in terms of one, and
+		// a view with none of its own would answer every question with silence.
+		workspace = head.workspace;
+		documentsByPath = head.documentsByPath is null
+			? null
+			: new Dictionary<string, DocumentId>(head.documentsByPath, StringComparer.OrdinalIgnoreCase);
+		if (head.loadedSolution is not { } start || documentsByPath is null)
+		{
+			SetState(head.State, head.StateDetail);
+			return;
+		}
+		var derived = start;
+		foreach (var (relativePath, text) in replaced)
+		{
+			if (documentsByPath.TryGetValue(ToAbsolutePath(relativePath), out var id))
+				derived = derived.WithDocumentText(id, SourceText.From(text));
+		}
+		foreach (var relativePath in removed)
+		{
+			if (documentsByPath.Remove(ToAbsolutePath(relativePath), out var id))
+				derived = derived.RemoveDocument(id);
+		}
+		foreach (var (relativePath, text) in added)
+		{
+			string absolute = ToAbsolutePath(relativePath);
+			// Into the project whose own directory reaches furthest down towards the file:
+			// a file no longer in the tree has no project of its own to be asked for, and its
+			// nearest neighbour is the one that compiled it when it was there.
+			var project = derived.Projects
+				.Where(p => p.FilePath is not null
+					&& absolute.StartsWith(Path.GetDirectoryName(p.FilePath) + Path.DirectorySeparatorChar,
+						StringComparison.OrdinalIgnoreCase))
+				.OrderByDescending(p => p.FilePath!.Length)
+				.FirstOrDefault();
+			if (project is null)
+				continue;
+			var id = DocumentId.CreateNewId(project.Id);
+			derived = derived.AddDocument(id, Path.GetFileName(relativePath), SourceText.From(text), filePath: absolute);
+			documentsByPath[absolute] = id;
+		}
+		// Both, so an overlay applied later (reading one commit at a time) starts from this
+		// revision rather than the head's.
+		solution = loadedSolution = derived;
+		SetState(head.State, head.StateDetail);
 	}
 
 	public async Task LoadAsync(string worktree, CancellationToken ct)
@@ -100,6 +168,7 @@ public sealed class RoslynWorkspaceService : IDisposable
 				if (loaded.Projects.Any(p => p.Documents.Any()))
 				{
 					workspace = msbuild;
+					ownsWorkspace = true;
 					solution = loadedSolution = loaded;
 					IndexDocuments();
 					SetState(SemanticState.Ready, Path.GetFileName(sln));
@@ -260,6 +329,7 @@ public sealed class RoslynWorkspaceService : IDisposable
 			project = project.AddDocument(Path.GetFileName(file), SourceText.From(File.ReadAllText(file)), filePath: file).Project;
 		}
 		workspace = adhoc;
+		ownsWorkspace = true;
 		solution = loadedSolution = project.Solution;
 		IndexDocuments();
 		SetState(SemanticState.SyntaxOnly);
@@ -888,7 +958,10 @@ public sealed class RoslynWorkspaceService : IDisposable
 
 	public void Dispose()
 	{
-		workspace?.Dispose();
+		// Only what this instance opened: a derived view shares the workspace it came from,
+		// and disposing that would take the head side down with the base side.
+		if (ownsWorkspace)
+			workspace?.Dispose();
 		workspace = null;
 		solution = loadedSolution = null;
 		SetState(SemanticState.NotLoaded);

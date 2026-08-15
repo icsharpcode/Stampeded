@@ -167,15 +167,19 @@ public class TestsPaneViewModel : Tool
 	/// <summary>Runs the same test command at base and head and compares VERDICTS: did this
 	/// change introduce a failure, or was it already broken at base? Sequential runs (two
 	/// concurrent builds would fight over CPU and the NuGet cache).</summary>
-	public void RunAB()
+	public void RunAB() => RunABAsync().HandleExceptions();
+
+	async Task RunABAsync()
 	{
 		if (State.Running)
 		{
 			runCts?.Cancel();
 			return;
 		}
+		// The base side is checked out on demand: reading a diff needs no such thing, running
+		// its tests does.
 		if (workspace.WorktreePath is not { } head || !Directory.Exists(head)
-			|| workspace.BaseWorktreePath is not { } baseWt || !Directory.Exists(baseWt))
+			|| await workspace.EnsureBaseWorktreeAsync() is not { } baseWt || !Directory.Exists(baseWt))
 		{
 			State.Status = "A/B needs both worktrees - open a pull request and let semantics load first.";
 			return;

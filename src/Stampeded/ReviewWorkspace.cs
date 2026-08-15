@@ -28,6 +28,10 @@ public sealed class ReviewWorkspace(string repoPath)
 	public GitService Git { get; } = new(repoPath);
 	public GitHubService GitHub { get; } = new(repoPath);
 	public WorktreeManager Worktrees { get; } = new(repoPath);
+
+	/// <summary>File content at any revision, without a checkout: what the base side of a
+	/// review is read from.</summary>
+	public GitBlobReader Blobs { get; } = new(repoPath);
 	public ReviewStateStore Store { get; } = new();
 	public BusyTracker Busy { get; } = new();
 
@@ -340,17 +344,67 @@ public sealed class ReviewWorkspace(string repoPath)
 			WorktreePath = await Worktrees.GetOrCreateAsync(headSha, ct);
 			await Task.Run(() => semantics.LoadAsync(WorktreePath, ct), ct);
 		}
-		// The base-side workspace powers navigation FROM removed lines; load it after the
-		// head side so the common case is interactive first.
+		// The base-side workspace powers navigation FROM removed lines. It is the head's own
+		// compilation with the review's files reading as they did before, taken from the
+		// object database - the two revisions differ in exactly those files, so a second
+		// checkout, restore and design-time build would spend minutes to arrive at the same
+		// answers.
 		var baseSemantics = BaseSemantics = new RoslynWorkspaceService();
 		baseSemantics.StateChanged += () => SemanticsChanged?.Invoke();
-		using (Busy.Begin("Loading semantics (base)"))
+		using (Busy.Begin("Reading the base side"))
 		{
-			BaseWorktreePath = await Worktrees.GetOrCreateAsync(baseSha, ct);
-			await Task.Run(() => baseSemantics.LoadAsync(BaseWorktreePath, ct), ct);
+			var (replaced, removed, added) = await BaseSideTextsAsync(baseSha, ct);
+			baseSemantics.LoadFrom(semantics, replaced, removed, added);
 		}
 		using (Busy.Begin("Computing change map"))
 			await ComputeChangeMapAsync();
+	}
+
+	/// <summary>
+	/// What the review's files look like at the base, sorted into what the base-side solution
+	/// has to do with each: a modified file reads differently, a file the change adds is not
+	/// there at all, and one it deletes is there and gone from the head.
+	/// </summary>
+	async Task<(Dictionary<string, string> Replaced, List<string> Removed, Dictionary<string, string> Added)>
+		BaseSideTextsAsync(string baseSha, CancellationToken ct)
+	{
+		var replaced = new Dictionary<string, string>(StringComparer.Ordinal);
+		var removed = new List<string>();
+		var added = new Dictionary<string, string>(StringComparer.Ordinal);
+		foreach (var file in Files.Where(f => !f.IsBinary && f.Generated is null))
+		{
+			if (file.Kind != FileChangeKind.Added)
+			{
+				string? text = await Blobs.ReadAsync(baseSha, file.OldPath, ct);
+				if (text is not null)
+				{
+					if (file.Kind == FileChangeKind.Deleted || file.OldPath != file.Path)
+						added[file.OldPath] = text;
+					else
+						replaced[file.OldPath] = text;
+				}
+			}
+			if (file.Kind is FileChangeKind.Added or FileChangeKind.Renamed)
+				removed.Add(file.Path);
+		}
+		return (replaced, removed, added);
+	}
+
+	/// <summary>
+	/// A checkout of the base revision, made when something asks for one. Building a diff and
+	/// navigating it needs no such thing - file content comes from the object database - but
+	/// running the tests of both sides, building what their generators emit, or opening the
+	/// base in an editor all need a real directory.
+	/// </summary>
+	public async Task<string?> EnsureBaseWorktreeAsync(CancellationToken ct = default)
+	{
+		if (BaseWorktreePath is { } existing)
+			return existing;
+		if (BaseSha is not { } baseSha)
+			return null;
+		using var busy = Busy.Begin("Checking out the base");
+		BaseWorktreePath = await Worktrees.GetOrCreateAsync(baseSha, ct);
+		return BaseWorktreePath;
 	}
 
 	void IndexAddedLines(IReadOnlyList<FileDiff> files)
@@ -410,7 +464,7 @@ public sealed class ReviewWorkspace(string repoPath)
 	/// </summary>
 	async Task LoadGeneratedSourcesAsync(CancellationToken ct)
 	{
-		if (WorktreePath is not { } head || BaseWorktreePath is not { } baseTree)
+		if (WorktreePath is not { } head || await EnsureBaseWorktreeAsync(ct) is not { } baseTree)
 		{
 			SetGeneratedStatus("no worktrees", done: true);
 			return;
@@ -939,12 +993,21 @@ public sealed class ReviewWorkspace(string repoPath)
 		var originText = new Dictionary<string, string>(StringComparer.Ordinal);
 		try
 		{
+			// Through the one reader rather than a process per file: stepping through a series
+			// reads every changed file of every commit twice, and a commit touching fifty
+			// files would otherwise spend a hundred processes on it.
 			foreach (var file in Files.Where(f => !f.IsBinary))
 			{
-				if (file.Kind != FileChangeKind.Deleted)
-					headText[file.NewPath] = await Git.ShowFileAsync(displayed, file.NewPath);
-				if (file.Kind != FileChangeKind.Added)
-					originText[file.OldPath] = await Git.ShowFileAsync(origin, file.OldPath);
+				if (file.Kind != FileChangeKind.Deleted
+					&& await Blobs.ReadAsync(displayed, file.NewPath) is { } head)
+				{
+					headText[file.NewPath] = head;
+				}
+				if (file.Kind != FileChangeKind.Added
+					&& await Blobs.ReadAsync(origin, file.OldPath) is { } before)
+				{
+					originText[file.OldPath] = before;
+				}
 			}
 		}
 		catch (ToolFailedException ex)
@@ -1139,8 +1202,21 @@ public sealed class ReviewWorkspace(string repoPath)
 	public void Shutdown()
 	{
 		sessionCts?.Cancel();
+		Blobs.Dispose();
 		Semantics?.Dispose();
 		BaseSemantics?.Dispose();
+	}
+
+	/// <summary>Head-side text of a file, or null when the head does not have it.</summary>
+	async Task<string?> ReadFileAtHeadAsync(string relPath, CancellationToken ct = default)
+	{
+		if (DirtyWorktreePath is { } dir)
+		{
+			string absolute = Path.Combine(dir, relPath);
+			if (File.Exists(absolute))
+				return await File.ReadAllTextAsync(absolute, ct);
+		}
+		return HeadSha is { } head ? await Blobs.ReadAsync(head, relPath, ct) : null;
 	}
 
 	/// <summary>Head-side text of a file: read from the checkout under review when that is
@@ -1184,7 +1260,7 @@ public sealed class ReviewWorkspace(string repoPath)
 	/// linked into the worktree so the user's own launch configs work there.</summary>
 	public async Task OpenInVsCodeAsync(bool oldSide, string? relPath = null, int? line = null)
 	{
-		string? root = oldSide ? BaseWorktreePath : WorktreePath;
+		string? root = oldSide ? await EnsureBaseWorktreeAsync() : WorktreePath;
 		if (root is null)
 		{
 			StatusMessage?.Invoke("No worktree yet - open a review first.");
@@ -1743,20 +1819,18 @@ public sealed class ReviewWorkspace(string repoPath)
 		}
 		else
 		{
-			string? root = oldSide ? BaseWorktreePath : WorktreePath;
-			if (root is null)
+			// Read from the object database rather than a checkout: the revision is what the
+			// file is wanted at, and a review has one of those before it has anywhere on disk.
+			string? text = oldSide
+				? BaseSha is { } baseSha ? await Blobs.ReadAsync(baseSha, relPath) : null
+				: await ReadFileAtHeadAsync(relPath);
+			if (text is null)
 			{
-				// The worktrees are checked out by the semantic load, which a review no longer
-				// waits for; a file outside the diff has nowhere to be read from until then.
-				StatusMessage?.Invoke($"The {(oldSide ? "base" : "head")} worktree is still being prepared; {relPath} cannot be opened yet.");
+				StatusMessage?.Invoke($"{relPath} is not in the {(oldSide ? "base" : "head")} revision.");
 				return;
 			}
-			string absolute = Path.Combine(root, relPath);
-			if (!File.Exists(absolute))
-				return;
 			string prefix = oldSide ? "srcbase:" : "src:";
 			vm = ShowDocument(prefix + relPath, () => {
-				string text = File.ReadAllText(absolute);
 				var source = DiffDocumentViewModel.ForSource(relPath, text);
 				if (oldSide)
 					source.Title = source.Title + " @ base";
@@ -1809,14 +1883,13 @@ public sealed class ReviewWorkspace(string repoPath)
 			}
 		}
 		bool oldSide = entry.DockableId.StartsWith("srcbase:", StringComparison.Ordinal);
-		string? root = oldSide ? BaseWorktreePath : WorktreePath;
-		if (root is null)
-			return;
-		string absolute = Path.Combine(root, relPath);
-		if (!File.Exists(absolute))
+		string? text = oldSide
+			? BaseSha is { } baseSha ? await Blobs.ReadAsync(baseSha, relPath) : null
+			: await ReadFileAtHeadAsync(relPath);
+		if (text is null)
 			return;
 		var source = ShowDocument(entry.DockableId, () => {
-			var vm = DiffDocumentViewModel.ForSource(relPath, File.ReadAllText(absolute));
+			var vm = DiffDocumentViewModel.ForSource(relPath, text);
 			if (oldSide)
 				vm.Title += " @ base";
 			return vm;
