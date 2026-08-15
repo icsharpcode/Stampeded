@@ -47,6 +47,7 @@
       <MenuItem Header="_View">
         <MenuItem Header="Start Page" Click="OnOpenStart" />
         <MenuItem Header="Review Overview" Click="OnOpenOverview" />
+        <MenuItem Header="Close Document  ( Ctrl+W )" Click="OnCloseDocument" />
         <Separator />
         <MenuItem Header="Side-by-Side of Current File" Click="OnSideBySide" />
         <Separator />

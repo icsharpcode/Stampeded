@@ -167,6 +167,8 @@ public partial class DiffDocumentView : UserControl
 
 	public void JumpToHunkCommand(int direction) => JumpToHunk(direction);
 
+	public void JumpToUncoveredCommand() => JumpToNextUncovered();
+
 	static readonly global::Markdown.Avalonia.Markdown ThreadMarkdownEngine = MarkdownLinks.NewEngine();
 
 	ReviewWorkspace.CommentTarget? inlineCommentTarget;

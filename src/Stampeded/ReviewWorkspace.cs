@@ -1255,6 +1255,13 @@ public sealed class ReviewWorkspace(string repoPath)
 			Avalonia.Threading.DispatcherPriority.Loaded);
 	}
 
+	/// <summary>Closes the document tab in front, which is what its own X does.</summary>
+	public void CloseActiveDocument()
+	{
+		if (Documents?.ActiveDockable is { } active && Factory is not null)
+			Factory.CloseDockable(active);
+	}
+
 	/// <summary>Every comment of this review under the lines it is about, with the verdict.</summary>
 	public void OpenReviewDocument()
 		=> ShowDocument("review", () => new Documents.ReviewDocumentViewModel(this) { Title = "Review" });

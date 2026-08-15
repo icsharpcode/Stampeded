@@ -1,6 +1,7 @@
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
+using Avalonia.VisualTree;
 
 using Stampeded.Documents;
 
@@ -35,40 +36,81 @@ public partial class MainWindow : Window
 		base.OnKeyDown(e);
 		if (e.Handled)
 			return;
-		// The navigation keys the Navigate menu advertises. They are not characters anyone
-		// types, so the window may claim them: a reader who left focus in a pane still expects
-		// F12 to work on the file they are looking at. The diff view handles them first while
-		// it has focus, which is why this only runs on what came back unhandled.
+		// A review gesture is a letter to anyone typing one: whatever was aimed at a text box
+		// stays in it. Everything else in the window is a list, a tree or a read-only diff,
+		// where a letter has no meaning of its own worth keeping.
+		if (e.Source is Avalonia.Visual source
+			&& source.FindAncestorOfType<TextBox>(includeSelf: true) is not null)
+		{
+			return;
+		}
+		// The keys that drive a review, wherever focus happens to be. Reading is not only done
+		// in the diff: the reader is as often in the Explorer, the Commits pane or the Tests
+		// pane when they decide to mark a file viewed or step to the next hunk, and a gesture
+		// that works in one pane and dies in the next is worse than no gesture.
+		//
+		// The diff view handles the same keys on the way down while it has focus, so this only
+		// ever runs on what came back unhandled - the caret-dependent ones still act on the
+		// document in front, through its view.
 		switch ((e.Key, e.KeyModifiers))
 		{
+			case (Key.N, KeyModifiers.None):
+			case (Key.Down, KeyModifiers.Control):
+				View?.JumpToHunkCommand(1);
+				break;
+			case (Key.P, KeyModifiers.None):
+			case (Key.Up, KeyModifiers.Control):
+				View?.JumpToHunkCommand(-1);
+				break;
+			case (Key.OemCloseBrackets, KeyModifiers.None):
+				App.Workspace?.OpenAdjacentFileAsync(1).HandleExceptions();
+				break;
+			case (Key.OemOpenBrackets, KeyModifiers.None):
+				App.Workspace?.OpenAdjacentFileAsync(-1).HandleExceptions();
+				break;
+			case (Key.OemCloseBrackets, KeyModifiers.Control):
+				App.Workspace?.StepCommitScopeAsync(1).HandleExceptions();
+				break;
+			case (Key.OemOpenBrackets, KeyModifiers.Control):
+				App.Workspace?.StepCommitScopeAsync(-1).HandleExceptions();
+				break;
+			case (Key.V, KeyModifiers.None):
+				App.Workspace?.ToggleViewedAndAdvanceAsync().HandleExceptions();
+				break;
+			case (Key.O, KeyModifiers.None):
+				App.Workspace?.ToggleOverviewAsync().HandleExceptions();
+				break;
+			case (Key.U, KeyModifiers.None):
+				View?.JumpToUncoveredCommand();
+				break;
+			case (Key.B, KeyModifiers.None):
+				View?.ToggleBlameCommand();
+				break;
+			case (Key.C, KeyModifiers.None):
+				View?.CommentAtCaretCommand();
+				break;
 			case (Key.F12, KeyModifiers.None):
 				View?.GoToDefinitionCommand();
-				e.Handled = true;
-				return;
+				break;
 			case (Key.F12, KeyModifiers.Shift):
 				View?.FindReferencesCommand();
-				e.Handled = true;
-				return;
+				break;
 			case (Key.Left, KeyModifiers.Alt):
 				App.Workspace?.GoBackAsync().HandleExceptions();
-				e.Handled = true;
-				return;
+				break;
 			case (Key.Right, KeyModifiers.Alt):
 				App.Workspace?.GoForwardAsync().HandleExceptions();
-				e.Handled = true;
-				return;
-		}
-		if (!e.KeyModifiers.HasFlag(KeyModifiers.Control))
-			return;
-		switch (e.Key)
-		{
-			case Key.OemPlus or Key.Add:
+				break;
+			case (Key.W, KeyModifiers.Control):
+				App.Workspace?.CloseActiveDocument();
+				break;
+			case (Key.OemPlus or Key.Add, KeyModifiers.Control):
 				Vm?.ZoomIn();
 				break;
-			case Key.OemMinus or Key.Subtract:
+			case (Key.OemMinus or Key.Subtract, KeyModifiers.Control):
 				Vm?.ZoomOut();
 				break;
-			case Key.D0 or Key.NumPad0:
+			case (Key.D0 or Key.NumPad0, KeyModifiers.Control):
 				Vm?.ZoomReset();
 				break;
 			default:
@@ -120,6 +162,7 @@ public partial class MainWindow : Window
 	void OnFindReferences(object? s, RoutedEventArgs e) => View?.FindReferencesCommand();
 	void OnHighlightOccurrences(object? s, RoutedEventArgs e) => View?.HighlightOccurrencesCommand();
 	void OnSideBySide(object? s, RoutedEventArgs e) => App.Workspace?.OpenSideBySideAsync().HandleExceptions();
+	void OnCloseDocument(object? s, RoutedEventArgs e) => App.Workspace?.CloseActiveDocument();
 
 	void OnShowPane(object? s, RoutedEventArgs e)
 	{
