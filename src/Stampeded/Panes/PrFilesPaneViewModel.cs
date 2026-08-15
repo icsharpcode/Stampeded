@@ -169,11 +169,15 @@ public class PrFilesPaneViewModel : Tool
 	void Rebuild()
 	{
 		Files.Clear();
+		// Every file in the since-last-pass scope changed since the last pass - that is what
+		// the list is - so marking them all says nothing, and ordering by it orders nothing.
+		// The mark belongs to the whole change, where it picks out the few that moved.
+		bool markTouched = !workspace.InSinceLastPassScope;
 		var ordered = workspace.Files
 			// Generator output goes last whatever else is true of it: it is what the change
 			// caused, and reaching the cause should never mean scrolling past the effect.
 			.OrderBy(f => f.IsGenerated ? 1 : 0)
-			.ThenBy(f => workspace.IsTouchedSinceLastPass(f.Path) ? 0 : 1)
+			.ThenBy(f => markTouched && workspace.IsTouchedSinceLastPass(f.Path) ? 0 : 1)
 			.ThenBy(f => Core.Review.TestPaths.IsTestPath(f.Path) == testsFirst ? 0 : 1)
 			.ThenBy(f => DepthRank(workspace.GetDepth(f.Path)))
 			.ThenBy(f => f.Path, StringComparer.Ordinal);
@@ -181,7 +185,7 @@ public class PrFilesPaneViewModel : Tool
 		{
 			var entry = new FileEntry(file, workspace.Store.IsViewed(file.Path)) {
 				Depth = workspace.GetDepth(file.Path),
-				SinceBadge = workspace.IsTouchedSinceLastPass(file.Path) ? "new!" : "",
+				SinceBadge = markTouched && workspace.IsTouchedSinceLastPass(file.Path) ? "new!" : "",
 			};
 			entry.PropertyChanged += OnEntryChanged;
 			Files.Add(entry);
