@@ -7,12 +7,20 @@
     <CheckBox DockPanel.Dock="Top" Margin="6,2" FontSize="11" Content="Tests first (read the spec before the code)"
               IsChecked="{Binding TestsFirst}" />
     <!-- Rows must fit the pane: an overflowing row scrolled its trailing badges and the
-         viewed checkbox out of reach. Paths give up whole directory segments instead, so
-         the file name - the part being identified - always survives. -->
-    <ListBox x:Name="FileList" ItemsSource="{Binding Files}" DoubleTapped="OnDoubleTapped"
-             SelectionChanged="OnSelectionChanged"
-             ScrollViewer.HorizontalScrollBarVisibility="Disabled">
-    <ListBox.ContextMenu>
+         viewed checkbox out of reach. A name too wide for its indentation loses characters
+         out of its middle instead - the end is what tells two files of a pair apart
+         (a view from its code-behind, a source file from its generated twin). -->
+    <TreeView x:Name="FileTree" ItemsSource="{Binding Roots}" DoubleTapped="OnDoubleTapped"
+              SelectionChanged="OnSelectionChanged"
+              ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+    <!-- Open by default: the pane is the review's queue, and a queue that starts folded
+         hides what there is to do. A reader can still fold what they are done with. -->
+    <TreeView.Styles>
+      <Style Selector="TreeViewItem">
+        <Setter Property="IsExpanded" Value="True" />
+      </Style>
+    </TreeView.Styles>
+    <TreeView.ContextMenu>
       <ContextMenu>
         <MenuItem Header="Open Diff (click)" Click="OnOpenClicked" />
         <MenuItem Header="Toggle Viewed" Click="OnToggleViewedClicked" />
@@ -21,26 +29,27 @@
         <MenuItem Header="Plan: Skim" Click="OnDepthSkim" />
         <MenuItem Header="Plan: Trust" Click="OnDepthTrust" />
       </ContextMenu>
-    </ListBox.ContextMenu>
-    <ListBox.ItemTemplate>
-      <DataTemplate x:DataType="panes:FileEntry">
-        <DockPanel Margin="2,0" ToolTip.Tip="{Binding Display}">
-          <CheckBox DockPanel.Dock="Right" IsChecked="{Binding IsViewed}" Padding="0"
+    </TreeView.ContextMenu>
+    <TreeView.ItemTemplate>
+      <TreeDataTemplate x:DataType="panes:FileNode" ItemsSource="{Binding Children}">
+        <DockPanel Margin="2,0" ToolTip.Tip="{Binding ToolTip}">
+          <CheckBox DockPanel.Dock="Right" IsChecked="{Binding Entry.IsViewed}" Padding="0"
+                    IsVisible="{Binding IsFile}"
                     ToolTip.Tip="Viewed (v toggles and advances)" />
           <TextBlock DockPanel.Dock="Right" Margin="4,0" FontSize="10" VerticalAlignment="Center"
-                     Foreground="#F85149" Text="{Binding CoverageBadge}"
+                     Foreground="#F85149" Text="{Binding Entry.CoverageBadge}"
                      ToolTip.Tip="Uncovered added lines from the last coverage run" />
           <TextBlock DockPanel.Dock="Right" Margin="4,0" FontSize="10" VerticalAlignment="Center"
-                     Opacity="0.75" Text="{Binding DepthBadge}"
+                     Opacity="0.75" Text="{Binding Entry.DepthBadge}"
                      ToolTip.Tip="Planned review depth (right-click to set)" />
           <TextBlock DockPanel.Dock="Right" Margin="4,0" FontSize="10" VerticalAlignment="Center"
-                     Foreground="#3794FF" Text="{Binding SinceBadge}"
+                     Foreground="#3794FF" Text="{Binding Entry.SinceBadge}"
                      ToolTip.Tip="Touched since your last pass (viewed flag was invalidated)" />
-          <TextBlock DockPanel.Dock="Left" Width="14" FontWeight="Bold" Text="{Binding Marker}" />
-          <TextBlock Text="{Binding Display}" TextTrimming="PathSegmentEllipsis" />
+          <TextBlock DockPanel.Dock="Left" Width="14" FontWeight="Bold" Text="{Binding Entry.Marker}" />
+          <TextBlock Text="{Binding Name}" TextTrimming="PrefixCharacterEllipsis" />
         </DockPanel>
-      </DataTemplate>
-    </ListBox.ItemTemplate>
-    </ListBox>
+      </TreeDataTemplate>
+    </TreeView.ItemTemplate>
+    </TreeView>
   </DockPanel>
 </UserControl>

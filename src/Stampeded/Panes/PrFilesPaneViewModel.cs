@@ -27,6 +27,11 @@ public sealed class FileEntry(FileDiff file, bool viewed) : ObservableObject
 		? $"{File.OldPath} -> {File.NewPath}"
 		: File.Path;
 
+	/// <summary>The name alone: in the tree the directory is the row above.</summary>
+	public string Name => File.Kind == FileChangeKind.Renamed
+		? $"{Path.GetFileName(File.OldPath)} -> {Path.GetFileName(File.NewPath)}"
+		: Path.GetFileName(File.Path);
+
 	bool isViewed = viewed;
 	public bool IsViewed {
 		get => isViewed;
@@ -61,6 +66,60 @@ public sealed class FileEntry(FileDiff file, bool viewed) : ObservableObject
 }
 
 /// <summary>
+/// A row of the changed-file tree: a file, or a directory of them. A run of directories that
+/// each hold one directory is a single row ("src/Stampeded/Panes"), because a level with no
+/// choice in it is a level nobody navigates - it only costs indentation and a click.
+/// </summary>
+public sealed class FileNode(string name)
+{
+	public string Name { get; private set; } = name;
+
+	public List<FileNode> Children { get; private set; } = [];
+
+	/// <summary>The file this row is, or null for a directory.</summary>
+	public FileEntry? Entry { get; init; }
+
+	public bool IsFile => Entry is not null;
+
+	public string ToolTip => Entry?.Display ?? Name;
+
+	/// <summary>Builds the tree over files in the order they should be read, so a directory
+	/// appears where its first file would have and the order within one is unchanged.</summary>
+	public static List<FileNode> Build(IEnumerable<FileEntry> files)
+	{
+		var roots = new List<FileNode>();
+		foreach (var entry in files)
+		{
+			var segments = entry.File.Path.Split('/');
+			var siblings = roots;
+			for (int i = 0; i < segments.Length - 1; i++)
+			{
+				var directory = siblings.FirstOrDefault(n => !n.IsFile && n.Name == segments[i]);
+				if (directory is null)
+					siblings.Add(directory = new FileNode(segments[i]));
+				siblings = directory.Children;
+			}
+			siblings.Add(new FileNode(segments[^1]) { Entry = entry });
+		}
+		Compact(roots);
+		return roots;
+	}
+
+	static void Compact(List<FileNode> nodes)
+	{
+		foreach (var node in nodes)
+		{
+			Compact(node.Children);
+			while (!node.IsFile && node.Children is [{ IsFile: false } only])
+			{
+				node.Name += "/" + only.Name;
+				node.Children = only.Children;
+			}
+		}
+	}
+}
+
+/// <summary>
 /// Changed files of the open review, with per-file viewed tracking.
 /// </summary>
 public class PrFilesPaneViewModel : Tool
@@ -77,7 +136,10 @@ public class PrFilesPaneViewModel : Tool
 		}
 	}
 
+	/// <summary>Every changed file in reading order; the tree is this list, grouped.</summary>
 	public ObservableCollection<FileEntry> Files { get; } = [];
+
+	public ObservableCollection<FileNode> Roots { get; } = [];
 
 	public PrFilesPaneViewModel(ReviewWorkspace workspace)
 	{
@@ -124,6 +186,9 @@ public class PrFilesPaneViewModel : Tool
 			entry.PropertyChanged += OnEntryChanged;
 			Files.Add(entry);
 		}
+		Roots.Clear();
+		foreach (var node in FileNode.Build(Files))
+			Roots.Add(node);
 	}
 
 	void OnEntryChanged(object? sender, PropertyChangedEventArgs e)
