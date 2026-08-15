@@ -90,10 +90,10 @@
                 </Panel>
                 <TextBlock DockPanel.Dock="Right" Text="draft" FontSize="11" Opacity="0.8"
                            VerticalAlignment="Center" IsVisible="{Binding IsDraft}" />
-                <TextBlock DockPanel.Dock="Right" Text="approved" FontSize="11" Margin="6,0,0,0"
+                <TextBlock DockPanel.Dock="Right" Text="approved" FontSize="11" Margin="6,0,6,0"
                            Foreground="#2EA043" VerticalAlignment="Center" IsVisible="{Binding IsApproved}"
                            ToolTip.Tip="A review has approved this pull request" />
-                <TextBlock DockPanel.Dock="Right" Text="changes requested" FontSize="11" Margin="6,0,0,0"
+                <TextBlock DockPanel.Dock="Right" Text="changes requested" FontSize="11" Margin="6,0,6,0"
                            Foreground="#F85149" VerticalAlignment="Center" IsVisible="{Binding ChangesRequested}"
                            ToolTip.Tip="A review has requested changes on this pull request" />
                 <StackPanel DockPanel.Dock="Right" Classes="rowactions" Orientation="Horizontal"

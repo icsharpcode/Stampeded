@@ -320,6 +320,14 @@ static class ScreenshotWatcher
 						list.ScrollRowIntoView(index);
 					}
 				}
+				// folder:<path> or folder:cancel - answers the next clone-location question,
+				// which is a portal dialog no synthesized input reaches. Write it before the
+				// open-url: that asks it.
+				foreach (var command in lines.Where(l => l.StartsWith("folder:", StringComparison.Ordinal)))
+				{
+					string answer = command["folder:".Length..].Trim();
+					App.NextFolderAnswer = (answer == "cancel" ? null : answer, true);
+				}
 				// open-url:<url or owner/repo[/pull/N]> - the Repository menu's "Open from URL".
 				foreach (var command in lines.Where(l => l.StartsWith("open-url:", StringComparison.Ordinal)))
 					App.OpenFromUrlAsync(command["open-url:".Length..].Trim()).HandleExceptions();

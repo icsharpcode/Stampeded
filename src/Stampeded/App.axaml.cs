@@ -48,8 +48,23 @@ public class App : Application
 	/// repository lands on disk, and there is no sensible default to assume on someone's
 	/// behalf.
 	/// </summary>
+	/// <summary>
+	/// An answer for the next folder question, instead of asking it. The picker is the
+	/// desktop portal's own dialog and nothing inside this process can drive it, so the two
+	/// paths that lead out of it - a folder, or a decline - would otherwise never be walked
+	/// by a check. Set by the screenshot harness and consumed by the next question.
+	/// </summary>
+	internal static (string? Folder, bool Answered) NextFolderAnswer;
+
 	static async Task<string?> AskWhereToCloneAsync(Window window, string owner, string repo)
 	{
+		if (NextFolderAnswer.Answered)
+		{
+			var answer = NextFolderAnswer.Folder;
+			NextFolderAnswer = default;
+			CliLog.Write("action", $"clone folder answered as {answer ?? "(declined)"}");
+			return answer;
+		}
 		string projects = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Projects");
 		var options = new Avalonia.Platform.Storage.FolderPickerOpenOptions {
 			Title = $"Clone {owner}/{repo} into which folder?",
