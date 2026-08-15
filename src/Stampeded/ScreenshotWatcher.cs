@@ -77,6 +77,22 @@ static class ScreenshotWatcher
 	}
 
 	/// <summary>
+	/// Drags the pointer to a point with the button held. Selecting text takes movement, not
+	/// only a press and a release: a control that follows the pointer sees nothing at all
+	/// from the two ends of a gesture on their own.
+	/// </summary>
+	static void RaisePointerMove(Window window, Avalonia.Point point, Avalonia.Input.KeyModifiers modifiers)
+	{
+		var target = Avalonia.Input.InputExtensions.InputHitTest(window, point) as Interactive ?? window;
+		var properties = new Avalonia.Input.PointerPointProperties(
+			Avalonia.Input.RawInputModifiers.LeftMouseButton, Avalonia.Input.PointerUpdateKind.Other);
+		target.RaiseEvent(new Avalonia.Input.PointerEventArgs(
+			Avalonia.Input.InputElement.PointerMovedEvent, target, TestPointer, window, point,
+			(ulong)Environment.TickCount64, properties, modifiers));
+		CliLog.Write("action", $"move {point.X:0},{point.Y:0} {modifiers} -> {target.GetType().Name}");
+	}
+
+	/// <summary>
 	/// Raises one half of a left-button gesture at a point in window coordinates, on whatever
 	/// is under it - the element a real press would reach, not the focused one.
 	/// </summary>
@@ -244,24 +260,31 @@ static class ScreenshotWatcher
 						CliLog.Write("action", $"click: no button labelled '{label}'");
 					}
 				}
-				// press:<x>,<y>[:<modifiers>] and release:<x>,<y>[:<modifiers>] - a pointer
-				// gesture in window coordinates, as a press and a release that can be given
-				// different modifiers. Held apart because that is the distinction a gesture can
-				// get wrong: which of the two the modifiers were read from.
+				// press:<x>,<y>[:<modifiers>], move:<x>,<y>[:<modifiers>] and
+				// release:<x>,<y>[:<modifiers>] - a pointer gesture in window coordinates, each
+				// part able to carry its own modifiers, because that is the distinction a
+				// gesture can get wrong: which of them the modifiers were read from. Driven in
+				// one loop so the parts happen in the order they were written: a drag is a
+				// press, then movement, then a release, and any other order is a click.
 				foreach (var command in lines.Where(l =>
-					l.StartsWith("press:", StringComparison.Ordinal) || l.StartsWith("release:", StringComparison.Ordinal)))
+					l.StartsWith("press:", StringComparison.Ordinal)
+					|| l.StartsWith("move:", StringComparison.Ordinal)
+					|| l.StartsWith("release:", StringComparison.Ordinal)))
 				{
-					bool pressing = command.StartsWith("press:", StringComparison.Ordinal);
 					var parts = command.Split(':', 3);
-					var coords = parts[1].Split(',');
-					if (parts.Length < 2 || coords.Length != 2
+					var coords = parts.Length < 2 ? [] : parts[1].Split(',');
+					if (coords.Length != 2
 						|| !double.TryParse(coords[0], out double x) || !double.TryParse(coords[1], out double y))
 					{
-						CliLog.Write("action", $"{(pressing ? "press" : "release")}: cannot read '{command}'");
+						CliLog.Write("action", $"{parts[0]}: cannot read '{command}'");
 						continue;
 					}
 					var modifiers = parts.Length == 3 ? ParseModifiers(parts[2]) : Avalonia.Input.KeyModifiers.None;
-					RaisePointer(window, new Avalonia.Point(x, y), pressing, modifiers);
+					var point = new Avalonia.Point(x, y);
+					if (parts[0] == "move")
+						RaisePointerMove(window, point, modifiers);
+					else
+						RaisePointer(window, point, parts[0] == "press", modifiers);
 				}
 				// context:<x>,<y> - asks for the context menu at a point. A synthesized right
 				// button does not produce this: the request is raised for the platform's own
