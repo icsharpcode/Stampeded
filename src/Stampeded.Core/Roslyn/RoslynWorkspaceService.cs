@@ -155,7 +155,7 @@ public sealed class RoslynWorkspaceService : IDisposable
 	async Task RestoreAsync(string sln, bool cleanRetry, CancellationToken ct)
 	{
 		if (cleanRetry)
-			DeleteBuildArtifacts();
+			DeleteBuildArtifacts(worktreePath);
 		// Pruning would rewrite committed packages.lock.json files in repos that carry
 		// full lock files (e.g. ILSpy); locked-mode restores also depend on them staying
 		// whole - except on the clean retry, where the lock files themselves may be the
@@ -212,9 +212,22 @@ public sealed class RoslynWorkspaceService : IDisposable
 		}
 	}
 
-	void DeleteBuildArtifacts()
+	/// <summary>
+	/// Everything this deletes has to belong to the worktree. A review worktree links its
+	/// submodules to the real clone (see <c>WorktreeManager.LinkSubmodulesFromSource</c>), and
+	/// a walk that descends through such a link reaches directories that are the user's
+	/// checkout, not a throwaway copy of it - it once deleted committed fixture binaries
+	/// there. Skipping reparse points keeps the walk inside the tree it was given: the
+	/// enumerator applies the attribute both to what it returns and to what it recurses into.
+	/// </summary>
+	public static void DeleteBuildArtifacts(string root)
 	{
-		foreach (var dir in Directory.EnumerateDirectories(worktreePath, "*", SearchOption.AllDirectories)
+		var options = new EnumerationOptions {
+			RecurseSubdirectories = true,
+			AttributesToSkip = FileAttributes.ReparsePoint,
+			IgnoreInaccessible = true,
+		};
+		foreach (var dir in Directory.EnumerateDirectories(root, "*", options)
 			.Where(d => Path.GetFileName(d) is "obj" or "bin")
 			.OrderByDescending(d => d.Length))
 		{
