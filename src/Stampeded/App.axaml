@@ -1,6 +1,7 @@
 <Application xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:dockTheme="using:Dock.Avalonia.Themes.Simple"
+             xmlns:dockControls="using:Dock.Avalonia.Controls"
              xmlns:local="using:Stampeded"
              x:Class="Stampeded.App"
              RequestedThemeVariant="Default">
@@ -33,6 +34,12 @@
          scales its content, so the window zoom never reached them. Scaling their host here
          reaches all of them at once - context menus, tooltips, the comment editor - and from
          the top-left, so a popup still starts where it was placed and grows away from it. -->
+    <!-- The tab in front says which scope it belongs to, in the colour the headers use: a
+         diff read one commit at a time looks the same as the whole change until something
+         says otherwise, and the tab is what the reader is looking at. -->
+    <Style Selector="dockControls|DocumentTabStripItem:selected">
+      <Setter Property="Background" Value="{x:Static local:ScopePalette.Accent}" />
+    </Style>
     <Style Selector="OverlayPopupHost">
       <Setter Property="RenderTransformOrigin" Value="0%,0%" />
       <Setter Property="RenderTransform" Value="{x:Static local:ZoomState.PopupScale}" />

@@ -1,6 +1,7 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:docs="using:Stampeded.Documents"
+             xmlns:app="using:Stampeded"
              xmlns:md="https://github.com/whistyun/Markdown.Avalonia"
              x:Class="Stampeded.Documents.OverviewDocumentView"
              x:DataType="docs:OverviewDocumentViewModel">
@@ -70,7 +71,7 @@
            below refers to. Stepping belongs to the per-commit scope alone; leaving is the
            same for both. -->
       <Border Margin="0,6,0,0" Padding="8,4" CornerRadius="3" BorderThickness="1"
-              Background="{Binding State.ScopeTint}" BorderBrush="{Binding State.ScopeAccent}"
+              Background="{x:Static app:ScopePalette.Tint}" BorderBrush="{x:Static app:ScopePalette.Accent}"
               IsVisible="{Binding State.InScope}">
         <DockPanel>
           <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="6">

@@ -124,6 +124,7 @@ public partial class MainViewModel : ObservableObject
 		CanEnterCommitScope = workspace?.CanEnterCommitScope ?? false;
 		CanEnterSinceLastPass = workspace?.CanEnterSinceLastPassScope ?? false;
 		HasDecompilerTestCases = workspace?.HasDecompilerTestCases ?? false;
+		ScopePalette.Set(workspace);
 	}
 
 	void UpdateTitle()
