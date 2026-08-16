@@ -1764,19 +1764,33 @@ public sealed class ReviewWorkspace(string repoPath)
 		ViewedChanged?.Invoke(file.Path, viewed);
 		if (!viewed)
 			return;
-		if (CommitScope is not null && Files.All(f => Store.IsViewed(f.Path)))
+		// The end of what is being read: the last file of the list, or the last one of it that
+		// was still unread. Either way there is nothing left below to advance into.
+		bool through = Files.Count > 0
+			&& (Files[^1].Path == file.Path || Files.All(f => Store.IsViewed(f.Path)));
+		if (through && CommitScope is not null)
 		{
+			int unread = Files.Count(f => !Store.IsViewed(f.Path));
 			if (CommitScopeIndex + 1 < ScopeCommits.Count)
 			{
 				await StepCommitScopeAsync(1);
+				// Straight into the next commit's first file. Stepping on its own opens the
+				// overview, which is right when the step was asked for - the message is worth
+				// reading before the diff - but reading the series with 'v' is one continuous
+				// pass, and a stop at the overview between every commit is a key pressed for
+				// nothing.
+				if (Files.Count > 0 && await OpenFileAsync(Files[0]) is { } first)
+					FocusEditorOf(first);
+				if (unread > 0)
+					StatusMessage?.Invoke($"Moved on with {unread} file(s) of that commit still unread.");
 				return;
 			}
 			StatusMessage?.Invoke("Last commit read. 'Whole change' reviews the change as one diff.");
 			return;
 		}
-		// The last file has nowhere to advance to, and the advance would silently do nothing -
-		// leaving 'v' pressed once more to un-view the file just finished. The read is over at
-		// that point, so it ends where the close-out lives.
+		// Outside a scope the last file has nowhere to advance to, and the advance would
+		// silently do nothing - leaving 'v' pressed once more to un-view the file just
+		// finished. The read is over at that point, so it ends where the close-out lives.
 		if (Files.Count > 0 && Files[^1].Path == file.Path)
 		{
 			OpenOverview();
