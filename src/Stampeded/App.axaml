@@ -74,6 +74,14 @@
     <Style Selector="dockControls|DocumentTabStripItem:selected">
       <Setter Property="Background" Value="{x:Static local:ScopePalette.Accent}" />
     </Style>
+    <!-- The line under the tab strip runs out of the tab and across the width of the document
+         area: the Simple theme fills that part - the DocumentControl template's
+         PART_DocumentSeperator - with its own accent while the dock is active, which left a
+         purple tab sitting on a blue line. Re-asserted here because an application style
+         outranks the theme's ControlTheme, the way ILSpy paints the same part. -->
+    <Style Selector="dockControls|DocumentControl:active /template/ Panel#PART_DocumentSeperator">
+      <Setter Property="Background" Value="{x:Static local:ScopePalette.Accent}" />
+    </Style>
     <Style Selector="OverlayPopupHost">
       <Setter Property="RenderTransformOrigin" Value="0%,0%" />
       <Setter Property="RenderTransform" Value="{x:Static local:ZoomState.PopupScale}" />
