@@ -124,22 +124,27 @@ public class TestsPaneViewModel : Tool
 		async Task ApplyImpactedFilterAsync()
 		{
 			// Three different failures used to share one sentence, which left "it does not
-			// work" and "this change has no tests" looking the same.
-			if (workspace.Semantics is not { State: SemanticState.Ready or SemanticState.SyntaxOnly } sem)
+			// work" and "this change has no tests" looking the same. A changed test case is
+			// answered by name and needs neither semantics nor a change map, so the checks
+			// that follow are about the tracing half alone.
+			int fixtures = workspace.AffectedFixtureNames.Count;
+			var sem = workspace.Semantics;
+			if (fixtures == 0 && sem is not { State: SemanticState.Ready or SemanticState.SyntaxOnly })
 			{
-				State.Status = $"Semantics are {workspace.Semantics?.State.ToString().ToLowerInvariant() ?? "not loaded"}; "
+				State.Status = $"Semantics are {sem?.State.ToString().ToLowerInvariant() ?? "not loaded"}; "
 					+ "the filter needs them to find what references the change.";
 				return;
 			}
-			if (workspace.ChangeMap.Count == 0)
+			if (fixtures == 0 && workspace.ChangeMap.Count == 0)
 			{
 				State.Status = workspace.ChangeMapComputed
 					? "No changed members to trace: the change touches no C# member the map knows."
 					: "The change map is still being computed; try again in a moment.";
 				return;
 			}
-			State.Status = $"Finding test classes referencing {workspace.ChangeMap.Count} changed member(s)"
-				+ (sem.State == SemanticState.SyntaxOnly ? " (syntax-only semantics - references will be incomplete)" : "")
+			State.Status = (fixtures > 0 ? $"{fixtures} changed test case(s); " : "")
+				+ $"finding tests referencing {workspace.ChangeMap.Count} changed member(s)"
+				+ (sem?.State == SemanticState.SyntaxOnly ? " (syntax-only semantics - references will be incomplete)" : "")
 				+ "...";
 			var classes = await workspace.SuggestImpactedTestClassesAsync();
 			if (classes.Count == 0)
@@ -154,7 +159,7 @@ public class TestsPaneViewModel : Tool
 				baseArgs = baseArgs[..cut];
 			string filter = string.Join('|', classes.Select(c => $"FullyQualifiedName~{c}"));
 			State.Args = $"{baseArgs} -- --filter \"{filter}\"";
-			State.Status = $"Filter set to {classes.Count} impacted test class(es): {string.Join(", ", classes)}.";
+			State.Status = $"Filter set to {classes.Count} impacted test(s): {string.Join(", ", classes)}.";
 		}
 	}
 

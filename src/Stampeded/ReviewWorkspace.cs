@@ -131,15 +131,45 @@ public sealed class ReviewWorkspace(string repoPath)
 		return (uncovered, measured);
 	}
 
-	/// <summary>Test classes referencing the change map's members, for a focused test
-	/// filter ("run the tests that matter for this change").</summary>
+	/// <summary>
+	/// The decompiler test cases this change touches, by the name their fixtures are built
+	/// under - which is also the name of the test method that runs each one. Empty for a
+	/// repository without that layout.
+	/// </summary>
+	public IReadOnlyList<string> AffectedFixtureNames
+		=> [.. FixtureAssemblies.AffectedFixtures(Files.Select(f => f.Path))
+			.Select(fixture => fixture.Name)
+			.Distinct(StringComparer.Ordinal)];
+
+	/// <summary>
+	/// The tests worth running for this change, as names a test filter can match.
+	///
+	/// Two ways of arriving at them, and the first is not a guess. A changed decompiler test
+	/// case is answered by name: the suite compiles the file and runs a test called after it,
+	/// so the file says which test covers it. Nothing refers to what such a file declares, and
+	/// tracing references from it only ever finds the file itself - which produced the right
+	/// answer by coincidence of naming rather than because anything asked.
+	///
+	/// Everything else is traced: the members the change touches, and the test files that
+	/// reference them. That is an inference and stays capped, because a change to a type
+	/// everything uses would otherwise name every test there is.
+	/// </summary>
 	public async Task<IReadOnlyList<string>> SuggestImpactedTestClassesAsync()
 	{
+		var fixtures = AffectedFixtureNames;
 		if (Semantics is not { State: SemanticState.Ready or SemanticState.SyntaxOnly } sem)
-			return [];
-		var classes = new HashSet<string>();
+		{
+			CliLog.Write("impacted", $"{fixtures.Count} test case(s) named directly; semantics not loaded, "
+				+ "so nothing was traced");
+			return fixtures;
+		}
+		var classes = new HashSet<string>(StringComparer.Ordinal);
 		int traced = 0, unresolved = 0;
-		foreach (var entry in ChangeMap.Where(e => !e.OldSide).Take(30))
+		// The fixture sources are already answered, so the tracing budget goes to the rest of
+		// the change - which on a decompiler branch is the part nothing names for you.
+		foreach (var entry in ChangeMap
+			.Where(e => !e.OldSide && !FixtureAssemblies.IsFixtureSource(e.RelPath))
+			.Take(30))
 		{
 			// The change map's line is wherever the edit landed inside the member, so the
 			// member has to come from the enclosing scope; the token at that line is a local
@@ -161,13 +191,16 @@ public sealed class ReviewWorkspace(string repoPath)
 			if (classes.Count >= 8)
 				break;
 		}
-		// Which of the ways this can come up empty actually happened: no member resolved, or
-		// members resolved but nothing under test refers to them.
-		CliLog.Write("impacted", $"{traced} member(s) traced of {ChangeMap.Count(e => !e.OldSide)} changed"
+		// Which of the ways this can come up empty actually happened, and which half of the
+		// answer each name came from: no member resolved, or members resolved but nothing under
+		// test refers to them.
+		var suggested = fixtures.Concat(classes).Distinct(StringComparer.Ordinal).ToList();
+		CliLog.Write("impacted", $"{fixtures.Count} test case(s) named directly; {traced} member(s) traced of "
+			+ $"{ChangeMap.Count(e => !e.OldSide && !FixtureAssemblies.IsFixtureSource(e.RelPath))} changed"
 			+ (unresolved > 0 ? $" ({unresolved} unresolved)" : "")
-			+ $" -> {classes.Count} test class(es)"
-			+ (classes.Count > 0 ? ": " + string.Join(", ", classes) : ""));
-		return classes.ToList();
+			+ $" -> {suggested.Count} test(s)"
+			+ (suggested.Count > 0 ? ": " + string.Join(", ", suggested) : ""));
+		return suggested;
 
 		async Task<bool> AddTestClassesAsync(Microsoft.CodeAnalysis.ISymbol symbol)
 		{

@@ -10,6 +10,15 @@ public static class FixtureAssemblies
 	const string TestCasesRoot = "ICSharpCode.Decompiler.Tests/TestCases/";
 	static readonly string[] SourceExtensions = [".cs", ".il", ".vb"];
 
+	/// <summary>
+	/// Whether a path is one of the decompiler's test-case sources. Such a file is a test's
+	/// input rather than a test: nothing in the suite refers to what it declares, and it is
+	/// named after the fixture it compiles to, which is also the name of the test that runs it.
+	/// </summary>
+	public static bool IsFixtureSource(string relPath)
+		=> relPath.StartsWith(TestCasesRoot, StringComparison.Ordinal)
+			&& SourceExtensions.Contains(Path.GetExtension(relPath), StringComparer.OrdinalIgnoreCase);
+
 	/// <summary>Distinct (relative directory, fixture name) pairs for changed fixture
 	/// sources. An ILPretty fixture's .il and expected .cs collapse to one entry.</summary>
 	public static IReadOnlyList<(string RelDir, string Name)> AffectedFixtures(IEnumerable<string> changedRelPaths)
@@ -17,11 +26,9 @@ public static class FixtureAssemblies
 		var result = new List<(string, string)>();
 		foreach (var path in changedRelPaths)
 		{
-			if (!path.StartsWith(TestCasesRoot, StringComparison.Ordinal))
+			if (!IsFixtureSource(path))
 				continue;
 			string ext = Path.GetExtension(path);
-			if (!SourceExtensions.Contains(ext, StringComparer.OrdinalIgnoreCase))
-				continue;
 			string name = Path.GetFileName(path)[..^ext.Length];
 			// Variant sources like Name.opt.roslyn.il belong to the base fixture name.
 			int dot = name.IndexOf('.');

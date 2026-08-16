@@ -201,6 +201,8 @@ static class ScreenshotWatcher
 					App.Workspace?.Scopes.StepCommitAsync(1).HandleExceptions();
 				if (lines.Contains("commit-exit"))
 					App.Workspace?.Scopes.ExitAsync().HandleExceptions();
+				if (lines.Contains("impacted"))
+					App.Workspace?.Factory?.Pane<Panes.TestsPaneViewModel>("Tests")?.ApplyImpactedFilter();
 				if (lines.Contains("sbs"))
 					App.Workspace?.OpenSideBySideAsync().HandleExceptions();
 				if (lines.Contains("vscode"))
