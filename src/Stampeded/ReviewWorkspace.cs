@@ -1761,9 +1761,12 @@ public sealed class ReviewWorkspace(string repoPath)
 		{
 			// Pressed where there is no file to mark - the overview, or a tab that is not a
 			// diff. The key means "on to the next thing to read" wherever it is pressed, and
-			// from here that is the first file still unread.
+			// from here that is the first file still unread. With nothing left unread there is
+			// nothing to go on to, and opening a file that was already read would be a loop.
 			if (FirstUnread() is { } start && await OpenFileAsync(start) is { } opened)
 				FocusEditorOf(opened);
+			else if (Files.Count > 0)
+				StatusMessage?.Invoke($"All {Files.Count} file(s) here are marked viewed.");
 			return;
 		}
 		bool viewed = !Store.IsViewed(file.Path);
@@ -1792,7 +1795,11 @@ public sealed class ReviewWorkspace(string repoPath)
 					StatusMessage?.Invoke($"Moved on with {unread} file(s) of that commit still unread.");
 				return;
 			}
-			StatusMessage?.Invoke("Last commit read. 'Whole change' reviews the change as one diff.");
+			// The series is read: the next thing is the verdict, which is where the whole-change
+			// read ends up too. 'Whole change' is still there for a second pass over it as one
+			// diff, so the status says so rather than the page assuming it.
+			OpenReviewDocument();
+			StatusMessage?.Invoke("Last commit read. 'Whole change' reviews it again as one diff.");
 			return;
 		}
 		// Outside a scope the last file has nowhere to advance to, and the advance would
@@ -1807,10 +1814,9 @@ public sealed class ReviewWorkspace(string repoPath)
 		await OpenAdjacentFileAsync(1);
 	}
 
-	/// <summary>The file a pass continues at: the first one not marked viewed, or the first of
-	/// all of them once everything has been.</summary>
-	FileDiff? FirstUnread()
-		=> Files.FirstOrDefault(f => !Store.IsViewed(f.Path)) ?? Files.FirstOrDefault();
+	/// <summary>The file a pass continues at: the first one not marked viewed. Null once every
+	/// one of them has been - a pass that is over has nowhere to continue.</summary>
+	FileDiff? FirstUnread() => Files.FirstOrDefault(f => !Store.IsViewed(f.Path));
 
 	string? fileBeforeOverview;
 
@@ -1825,8 +1831,9 @@ public sealed class ReviewWorkspace(string repoPath)
 		{
 			var back = Files.FirstOrDefault(f => f.Path == fileBeforeOverview)
 				// Nothing to return to (the file went away with a reload, or the overview was
-				// the first thing opened): the file to read is the first unread one.
-				?? FirstUnread();
+				// the first thing opened): the file to read is the first unread one, or simply
+				// the first - this key always lands back in a file.
+				?? FirstUnread() ?? Files.FirstOrDefault();
 			if (back is not null && await OpenFileAsync(back) is { } opened)
 				FocusEditorOf(opened);
 			return;
