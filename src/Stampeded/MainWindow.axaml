@@ -46,10 +46,12 @@
         <MenuItem Header="Whole Change" Click="OnExitCommitScope" ToggleType="Radio" GroupName="scope"
                   IsChecked="{Binding WholeChangeActive, Mode=OneWay}" IsEnabled="{Binding InScope}" />
         <MenuItem Header="Commit by Commit" Click="OnEnterCommitScope" ToggleType="Radio" GroupName="scope"
-                  IsChecked="{Binding InCommitScope, Mode=OneWay}" IsEnabled="{Binding CanEnterCommitScope}" />
+                  IsChecked="{Binding InCommitScope, Mode=OneWay}" IsEnabled="{Binding CanEnterCommitScope}"
+                  ToolTip.ShowOnDisabled="True" ToolTip.Tip="{Binding CommitScopeTip}" />
         <MenuItem Header="Since Last Pass" Click="OnSinceLastPass" ToggleType="Radio" GroupName="scope"
                   IsChecked="{Binding InSinceLastPassScope, Mode=OneWay}"
-                  IsEnabled="{Binding CanEnterSinceLastPass}" />
+                  IsEnabled="{Binding CanEnterSinceLastPass}"
+                  ToolTip.ShowOnDisabled="True" ToolTip.Tip="{Binding SinceLastPassTip}" />
         <Separator />
         <MenuItem Header="Mark Viewed + Advance  ( v )" Click="OnToggleViewed" IsEnabled="{Binding HasReview}" />
         <!-- How closely this file is meant to be read; the marks live with the review. -->

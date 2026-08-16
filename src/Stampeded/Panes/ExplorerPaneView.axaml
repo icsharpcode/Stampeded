@@ -31,15 +31,25 @@
              the pane is narrow, and a command that falls off its right edge is the same as
              not having it here at all. -->
         <WrapPanel Orientation="Horizontal">
-          <Button Classes="tool" Click="OnEnterCommitScope" IsVisible="{Binding !InScope}"
-                  ToolTip.Tip="Commit by commit - read the change one commit at a time, in the order it was written">
-            <Image Source="{x:Static app:Images.Commit}" />
-          </Button>
-          <Button Classes="tool" Click="OnSinceLastPass"
-                  IsVisible="{Binding !InScope}" IsEnabled="{Binding CanEnterSinceLastPass}"
-                  ToolTip.Tip="Since last pass - only what changed since you last opened this review; after a rebase, the author's own edits without the commits it brought in">
-            <Image Source="{x:Static app:Images.History}" />
-          </Button>
+          <!-- The tip sits on a wrapper rather than on the button, and the wrapper is filled
+               with a transparent brush so it is there to be pointed at. A disabled control
+               answers no hit test in Avalonia, so a tip on one is a tip nobody can read - and
+               the reason a scope is not on offer is exactly what the reader of a greyed button
+               is asking. ShowOnDisabled keeps it up while the button under it is dead. -->
+          <Border Background="Transparent" IsVisible="{Binding !InScope}"
+                  ToolTip.ShowOnDisabled="True" ToolTip.Tip="{Binding CommitScopeTip}">
+            <Button Classes="tool" Click="OnEnterCommitScope"
+                    IsEnabled="{Binding CanEnterCommitScope}">
+              <Image Source="{x:Static app:Images.Commit}" />
+            </Button>
+          </Border>
+          <Border Background="Transparent" IsVisible="{Binding !InScope}"
+                  ToolTip.ShowOnDisabled="True" ToolTip.Tip="{Binding SinceLastPassTip}">
+            <Button Classes="tool" Click="OnSinceLastPass"
+                    IsEnabled="{Binding CanEnterSinceLastPass}">
+              <Image Source="{x:Static app:Images.History}" />
+            </Button>
+          </Border>
           <Button Classes="tool" Click="OnPreviousCommit" IsVisible="{Binding InCommitScope}"
                   ToolTip.Tip="Previous commit  ( Ctrl+[ )">
             <Image Source="{x:Static app:Images.Previous}" />

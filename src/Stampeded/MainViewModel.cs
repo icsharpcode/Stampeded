@@ -59,6 +59,14 @@ public partial class MainViewModel : ObservableObject
 	[ObservableProperty]
 	bool canEnterSinceLastPass;
 
+	/// <summary>What the two scope entries say of themselves, so a greyed one gives its reason
+	/// rather than only its name.</summary>
+	[ObservableProperty]
+	string commitScopeTip = "";
+
+	[ObservableProperty]
+	string sinceLastPassTip = "";
+
 	[ObservableProperty]
 	bool hasDecompilerTestCases;
 
@@ -132,6 +140,8 @@ public partial class MainViewModel : ObservableObject
 		InSinceLastPassScope = workspace?.Scopes.InSinceLastPass ?? false;
 		CanEnterCommitScope = workspace?.Scopes.CanEnterCommit ?? false;
 		CanEnterSinceLastPass = workspace?.Scopes.CanEnterSinceLastPass ?? false;
+		CommitScopeTip = workspace?.Scopes.CommitScopeTip ?? "";
+		SinceLastPassTip = workspace?.Scopes.SinceLastPassTip ?? "";
 		HasDecompilerTestCases = workspace?.HasDecompilerTestCases ?? false;
 		ScopePalette.Set(workspace);
 	}

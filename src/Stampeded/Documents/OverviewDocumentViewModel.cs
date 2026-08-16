@@ -106,6 +106,14 @@ public sealed partial class OverviewState : ObservableObject
 	[ObservableProperty]
 	bool canEnterSinceLastPass;
 
+	/// <summary>What the two scope commands say of themselves - what they do, or why they
+	/// cannot here. A disabled control that explains nothing is one the reader has to guess at.</summary>
+	[ObservableProperty]
+	string commitScopeTip = "";
+
+	[ObservableProperty]
+	string sinceLastPassTip = "";
+
 	/// <summary>Set while the review was opened from a snapshot: what is exact, what is old,
 	/// and how to get the rest.</summary>
 	[ObservableProperty]
@@ -207,6 +215,8 @@ public class OverviewDocumentViewModel : Document
 	void RebuildCommitScope()
 	{
 		State.CanEnterCommitScope = workspace.Scopes.CanEnterCommit;
+		State.CommitScopeTip = workspace.Scopes.CommitScopeTip;
+		State.SinceLastPassTip = workspace.Scopes.SinceLastPassTip;
 		State.InCommitScope = workspace.Scopes.Commit is not null;
 		State.InScope = workspace.Scopes.InScope;
 		State.CanEnterSinceLastPass = workspace.Scopes.CanEnterSinceLastPass;

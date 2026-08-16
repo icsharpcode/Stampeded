@@ -36,6 +36,19 @@ public partial class ExplorerPaneViewModel : Tool
 	[ObservableProperty]
 	bool canEnterSinceLastPass;
 
+	/// <summary>Whether reading the change one commit at a time says anything here: a single
+	/// commit is the whole change already.</summary>
+	[ObservableProperty]
+	bool canEnterCommitScope;
+
+	/// <summary>What the two scope commands say of themselves - what they do, or why they
+	/// cannot. A disabled control that explains nothing is a control the reader has to guess at.</summary>
+	[ObservableProperty]
+	string commitScopeTip = "";
+
+	[ObservableProperty]
+	string sinceLastPassTip = "";
+
 	/// <summary>The heading over the file list, carrying how much there is to read. It counts
 	/// what the list holds, so in a scope it is the scope's size and not the review's.</summary>
 	[ObservableProperty]
@@ -82,6 +95,9 @@ public partial class ExplorerPaneViewModel : Tool
 		InCommitScope = workspace.Scopes.Commit is not null;
 		InScope = workspace.Scopes.InScope;
 		CanEnterSinceLastPass = workspace.Scopes.CanEnterSinceLastPass;
+		CanEnterCommitScope = workspace.Scopes.CanEnterCommit;
+		CommitScopeTip = workspace.Scopes.CommitScopeTip;
+		SinceLastPassTip = workspace.Scopes.SinceLastPassTip;
 		ScopeBadge = workspace.Scopes.Commit is not null
 			? $"COMMIT {workspace.Scopes.CommitIndex + 1} OF {workspace.Scopes.Series.Count}"
 			: workspace.Scopes.InSinceLastPass ? "SINCE YOUR LAST PASS"

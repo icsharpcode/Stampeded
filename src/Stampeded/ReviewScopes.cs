@@ -64,10 +64,68 @@ public sealed class ReviewScopes(ReviewWorkspace workspace)
 			? (previous, head)
 			: workspace.BaseSha is { } b && workspace.HeadSha is { } h ? (b, h) : null;
 
-	public bool CanEnterCommit => workspace.HeadSha is not null && workspace.DirtyWorktreePath is null;
+	/// <summary>
+	/// Why the change cannot be read one commit at a time, or null when it can. A control that
+	/// is simply dead says nothing about itself, so the reason is what the control carries -
+	/// and it is the same sentence <see cref="EnterCommitAsync"/> would answer with, so what is
+	/// promised before the press and what is said after it cannot drift apart.
+	/// </summary>
+	public string? CommitScopeRefusal
+	{
+		get
+		{
+			if (workspace.HeadSha is null)
+				return "No review is open.";
+			if (workspace.DirtyWorktreePath is not null)
+			{
+				return "This review includes uncommitted work, which belongs to no commit - there is no "
+					+ "series to step through.";
+			}
+			// Null until the series has been read: how many commits there are cannot be guessed,
+			// and refusing on a count nobody has counted would disable the button on every open.
+			return knownCommitCount switch {
+				0 => "This review has no commits to step through.",
+				1 => "This change is a single commit, so reading it commit by commit is reading the whole "
+					+ "change - which is what you are looking at.",
+				_ => null,
+			};
+		}
+	}
 
-	public bool CanEnterSinceLastPass
-		=> workspace.LastPassHead is not null && workspace.DirtyWorktreePath is null && ReviewRange is not null;
+	public bool CanEnterCommit => CommitScopeRefusal is null;
+
+	/// <summary>What the commit-by-commit control says of itself: what it would do, or why it
+	/// cannot do it here.</summary>
+	public string CommitScopeTip => CommitScopeRefusal
+		?? "Commit by commit - read the change one commit at a time, in the order it was written";
+
+	/// <summary>Why the work since the reader's last pass cannot be read on its own, or null
+	/// when it can.</summary>
+	public string? SinceLastPassRefusal
+	{
+		get
+		{
+			if (workspace.LastPassHead is null)
+			{
+				return "No earlier pass is recorded for this review - Stampeded compares against the "
+					+ "head you last opened it at, and this is the first.";
+			}
+			if (workspace.DirtyWorktreePath is not null)
+			{
+				return "This review includes uncommitted work, which was never part of a pass; "
+					+ "there is nothing to compare it against.";
+			}
+			return ReviewRange is null ? "No review is open." : null;
+		}
+	}
+
+	public bool CanEnterSinceLastPass => SinceLastPassRefusal is null;
+
+	/// <summary>What the since-last-pass control says of itself: what it would show, or why
+	/// there is nothing for it to show.</summary>
+	public string SinceLastPassTip => SinceLastPassRefusal
+		?? "Since last pass - only what changed since you last opened this review; after a rebase, "
+			+ "the author's own edits without the commits it brought in";
 
 	/// <summary>
 	/// Forgets what was in scope. A review that has just been opened is the whole change by
@@ -81,6 +139,7 @@ public sealed class ReviewScopes(ReviewWorkspace workspace)
 		cachedCommitsRange = null;
 		cachedCommits = [];
 		cachedCommitStats = null;
+		knownCommitCount = null;
 		Commit = null;
 		Series = [];
 		CommitIndex = 0;
@@ -95,6 +154,11 @@ public sealed class ReviewScopes(ReviewWorkspace workspace)
 	(string Base, string Head)? cachedCommitsRange;
 	IReadOnlyList<CommitInfo> cachedCommits = [];
 	IReadOnlyDictionary<string, (int Added, int Removed)>? cachedCommitStats;
+
+	/// <summary>How many commits the review has, once something has asked. Null before that:
+	/// nothing counts them for their own sake, so what the count decides has to wait for the
+	/// first reader of the series rather than pay for a log of its own.</summary>
+	int? knownCommitCount;
 
 	/// <summary>
 	/// The commits of the review, newest first, fetched once per range. Everything that shows
@@ -113,6 +177,14 @@ public sealed class ReviewScopes(ReviewWorkspace workspace)
 				$"{range.Base}..{range.Head}", null, follow: false, limit: 200, ct);
 			cachedCommitStats = null;
 			cachedCommitsRange = range;
+			// Whether reading the change commit by commit means anything is decided by how many
+			// commits it has, and the control offering it is enabled from that - so the answer
+			// has to be announced when it arrives, not only when a scope changes.
+			if (knownCommitCount != cachedCommits.Count)
+			{
+				knownCommitCount = cachedCommits.Count;
+				Changed?.Invoke();
+			}
 		}
 		return cachedCommits;
 	}
@@ -190,9 +262,12 @@ public sealed class ReviewScopes(ReviewWorkspace workspace)
 			// Oldest first: the series is meant to be read in the order it was written.
 			Series = [.. (await GetRangeCommitsAsync()).Reverse()];
 		}
-		if (Series.Count == 0)
+		// Asked after the series has been read, because that is when the count is known - a
+		// change of one commit turns the offer down here and the control down through the same
+		// answer.
+		if (CommitScopeRefusal is { } refusal)
 		{
-			workspace.PostStatus("This review has no commits to step through.");
+			workspace.PostStatus(refusal);
 			return;
 		}
 		fullRange ??= range;
@@ -246,21 +321,14 @@ public sealed class ReviewScopes(ReviewWorkspace workspace)
 	/// </summary>
 	public async Task EnterSinceLastPassAsync()
 	{
-		if (workspace.LastPassHead is not { } previous)
+		if (SinceLastPassRefusal is { } refusal)
 		{
-			workspace.PostStatus("No earlier pass is recorded for this review - Stampeded compares against the "
-				+ "head you last opened it at, and this is the first.");
-			return;
-		}
-		if (workspace.DirtyWorktreePath is not null)
-		{
-			workspace.PostStatus("This review includes uncommitted work, which was never part of a pass; "
-				+ "there is nothing to compare it against.");
+			workspace.PostStatus(refusal);
 			return;
 		}
 		if (InScope)
 			await ExitAsync();
-		if (ReviewRange is not { } range)
+		if (workspace.LastPassHead is not { } previous || ReviewRange is not { } range)
 			return;
 		using var busy = workspace.Busy.Begin("Diffing against your last pass");
 		if (sinceLastPassTree is null)
