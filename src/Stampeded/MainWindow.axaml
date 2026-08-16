@@ -19,73 +19,76 @@
       <ScaleTransform ScaleX="{Binding Zoom}" ScaleY="{Binding Zoom}" />
     </LayoutTransformControl.LayoutTransform>
   <DockPanel>
+    <!-- The menu bar is this app's index of what can be done, so it holds every command a
+         reviewer has - including the ones whose fast path is a pane button or a context menu.
+         The order is the order of the work: pick the change and decide about it, walk it,
+         check it, look at it.
+
+         Single-letter gestures stay written into the headers instead of becoming an
+         InputGesture: the window handles them so they keep working from any pane, and a menu
+         gesture would swallow a "v" typed into a comment. Real modifier gestures are real
+         InputGestures.
+
+         What a command needs is bound to IsEnabled rather than left to fail: "Close Review"
+         offered with no review open reads as a broken command, not an unavailable one. -->
     <Menu DockPanel.Dock="Top">
-      <MenuItem Header="_Review">
-        <MenuItem Header="Next Hunk  ( n / Ctrl+Down )" Click="OnNextHunk" />
-        <MenuItem Header="Previous Hunk  ( p / Ctrl+Up )" Click="OnPrevHunk" />
-        <Separator />
-        <MenuItem Header="Next File  ( ] )" Click="OnNextFile" />
-        <MenuItem Header="Previous File  ( [ )" Click="OnPrevFile" />
-        <Separator />
-        <!-- Single letters belong to the diff view alone, so they stay in the headers rather
-             than becoming an InputGesture: "v" typed into a comment has to stay a "v". -->
-        <MenuItem Header="Toggle Viewed + Advance  ( v )" Click="OnToggleViewed" />
-        <MenuItem Header="Overview / Back to File  ( o )" Click="OnToggleOverview" />
-        <MenuItem Header="Toggle Blame Margin  ( b )" Click="OnToggleBlame" />
-        <MenuItem Header="Comment at Caret  ( c )" Click="OnCommentAtCaret" />
-        <Separator />
-        <!-- Reading scope. The gestures are written into the headers rather than set as
-             InputGesture so the diff view stays their only handler. -->
-        <MenuItem Header="Commit by Commit" Click="OnEnterCommitScope" />
-        <MenuItem Header="Since Last Pass" Click="OnSinceLastPass" />
-        <MenuItem Header="Next Commit  ( Ctrl+] )" Click="OnNextCommit" />
-        <MenuItem Header="Previous Commit  ( Ctrl+[ )" Click="OnPreviousCommit" />
-        <MenuItem Header="Whole Change" Click="OnExitCommitScope" />
-        <Separator />
-        <MenuItem Header="Bounce..." Click="OnBounce" />
-      </MenuItem>
-      <MenuItem Header="_View">
-        <MenuItem Header="Start Page" Click="OnOpenStart" />
-        <MenuItem Header="Review Overview" Click="OnOpenOverview" />
-        <MenuItem Header="Close Document  ( Ctrl+W )" Click="OnCloseDocument" />
-        <Separator />
-        <MenuItem Header="Side-by-Side of Current File" Click="OnSideBySide" />
-        <Separator />
-        <!-- The gestures live in the headers, not as InputGesture: the window handles them so
-             they keep working while a text box has focus, and a menu gesture would take them
-             first. "Ctrl+Plus" is also not a gesture Avalonia can parse - Plus is no Key. -->
-        <MenuItem Header="Zoom In  ( Ctrl++ )" Click="OnZoomIn" />
-        <MenuItem Header="Zoom Out  ( Ctrl+- )" Click="OnZoomOut" />
-        <MenuItem Header="Reset Zoom  ( Ctrl+0 )" Click="OnZoomReset" />
-        <Separator />
-        <MenuItem Header="Explorer Pane" Tag="Explorer" Click="OnShowPane" />
-        <MenuItem Header="Change Map Pane" Tag="Map" Click="OnShowPane" />
-        <MenuItem Header="Structure Pane" Tag="Structure" Click="OnShowPane" />
-        <MenuItem Header="References Pane" Tag="References" Click="OnShowPane" />
-        <MenuItem Header="Call Graph Pane" Tag="CallGraph" Click="OnShowPane" />
-        <MenuItem Header="Comments Pane" Tag="Comments" Click="OnShowPane" />
-        <MenuItem Header="Checks Pane" Tag="Checks" Click="OnShowPane" />
-        <MenuItem Header="Tests Pane" Tag="Tests" Click="OnShowPane" />
-        <MenuItem Header="Commits Pane" Tag="Commits" Click="OnShowPane" />
-        <MenuItem Header="History Pane" Tag="History" Click="OnShowPane" />
-        <MenuItem Header="Run Pane" Tag="Run" Click="OnShowPane" />
-        <MenuItem Header="Log Pane" Tag="Log" Click="OnShowPane" />
-      </MenuItem>
-      <MenuItem Header="Re_pository">
+      <MenuItem Header="_Review" SubmenuOpened="OnMenuOpening">
         <MenuItem Header="Open Repository..." Click="OnOpenRepository" />
         <MenuItem Header="Open from URL..." Click="OnOpenFromUrl" />
         <MenuItem Header="Recent Repositories" x:Name="RecentMenu" ItemsSource="{Binding Recent}" />
         <Separator />
-        <MenuItem Header="Open PR on GitHub" Click="OnOpenOnGitHub" />
-        <MenuItem Header="Open Head Worktree in VS Code" Click="OnOpenVsCode" />
-        <MenuItem Header="Open Affected Fixtures in ILSpy" Click="OnOpenFixtures" />
-        <MenuItem Header="Reload Review  ( F5 )" Click="OnReloadReview" />
-        <MenuItem Header="Close Review" Click="OnCloseReview" />
-        <MenuItem Header="Rebase PR onto Target Branch" Click="OnRebasePr" />
-        <MenuItem Header="Show Semantic Load Log" Click="OnShowSemanticLog" />
-        <MenuItem Header="Prune Worktree Cache" Click="OnPruneWorktrees" />
+        <MenuItem Header="Reload Review  ( F5 )" Click="OnReloadReview" IsEnabled="{Binding HasReview}" />
+        <MenuItem Header="Close Review" Click="OnCloseReview" IsEnabled="{Binding HasReview}" />
+        <Separator />
+        <!-- Reading scope: what the file list below means. Radio rather than three commands,
+             because they are one setting with three values and the reader has to be able to
+             see which one they are in. -->
+        <MenuItem Header="Whole Change" Click="OnExitCommitScope" ToggleType="Radio" GroupName="scope"
+                  IsChecked="{Binding WholeChangeActive, Mode=OneWay}" IsEnabled="{Binding InScope}" />
+        <MenuItem Header="Commit by Commit" Click="OnEnterCommitScope" ToggleType="Radio" GroupName="scope"
+                  IsChecked="{Binding InCommitScope, Mode=OneWay}" IsEnabled="{Binding CanEnterCommitScope}" />
+        <MenuItem Header="Since Last Pass" Click="OnSinceLastPass" ToggleType="Radio" GroupName="scope"
+                  IsChecked="{Binding InSinceLastPassScope, Mode=OneWay}"
+                  IsEnabled="{Binding CanEnterSinceLastPass}" />
+        <Separator />
+        <MenuItem Header="Mark Viewed + Advance  ( v )" Click="OnToggleViewed" IsEnabled="{Binding HasReview}" />
+        <!-- How closely this file is meant to be read; the marks live with the review. -->
+        <MenuItem Header="Plan for This File" x:Name="PlanMenu">
+          <MenuItem Header="Verify Deeply" x:Name="PlanDeep" Tag="deep" Click="OnSetDepth"
+                    ToggleType="Radio" GroupName="depth" />
+          <MenuItem Header="Skim" x:Name="PlanSkim" Tag="skim" Click="OnSetDepth"
+                    ToggleType="Radio" GroupName="depth" />
+          <MenuItem Header="Trust" x:Name="PlanTrust" Tag="trust" Click="OnSetDepth"
+                    ToggleType="Radio" GroupName="depth" />
+        </MenuItem>
+        <MenuItem Header="Comment Here  ( c )" Click="OnCommentAtCaret" IsEnabled="{Binding CanComment}" />
+        <Separator />
+        <!-- Both of these open the Review tab rather than acting: a verdict needs a body and a
+             merge needs a method, and both are typed there. Two entries for one document
+             because they are the two names a reviewer looks for. -->
+        <MenuItem Header="Approve / Request Changes..." Click="OnOpenReviewDocument"
+                  IsEnabled="{Binding HasReview}" />
+        <MenuItem Header="Bounce..." Click="OnBounce" IsEnabled="{Binding CanComment}" />
+        <MenuItem Header="Merge Pull Request..." Click="OnOpenReviewDocument"
+                  IsEnabled="{Binding HasPullRequest}" />
+        <MenuItem Header="Rebase PR onto Target Branch" Click="OnRebasePr"
+                  IsEnabled="{Binding HasPullRequest}" />
+        <Separator />
+        <MenuItem Header="Exit" Click="OnExit" />
       </MenuItem>
-      <MenuItem Header="_Navigate">
+      <MenuItem Header="_Navigate" SubmenuOpened="OnMenuOpening">
+        <!-- The motions act on the diff in front; with no diff open there is nothing to move
+             through, and that is a state the menu can see only when it opens. -->
+        <MenuItem Header="Next Hunk  ( n / Ctrl+Down )" x:Name="NextHunkItem" Click="OnNextHunk" />
+        <MenuItem Header="Previous Hunk  ( p / Ctrl+Up )" x:Name="PrevHunkItem" Click="OnPrevHunk" />
+        <MenuItem Header="Next File  ( ] )" Click="OnNextFile" IsEnabled="{Binding HasReview}" />
+        <MenuItem Header="Previous File  ( [ )" Click="OnPrevFile" IsEnabled="{Binding HasReview}" />
+        <MenuItem Header="Next Uncovered Added Line  ( u )" x:Name="NextUncoveredItem" Click="OnNextUncovered" />
+        <Separator />
+        <MenuItem Header="Next Commit  ( Ctrl+] )" Click="OnNextCommit" IsEnabled="{Binding InCommitScope}" />
+        <MenuItem Header="Previous Commit  ( Ctrl+[ )" Click="OnPreviousCommit"
+                  IsEnabled="{Binding InCommitScope}" />
+        <Separator />
         <!-- Disabled until semantics are loaded: these are the commands that need a
              compilation, and the window opens as soon as the diff is read. -->
         <MenuItem Header="Go to Definition" InputGesture="F12" Click="OnGoToDefinition"
@@ -94,9 +97,68 @@
                   IsEnabled="{Binding SemanticsReady}" />
         <MenuItem Header="Highlight Occurrences (click; Esc clears)" Click="OnHighlightOccurrences"
                   IsEnabled="{Binding SemanticsReady}" />
+        <MenuItem Header="Call Graph from Caret" Click="OnCallGraph" IsEnabled="{Binding SemanticsReady}" />
         <Separator />
-        <MenuItem Header="Back" InputGesture="Alt+Left" Click="OnBack" />
-        <MenuItem Header="Forward" InputGesture="Alt+Right" Click="OnForward" />
+        <MenuItem Header="Back" InputGesture="Alt+Left" Click="OnBack" IsEnabled="{Binding HasReview}" />
+        <MenuItem Header="Forward" InputGesture="Alt+Right" Click="OnForward" IsEnabled="{Binding HasReview}" />
+        <Separator />
+        <MenuItem Header="Overview / Back to File  ( o )" Click="OnToggleOverview"
+                  IsEnabled="{Binding HasReview}" />
+        <MenuItem Header="History of Selection" x:Name="HistoryOfSelectionItem" Click="OnHistoryOfSelection" />
+      </MenuItem>
+      <MenuItem Header="_Tools" SubmenuOpened="OnMenuOpening">
+        <!-- Each of these shows its pane first: output that lands behind whichever pane is in
+             front is output nobody reads. -->
+        <MenuItem Header="Run Tests" Click="OnRunTests" IsEnabled="{Binding HasReview}" />
+        <MenuItem Header="Run + Coverage" Click="OnRunTestsWithCoverage" IsEnabled="{Binding HasReview}" />
+        <MenuItem Header="Run A/B (base vs head)" Click="OnRunTestsAB" IsEnabled="{Binding HasReview}" />
+        <MenuItem Header="Impacted Test Filter" Click="OnImpactedTestFilter" IsEnabled="{Binding HasReview}" />
+        <Separator />
+        <MenuItem Header="Run Application" Click="OnRunApplication" />
+        <MenuItem Header="Refresh Checks" Click="OnRefreshChecks" IsEnabled="{Binding HasPullRequest}" />
+        <Separator />
+        <MenuItem Header="Open Head Worktree in VS Code" Click="OnOpenVsCode" IsEnabled="{Binding HasReview}" />
+        <MenuItem Header="Debug Here in VS Code" x:Name="DebugHereItem" Click="OnDebugHere" />
+        <MenuItem Header="Open PR on GitHub" Click="OnOpenOnGitHub" IsEnabled="{Binding HasPullRequest}" />
+        <MenuItem Header="Open Affected Fixtures in ILSpy" Click="OnOpenFixtures"
+                  IsEnabled="{Binding HasDecompilerTestCases}" />
+      </MenuItem>
+      <MenuItem Header="_View" SubmenuOpened="OnMenuOpening">
+        <MenuItem Header="Start Page" Click="OnOpenStart" />
+        <MenuItem Header="Close Document  ( Ctrl+W )" Click="OnCloseDocument" />
+        <Separator />
+        <MenuItem Header="Side-by-Side of Current File" x:Name="SideBySideItem" Click="OnSideBySide" />
+        <MenuItem Header="Blame Margin  ( b )" x:Name="BlameItem" Click="OnToggleBlame" ToggleType="CheckBox" />
+        <Separator />
+        <MenuItem Header="Panes">
+          <MenuItem Header="Explorer" Tag="Explorer" Click="OnShowPane" />
+          <MenuItem Header="Change Map" Tag="Map" Click="OnShowPane" />
+          <MenuItem Header="Structure" Tag="Structure" Click="OnShowPane" />
+          <MenuItem Header="References" Tag="References" Click="OnShowPane" />
+          <MenuItem Header="Call Graph" Tag="CallGraph" Click="OnShowPane" />
+          <MenuItem Header="Comments" Tag="Comments" Click="OnShowPane" />
+          <MenuItem Header="Checks" Tag="Checks" Click="OnShowPane" />
+          <MenuItem Header="Tests" Tag="Tests" Click="OnShowPane" />
+          <MenuItem Header="Commits" Tag="Commits" Click="OnShowPane" />
+          <MenuItem Header="History" Tag="History" Click="OnShowPane" />
+          <MenuItem Header="Run" Tag="Run" Click="OnShowPane" />
+          <MenuItem Header="Log" Tag="Log" Click="OnShowPane" />
+        </MenuItem>
+        <Separator />
+        <!-- The gestures live in the headers, not as InputGesture: the window handles them so
+             they keep working while a text box has focus, and a menu gesture would take them
+             first. "Ctrl+Plus" is also not a gesture Avalonia can parse - Plus is no Key. -->
+        <MenuItem Header="Zoom In  ( Ctrl++ )" Click="OnZoomIn" />
+        <MenuItem Header="Zoom Out  ( Ctrl+- )" Click="OnZoomOut" />
+        <MenuItem Header="Reset Zoom  ( Ctrl+0 )" Click="OnZoomReset" />
+      </MenuItem>
+      <MenuItem Header="_Help">
+        <MenuItem Header="Keyboard Shortcuts" Click="OnKeyboardShortcuts" />
+        <Separator />
+        <!-- What the tool did and why it is slow: the questions Help is opened with. -->
+        <MenuItem Header="Log Pane" Tag="Log" Click="OnShowPane" />
+        <MenuItem Header="Semantic Load Log" Click="OnShowSemanticLog" />
+        <MenuItem Header="Prune Worktree Cache" Click="OnPruneWorktrees" />
       </MenuItem>
     </Menu>
     <Border DockPanel.Dock="Bottom" Padding="8,3" IsVisible="{Binding Busy.IsBusy}">

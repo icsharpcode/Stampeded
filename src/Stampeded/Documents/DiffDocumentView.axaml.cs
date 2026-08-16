@@ -757,6 +757,28 @@ public partial class DiffDocumentView : UserControl
 	}
 
 	public void ToggleBlameCommand() => ToggleBlameAsync().HandleExceptions();
+
+	/// <summary>Whether the blame margin is showing, so a menu can say which state its toggle
+	/// is in rather than only offering to flip it.</summary>
+	public bool BlameVisible => blameVisible;
+
+	/// <summary>Where the selected text came from: every commit that added or removed it.</summary>
+	public void HistoryOfSelectionCommand()
+	{
+		string text = Editor.SelectedText;
+		if (viewModel is null || string.IsNullOrWhiteSpace(text))
+			return;
+		App.Workspace?.RequestPickaxe(text, viewModel.File.Path);
+	}
+
+	/// <summary>Opens the line under the caret in VS Code, on the side it belongs to, so a
+	/// breakpoint can be set where the change is being read.</summary>
+	public void DebugHereCommand()
+	{
+		if (CaretBlobPosition() is not { } pos)
+			return;
+		App.Workspace?.OpenInVsCodeAsync(pos.OldSide, pos.RelPath, pos.Line).HandleExceptions();
+	}
 	public void GoToDefinitionCommand() => NavigateToDefinitionAtCaret();
 	public void FindReferencesCommand() => ShowReferencesAtCaret();
 	public void HighlightOccurrencesCommand() => HighlightOccurrencesAtCaretAsync().HandleExceptions();
@@ -797,13 +819,7 @@ public partial class DiffDocumentView : UserControl
 	void OnCtxPrevCommit(object? s, RoutedEventArgs e)
 		=> App.Workspace?.StepCommitScopeAsync(-1).HandleExceptions();
 
-	void OnCtxHistoryOfSelection(object? s, RoutedEventArgs e)
-	{
-		string text = Editor.SelectedText;
-		if (viewModel is null || string.IsNullOrWhiteSpace(text))
-			return;
-		App.Workspace?.RequestPickaxe(text, viewModel.File.Path);
-	}
+	void OnCtxHistoryOfSelection(object? s, RoutedEventArgs e) => HistoryOfSelectionCommand();
 	void OnCtxCopy(object? s, RoutedEventArgs e) => Editor.Copy();
 
 	void OnCtxCallGraph(object? s, RoutedEventArgs e) => ShowCallGraphCommand();
@@ -820,12 +836,7 @@ public partial class DiffDocumentView : UserControl
 	/// <summary>Opens VS Code on the worktree of the caret's side (base for removed lines,
 	/// head otherwise) at the caret position, for stepping through the reviewed revision
 	/// with a real debugger.</summary>
-	void OnCtxDebugInVsCode(object? s, RoutedEventArgs e)
-	{
-		if (CaretBlobPosition() is not { } pos)
-			return;
-		App.Workspace?.OpenInVsCodeAsync(pos.OldSide, pos.RelPath, pos.Line).HandleExceptions();
-	}
+	void OnCtxDebugInVsCode(object? s, RoutedEventArgs e) => DebugHereCommand();
 
 	void OnPointerPressedForContextMenu(object? sender, PointerPressedEventArgs e)
 	{

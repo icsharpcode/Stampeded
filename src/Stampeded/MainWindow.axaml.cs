@@ -213,4 +213,80 @@ public partial class MainWindow : Window
 	}
 	void OnBack(object? s, RoutedEventArgs e) => App.Workspace?.GoBackAsync().HandleExceptions();
 	void OnForward(object? s, RoutedEventArgs e) => App.Workspace?.GoForwardAsync().HandleExceptions();
+
+	void OnNextUncovered(object? s, RoutedEventArgs e) => View?.JumpToUncoveredCommand();
+
+	void OnCallGraph(object? s, RoutedEventArgs e) => View?.ShowCallGraphCommand();
+
+	void OnHistoryOfSelection(object? s, RoutedEventArgs e) => View?.HistoryOfSelectionCommand();
+
+	void OnDebugHere(object? s, RoutedEventArgs e) => View?.DebugHereCommand();
+
+	void OnOpenReviewDocument(object? s, RoutedEventArgs e) => App.Workspace?.OpenReviewDocument();
+
+	void OnExit(object? s, RoutedEventArgs e) => Close();
+
+	void OnKeyboardShortcuts(object? s, RoutedEventArgs e)
+		=> App.Workspace?.OpenTextDocument("keys", "Keyboard shortcuts", KeyboardShortcuts.Text);
+
+	/// <summary>How closely the file in front is meant to be read. The mark belongs to the
+	/// file, so there is nothing to set while no diff is open.</summary>
+	void OnSetDepth(object? s, RoutedEventArgs e)
+	{
+		if (s is MenuItem { Tag: string depth } && App.Workspace is { CurrentFile: { } file } workspace)
+			workspace.SetDepth(file.Path, depth);
+	}
+
+	// The pane commands: the pane comes forward first, because a run whose output lands behind
+	// whichever pane happens to be in front is a run nobody sees.
+	void OnRunTests(object? s, RoutedEventArgs e) => Pane<Panes.TestsPaneViewModel>("Tests")?.Run();
+
+	void OnRunTestsWithCoverage(object? s, RoutedEventArgs e)
+		=> Pane<Panes.TestsPaneViewModel>("Tests")?.RunWithCoverage();
+
+	void OnRunTestsAB(object? s, RoutedEventArgs e) => Pane<Panes.TestsPaneViewModel>("Tests")?.RunAB();
+
+	void OnImpactedTestFilter(object? s, RoutedEventArgs e)
+		=> Pane<Panes.TestsPaneViewModel>("Tests")?.ApplyImpactedFilter();
+
+	void OnRunApplication(object? s, RoutedEventArgs e) => Pane<Panes.RunPaneViewModel>("Run")?.Run();
+
+	void OnRefreshChecks(object? s, RoutedEventArgs e)
+	{
+		App.Workspace?.Factory?.ShowPane("Checks");
+		App.Workspace?.RequestChecksRefresh();
+	}
+
+	static T? Pane<T>(string id) where T : Dock.Model.Mvvm.Controls.Tool
+	{
+		if (App.Workspace?.Factory is not { } factory)
+			return null;
+		factory.ShowPane(id);
+		return factory.Pane<T>(id);
+	}
+
+	/// <summary>
+	/// What the menu can offer that depends on the tab in front. The review's own state is
+	/// bound - it has events to change on - but which document is active, whether its blame
+	/// margin is showing and how deeply its file is meant to be read have none. Read when the
+	/// menu opens, which is the only moment it matters and the only one that cannot be stale.
+	/// </summary>
+	void OnMenuOpening(object? s, RoutedEventArgs e)
+	{
+		var view = View;
+		var file = App.Workspace?.CurrentFile;
+		NextHunkItem.IsEnabled = view is not null;
+		PrevHunkItem.IsEnabled = view is not null;
+		NextUncoveredItem.IsEnabled = view is not null;
+		SideBySideItem.IsEnabled = file is not null;
+		BlameItem.IsEnabled = view is not null;
+		BlameItem.IsChecked = view?.BlameVisible ?? false;
+		DebugHereItem.IsEnabled = view is not null;
+		HistoryOfSelectionItem.IsEnabled = view is not null;
+		PlanMenu.IsEnabled = file is not null;
+		string depth = file is not null ? App.Workspace?.GetDepth(file.Path) ?? "" : "";
+		PlanDeep.IsChecked = depth == "deep";
+		PlanSkim.IsChecked = depth == "skim";
+		PlanTrust.IsChecked = depth == "trust";
+	}
 }

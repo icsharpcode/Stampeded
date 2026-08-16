@@ -24,6 +24,44 @@ public partial class MainViewModel : ObservableObject
 	[ObservableProperty]
 	bool semanticsReady;
 
+	/// <summary>
+	/// What the menu bar may offer. A command that cannot run is greyed rather than left to
+	/// fail silently: with no review open, "Close Review" that does nothing reads as a broken
+	/// command instead of an unavailable one.
+	/// </summary>
+	[ObservableProperty]
+	bool hasReview;
+
+	[ObservableProperty]
+	bool hasPullRequest;
+
+	[ObservableProperty]
+	bool canComment;
+
+	[ObservableProperty]
+	bool inScope;
+
+	/// <summary>The whole change is what is being read - which is not the same as no scope
+	/// being set: with no review open, nothing is being read at all and the scope marks
+	/// belong to none of the three.</summary>
+	[ObservableProperty]
+	bool wholeChangeActive;
+
+	[ObservableProperty]
+	bool inCommitScope;
+
+	[ObservableProperty]
+	bool inSinceLastPassScope;
+
+	[ObservableProperty]
+	bool canEnterCommitScope;
+
+	[ObservableProperty]
+	bool canEnterSinceLastPass;
+
+	[ObservableProperty]
+	bool hasDecompilerTestCases;
+
 	[ObservableProperty]
 	Documents.StartDocumentViewModel? startPage;
 
@@ -62,9 +100,30 @@ public partial class MainViewModel : ObservableObject
 		workspace.OpenStart();
 		StartPage = workspace.StartPage;
 		workspace.ReviewChanged += UpdateTitle;
+		workspace.ReviewChanged += RefreshReviewState;
+		workspace.CommitScopeChanged += RefreshReviewState;
 		workspace.SemanticsChanged += () =>
 			Avalonia.Threading.Dispatcher.UIThread.Post(() => SemanticsReady = workspace.SemanticsReady);
 		UpdateTitle();
+		RefreshReviewState();
+	}
+
+	/// <summary>Reads the review's state in one place, on the events that can change it. The
+	/// state of the tab in front is not here: it has no event, and the menu reads it when it
+	/// opens instead.</summary>
+	void RefreshReviewState()
+	{
+		var workspace = App.Workspace;
+		HasReview = workspace is { CurrentPr: not null } or { LocalRange: not null };
+		HasPullRequest = workspace?.CurrentPr is not null;
+		CanComment = workspace?.CanComment ?? false;
+		InScope = workspace?.InScope ?? false;
+		WholeChangeActive = HasReview && !InScope;
+		InCommitScope = workspace?.CommitScope is not null;
+		InSinceLastPassScope = workspace?.InSinceLastPassScope ?? false;
+		CanEnterCommitScope = workspace?.CanEnterCommitScope ?? false;
+		CanEnterSinceLastPass = workspace?.CanEnterSinceLastPassScope ?? false;
+		HasDecompilerTestCases = workspace?.HasDecompilerTestCases ?? false;
 	}
 
 	void UpdateTitle()

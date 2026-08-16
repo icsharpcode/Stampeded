@@ -18,6 +18,11 @@ public class StampededDockFactory(ReviewWorkspace workspace) : Factory
 
 	readonly Dictionary<string, (Tool Pane, ToolDock Home)> panes = [];
 
+	/// <summary>One of the panes, for the commands that live in the menu bar but do their work
+	/// in a pane - running the tests, running the app. Null when this build has no such pane.</summary>
+	public T? Pane<T>(string id) where T : Tool
+		=> panes.TryGetValue(id, out var entry) ? entry.Pane as T : null;
+
 	/// <summary>Brings a tool pane back: re-added to its home dock when it was closed
 	/// (e.g. its floating window was dismissed), then activated and focused.</summary>
 	public void ShowPane(string id)
