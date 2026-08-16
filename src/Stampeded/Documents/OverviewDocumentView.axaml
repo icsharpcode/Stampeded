@@ -38,52 +38,55 @@
   <!-- One scroll region for the whole page: every list below grows to its full height and
        the page scrolls past it. A list that scrolls inside a page that also scrolls puts two
        bars side by side and hides rows behind whichever one the wheel does not move. -->
-  <ScrollViewer Padding="8">
-    <StackPanel>
-      <DockPanel>
-        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="6">
-          <Button Classes="tool" Click="OnEnterCommitScope"
-                  IsVisible="{Binding !State.InScope}"
-                  IsEnabled="{Binding State.CanEnterCommitScope}"
-                  ToolTip.Tip="Commit by commit - read the change one commit at a time, in the order it was written">
-            <Image Source="{x:Static app:Images.Commit}" />
-          </Button>
-          <Button Classes="tool" Click="OnSinceLastPass"
-                  IsVisible="{Binding !State.InScope}"
-                  IsEnabled="{Binding State.CanEnterSinceLastPass}"
-                  ToolTip.Tip="Since last pass - only what changed since you last opened this review; after a rebase, the author's own edits without the commits it brought in">
-            <Image Source="{x:Static app:Images.History}" />
-          </Button>
-          <Border Classes="toolsep" />
-          <Button Classes="tool" Click="OnOpenVsCode"
-                  ToolTip.Tip="Open the head worktree in VS Code for building and debugging this revision">
-            <Image Source="{x:Static app:Images.VisualStudioCode}" />
-          </Button>
-          <Button Classes="tool" Click="OnOpenFixtures" IsVisible="{Binding State.HasFixtureTools}"
-                  ToolTip.Tip="Fixtures in ILSpy - open the compiled test-case assemblies this change affects in the ILSpy built from the review head (run the decompiler tests first)">
-            <Image Source="{x:Static app:Images.Assembly}" />
-          </Button>
-          <Button Classes="tool" Click="OnOpenPr"
-                  ToolTip.Tip="Open this PR in the browser">
-            <Image Source="{x:Static app:Images.GitHub}" />
-          </Button>
-          <Border Classes="toolsep" />
-          <Button Classes="tool" Click="OnBounce"
-                  ToolTip.Tip="Bounce - draft a decline-with-reason review comment">
-            <Image Source="{x:Static app:Images.Undo}" />
-          </Button>
-          <Button Classes="tool" Click="OnReloadReview"
-                  ToolTip.Tip="Reload - read the review again at the head it has now, picking up commits pushed since it was opened  ( F5 )">
-            <Image Source="{x:Static app:Images.Refresh}" />
-          </Button>
-          <Button Classes="tool" Click="OnCloseReview"
-                  ToolTip.Tip="Close review - close its documents and return to the start page">
-            <Image Source="{x:Static app:Images.Close}" />
-          </Button>
-        </StackPanel>
-        <TextBlock FontWeight="SemiBold" FontSize="17" Text="{Binding State.Title}"
-                   TextTrimming="CharacterEllipsis" />
-      </DockPanel>
+  <!-- The title and its commands stay put: docked above the scroll region rather than at the
+       top of it, so opening a section below or scrolling down never moves them. -->
+  <DockPanel>
+    <DockPanel DockPanel.Dock="Top" Margin="8,8,8,0">
+      <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="6">
+        <Button Classes="tool" Click="OnEnterCommitScope"
+                IsVisible="{Binding !State.InScope}"
+                IsEnabled="{Binding State.CanEnterCommitScope}"
+                ToolTip.Tip="Commit by commit - read the change one commit at a time, in the order it was written">
+          <Image Source="{x:Static app:Images.Commit}" />
+        </Button>
+        <Button Classes="tool" Click="OnSinceLastPass"
+                IsVisible="{Binding !State.InScope}"
+                IsEnabled="{Binding State.CanEnterSinceLastPass}"
+                ToolTip.Tip="Since last pass - only what changed since you last opened this review; after a rebase, the author's own edits without the commits it brought in">
+          <Image Source="{x:Static app:Images.History}" />
+        </Button>
+        <Border Classes="toolsep" />
+        <Button Classes="tool" Click="OnOpenVsCode"
+                ToolTip.Tip="Open the head worktree in VS Code for building and debugging this revision">
+          <Image Source="{x:Static app:Images.VisualStudioCode}" />
+        </Button>
+        <Button Classes="tool" Click="OnOpenFixtures" IsVisible="{Binding State.HasFixtureTools}"
+                ToolTip.Tip="Fixtures in ILSpy - open the compiled test-case assemblies this change affects in the ILSpy built from the review head (run the decompiler tests first)">
+          <Image Source="{x:Static app:Images.Assembly}" />
+        </Button>
+        <Button Classes="tool" Click="OnOpenPr"
+                ToolTip.Tip="Open this PR in the browser">
+          <Image Source="{x:Static app:Images.GitHub}" />
+        </Button>
+        <Border Classes="toolsep" />
+        <Button Classes="tool" Click="OnBounce"
+                ToolTip.Tip="Bounce - draft a decline-with-reason review comment">
+          <Image Source="{x:Static app:Images.Undo}" />
+        </Button>
+        <Button Classes="tool" Click="OnReloadReview"
+                ToolTip.Tip="Reload - read the review again at the head it has now, picking up commits pushed since it was opened  ( F5 )">
+          <Image Source="{x:Static app:Images.Refresh}" />
+        </Button>
+        <Button Classes="tool" Click="OnCloseReview"
+                ToolTip.Tip="Close review - close its documents and return to the start page">
+          <Image Source="{x:Static app:Images.Close}" />
+        </Button>
+      </StackPanel>
+      <TextBlock FontWeight="SemiBold" FontSize="17" Text="{Binding State.Title}"
+                 TextTrimming="CharacterEllipsis" />
+    </DockPanel>
+    <ScrollViewer Padding="8,4,8,8">
+      <StackPanel>
       <!-- The scope takes over the top of the page while it is on: it is what everything
            below refers to. Stepping belongs to the per-commit scope alone; leaving is the
            same for both. -->
@@ -284,6 +287,7 @@
         </StackPanel>
       </Expander>
 
-    </StackPanel>
-  </ScrollViewer>
+      </StackPanel>
+    </ScrollViewer>
+  </DockPanel>
 </UserControl>

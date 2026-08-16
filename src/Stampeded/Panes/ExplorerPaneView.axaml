@@ -25,31 +25,11 @@
             Background="{x:Static app:ScopePalette.Tint}" BorderBrush="{x:Static app:ScopePalette.Accent}"
             IsVisible="{Binding HasReview}">
       <StackPanel Spacing="3">
-        <Border IsVisible="{Binding InScope}" Background="{x:Static app:ScopePalette.Accent}" CornerRadius="2"
-                Padding="5,1" HorizontalAlignment="Left">
-          <TextBlock Text="{Binding ScopeBadge}" FontSize="9" FontWeight="Bold"
-                     Foreground="White" />
-        </Border>
-        <TextBlock FontSize="11" FontWeight="SemiBold" TextWrapping="Wrap"
-                   IsVisible="{Binding !InCommitScope}"
-                   Text="{Binding CommitScopeLine}" />
-        <!-- In per-commit mode the header opens onto the whole message: the reasoning is
-             what the commit was written to carry, and it is worth reading before its diff.
-             Collapsed it is the same one-line header as before, and a long message scrolls
-             inside its own box rather than pushing the file list off the pane. -->
-        <Expander IsVisible="{Binding InCommitScope}" IsExpanded="True" Padding="0"
-                  HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
-          <Expander.Header>
-            <TextBlock FontSize="11" FontWeight="SemiBold" TextWrapping="Wrap"
-                       Text="{Binding CommitScopeLine}" />
-          </Expander.Header>
-          <ScrollViewer MaxHeight="150" VerticalScrollBarVisibility="Auto">
-            <SelectableTextBlock Text="{Binding CommitMessage}" TextWrapping="Wrap"
-                                 FontFamily="monospace" FontSize="11" Margin="4,2" />
-          </ScrollViewer>
-        </Expander>
-        <!-- Wrapped: the pane is narrow, and a command that falls off its right edge is
-             the same as not having it here at all. -->
+        <!-- First in the pane, above everything that changes height: the commit message
+             opens and closes and every commit has a different one, and a row of commands that
+             moves under the pointer as it does is a row that gets mis-pressed. Wrapped, too:
+             the pane is narrow, and a command that falls off its right edge is the same as
+             not having it here at all. -->
         <WrapPanel Orientation="Horizontal">
           <Button Classes="tool" Click="OnEnterCommitScope" IsVisible="{Binding !InScope}"
                   ToolTip.Tip="Commit by commit - read the change one commit at a time, in the order it was written">
@@ -96,6 +76,29 @@
             <Image Source="{x:Static app:Images.Close}" />
           </Button>
         </WrapPanel>
+        <Border IsVisible="{Binding InScope}" Background="{x:Static app:ScopePalette.Accent}" CornerRadius="2"
+                Padding="5,1" HorizontalAlignment="Left">
+          <TextBlock Text="{Binding ScopeBadge}" FontSize="9" FontWeight="Bold"
+                     Foreground="White" />
+        </Border>
+        <TextBlock FontSize="11" FontWeight="SemiBold" TextWrapping="Wrap"
+                   IsVisible="{Binding !InCommitScope}"
+                   Text="{Binding CommitScopeLine}" />
+        <!-- In per-commit mode the header opens onto the whole message: the reasoning is
+             what the commit was written to carry, and it is worth reading before its diff.
+             Collapsed it is the same one-line header as before, and a long message scrolls
+             inside its own box rather than pushing the file list off the pane. -->
+        <Expander IsVisible="{Binding InCommitScope}" IsExpanded="True" Padding="0"
+                  HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
+          <Expander.Header>
+            <TextBlock FontSize="11" FontWeight="SemiBold" TextWrapping="Wrap"
+                       Text="{Binding CommitScopeLine}" />
+          </Expander.Header>
+          <ScrollViewer MaxHeight="150" VerticalScrollBarVisibility="Auto">
+            <SelectableTextBlock Text="{Binding CommitMessage}" TextWrapping="Wrap"
+                                 FontFamily="monospace" FontSize="11" Margin="4,2" />
+          </ScrollViewer>
+        </Expander>
       </StackPanel>
     </Border>
     <DockPanel Grid.Row="1">

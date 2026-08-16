@@ -5,7 +5,9 @@
              x:Class="Stampeded.Panes.ChecksPaneView"
              x:DataType="panes:ChecksPaneViewModel">
   <DockPanel>
-    <DockPanel DockPanel.Dock="Bottom">
+    <!-- Above the list, like every other pane's commands: a row that sits under a list moves
+         with it, and the reader has to look for it. -->
+    <DockPanel DockPanel.Dock="Top">
       <Button DockPanel.Dock="Right" Classes="tool" Margin="0,2,4,2"
               VerticalAlignment="Center" Click="OnRefresh"
               ToolTip.Tip="Refresh - re-fetch CI check state from GitHub">
