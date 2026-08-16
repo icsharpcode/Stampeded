@@ -1795,11 +1795,12 @@ public sealed class ReviewWorkspace(string repoPath)
 					StatusMessage?.Invoke($"Moved on with {unread} file(s) of that commit still unread.");
 				return;
 			}
-			// The series is read: the next thing is the verdict, which is where the whole-change
-			// read ends up too. 'Whole change' is still there for a second pass over it as one
-			// diff, so the status says so rather than the page assuming it.
+			// The series is read: the next thing is the verdict. Leaving the scope first is
+			// part of that - a review is submitted for the whole change, so a verdict page
+			// reached while still inside one commit is a page whose buttons cannot work.
+			await ExitScopeAsync();
 			OpenReviewDocument();
-			StatusMessage?.Invoke("Last commit read. 'Whole change' reviews it again as one diff.");
+			StatusMessage?.Invoke("Last commit read; back to the whole change, where the verdict is given.");
 			return;
 		}
 		// Outside a scope the last file has nowhere to advance to, and the advance would
@@ -2588,6 +2589,16 @@ public sealed class ReviewWorkspace(string repoPath)
 	/// </summary>
 	public async Task<string> SubmitReviewCheckedAsync(string eventType, string body)
 	{
+		// Drafts are matched against the files in scope, so submitting from one would keep every
+		// draft written elsewhere local and report it as outdated - which is not what happened
+		// to it. This used to be answered inside the submit, with a status line and a return
+		// value that said a review had been submitted: the verdict did nothing and said it had
+		// worked.
+		if (InScope)
+		{
+			return "A review covers the whole change, and this is a part of it: press 'Whole change' "
+				+ $"first, then approve or decline. Your {Drafts.Count} draft(s) are kept.";
+		}
 		if (eventType == "APPROVE" && ApprovalGate?.Invoke() is { Ok: false } gate)
 			return $"Approval blocked by the review guide - incomplete: {gate.Detail}  (override in the Guide pane)";
 		// The buttons are disabled for these on your own pull request, but the check that
@@ -2655,15 +2666,6 @@ public sealed class ReviewWorkspace(string repoPath)
 	{
 		if (CurrentPr is not { } pr)
 			return (0, 0);
-		if (InScope)
-		{
-			// Drafts are matched against the files in scope, so submitting from one would
-			// keep every draft written elsewhere local and report it as outdated - which is
-			// not what happened to it.
-			StatusMessage?.Invoke($"A review is submitted for the whole change; press 'Whole change' first. "
-				+ $"Your {Drafts.Count} draft(s) are kept.");
-			return (0, Drafts.Count);
-		}
 		var commentable = Files.ToDictionary(f => f, CommentableLines);
 		var payload = new List<ReviewCommentDto>();
 		var replies = new List<(long InReplyTo, string Body, Guid Id)>();
