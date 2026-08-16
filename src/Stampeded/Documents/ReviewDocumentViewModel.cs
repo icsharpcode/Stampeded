@@ -1,5 +1,7 @@
 using System.Collections.ObjectModel;
 
+using Avalonia.Media;
+
 using CommunityToolkit.Mvvm.ComponentModel;
 
 using Dock.Model.Mvvm.Controls;
@@ -63,6 +65,21 @@ public sealed partial class ReviewDocumentState : ObservableObject
 	[ObservableProperty]
 	string selectedMergeMethod = "";
 
+	/// <summary>What the last submission did, kept apart from <see cref="Status"/>: posting a
+	/// review reloads the comments, and the reload used to overwrite the answer with the same
+	/// sentence the page shows at rest - so a review that went out looked like a button that
+	/// did nothing.</summary>
+	[ObservableProperty]
+	string outcome = "";
+
+	/// <summary>Behind the summary box and the verdict buttons: green when the review went
+	/// out, red when it did not, and nothing at all before either.</summary>
+	[ObservableProperty]
+	IBrush outcomeBackground = Brushes.Transparent;
+
+	[ObservableProperty]
+	bool hasOutcome;
+
 	/// <summary>Set once the list has been filled and a starting choice made: what is worth
 	/// remembering is a choice the reader made, not the one this repository's allowed methods
 	/// left over.</summary>
@@ -101,7 +118,19 @@ public sealed class ReviewDocumentViewModel : Document
 		Rebuild();
 	}
 
-	void Rebuild() => RebuildAsync().HandleExceptions();
+	void Rebuild()
+	{
+		// Two jobs, started apart on purpose: quoting every comment reads a blob per file, and
+		// a file that cannot be read there must not be what leaves the verdict buttons dead.
+		RefreshVerdictAsync().HandleExceptions();
+		RebuildAsync().HandleExceptions();
+	}
+
+	async Task RefreshVerdictAsync()
+	{
+		State.CanComment = workspace.CanComment;
+		State.CanGiveVerdict = workspace.CanComment && !await workspace.IsOwnPullRequestAsync();
+	}
 
 	async Task RebuildAsync()
 	{
@@ -129,7 +158,6 @@ public sealed class ReviewDocumentViewModel : Document
 		State.Status = workspace.CanComment
 			? $"{drafts} draft(s) will be posted with this review; {workspace.PostedComments.Count} comment(s) already on the pull request."
 			: "Local review: comments need a pull request to post to.";
-		State.CanGiveVerdict = workspace.CanComment && !await workspace.IsOwnPullRequestAsync();
 		await RefreshMergeAsync();
 	}
 
@@ -235,9 +263,19 @@ public sealed class ReviewDocumentViewModel : Document
 
 		async Task SubmitAsync()
 		{
-			State.Status = await workspace.SubmitReviewCheckedAsync(eventType, State.Summary.Trim());
-			if (State.Status.StartsWith("Review submitted", StringComparison.Ordinal))
+			State.HasOutcome = false;
+			State.Outcome = $"Submitting {eventType}...";
+			State.OutcomeBackground = Brushes.Transparent;
+			string result = await workspace.SubmitReviewCheckedAsync(eventType, State.Summary.Trim());
+			bool posted = result.StartsWith("Review submitted", StringComparison.Ordinal);
+			if (posted)
 				State.Summary = "";
+			State.Outcome = result;
+			State.HasOutcome = true;
+			// Faint, because it sits behind text that has to stay readable in either theme,
+			// and it is the answer to one press rather than a state of the review.
+			State.OutcomeBackground = new SolidColorBrush(Color.Parse(posted ? "#2EA043" : "#F85149"), 0.16);
+			workspace.PostStatus(result);
 		}
 	}
 

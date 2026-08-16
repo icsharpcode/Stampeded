@@ -47,7 +47,7 @@
       </ListBox.ItemTemplate>
     </ListBox>
 
-    <DockPanel Grid.Row="2" Margin="0,8,0,0">
+    <DockPanel Grid.Row="2" Margin="0,8,0,0" Background="{Binding State.OutcomeBackground}">
       <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="6" Margin="6,0,0,0"
                   VerticalAlignment="Bottom">
         <!-- GitHub rejects a verdict on your own pull request; a comment review is all it takes. -->
@@ -83,6 +83,11 @@
           </StackPanel>
         </StackPanel>
       </StackPanel>
+      <!-- What the last press did, over the box and the buttons it was pressed with: green
+           when the review went out, red when it did not. Nothing is coloured before the first
+           press, so the bar is not a state of the review, only the answer to a press. -->
+      <TextBlock DockPanel.Dock="Top" Margin="0,0,0,4" FontSize="12" TextWrapping="Wrap"
+                 IsVisible="{Binding State.HasOutcome}" Text="{Binding State.Outcome}" />
       <TextBox Text="{Binding State.Summary}" AcceptsReturn="True" MaxHeight="90" MinHeight="48"
                IsEnabled="{Binding State.CanComment}"
                PlaceholderText="Review summary (optional)..." />
