@@ -65,10 +65,10 @@ public partial class MainViewModel : ObservableObject
 	[ObservableProperty]
 	Documents.StartDocumentViewModel? startPage;
 
-	/// <summary>Scale of the whole window's content. Steps are multiplicative so each press
-	/// changes the size by as much as the last one appeared to.</summary>
+	/// <summary>Scale of the whole window's content, as it was left last time. Steps are
+	/// multiplicative so each press changes the size by as much as the last one appeared to.</summary>
 	[ObservableProperty]
-	double zoom = 1.0;
+	double zoom = ZoomPreference.Load(MinZoom, MaxZoom);
 
 	const double ZoomStep = 1.1;
 	const double MinZoom = 0.5;
@@ -80,13 +80,22 @@ public partial class MainViewModel : ObservableObject
 
 	public void ZoomReset() => Zoom = 1.0;
 
-	partial void OnZoomChanged(double value) => ZoomState.Set(value);
+	partial void OnZoomChanged(double value)
+	{
+		ZoomState.Set(value);
+		// Written as it changes rather than on the way out: a session that ends by being killed
+		// still meant its last zoom.
+		ZoomPreference.Save(value);
+	}
 
 	public MainViewModel()
 	{
 		// Before anything reads the list. Both views that show it - this menu and the start
 		// page - snapshot it while this constructor runs, so a repository recorded at the end
 		// of it was missing from both until the next start.
+		// The popups are scaled by a transform of their own, which the property setter keeps in
+		// step - but nothing set it, so a remembered zoom has to hand it over here.
+		ZoomState.Set(Zoom);
 		RecentRepos.Record(Program.RepoPath);
 		Recent = new(RecentRepos.Load());
 		var workspace = new ReviewWorkspace(Program.RepoPath);

@@ -12,33 +12,9 @@ public static class MergeMethodPreference
 {
 	public const string Default = "merge";
 
-	static string FilePath => Path.Combine(
-		Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "stampeded", "merge-method.txt");
+	const string FileName = "merge-method.txt";
 
-	public static string Load()
-	{
-		try
-		{
-			return File.Exists(FilePath) && File.ReadAllText(FilePath).Trim() is { Length: > 0 } method
-				? method
-				: Default;
-		}
-		catch (IOException)
-		{
-			return Default;
-		}
-	}
+	public static string Load() => UserData.Read(FileName) is { Length: > 0 } method ? method : Default;
 
-	public static void Save(string method)
-	{
-		try
-		{
-			Directory.CreateDirectory(Path.GetDirectoryName(FilePath)!);
-			File.WriteAllText(FilePath, method);
-		}
-		catch (IOException)
-		{
-			// A preference is a convenience; never fail a merge over failing to remember it.
-		}
-	}
+	public static void Save(string method) => UserData.Write(FileName, method);
 }

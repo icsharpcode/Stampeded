@@ -11,8 +11,7 @@ namespace Stampeded;
 /// </summary>
 public static class TabRowsPreference
 {
-	static string FilePath => Path.Combine(
-		Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "stampeded", "tab-rows.txt");
+	const string FileName = "tab-rows.txt";
 
 	/// <summary>True while the tabs wrap onto as many rows as they need.</summary>
 	public static bool MultiRow { get; private set; } = Load();
@@ -29,28 +28,7 @@ public static class TabRowsPreference
 		Changed?.Invoke();
 	}
 
-	static bool Load()
-	{
-		try
-		{
-			return File.Exists(FilePath) && File.ReadAllText(FilePath).Trim() == "multi";
-		}
-		catch (IOException)
-		{
-			return false;
-		}
-	}
+	static bool Load() => UserData.Read(FileName) == "multi";
 
-	static void Save(bool multiRow)
-	{
-		try
-		{
-			Directory.CreateDirectory(Path.GetDirectoryName(FilePath)!);
-			File.WriteAllText(FilePath, multiRow ? "multi" : "single");
-		}
-		catch (IOException)
-		{
-			// A layout is a convenience; never fail over failing to remember it.
-		}
-	}
+	static void Save(bool multiRow) => UserData.Write(FileName, multiRow ? "multi" : "single");
 }
