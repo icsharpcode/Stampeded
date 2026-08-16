@@ -328,6 +328,41 @@ public sealed class GitHubService(string repoPath)
 			// review decision, the checks and the draft flag are where GitHub keeps the detail.
 			"--json", "mergeable,mergeStateStatus,reviewDecision,isDraft,baseRefName,statusCheckRollup");
 
+	/// <summary>
+	/// The title of an issue or pull request of this repository, or null when the number is
+	/// not one of either. A number in a description is only a reference if something answers
+	/// to it: "#141414" is a colour and "#0" is nothing, and both read as issues until asked.
+	/// Answers are kept for the session - an issue's existence does not change under a review,
+	/// and the same description is rebuilt on every refresh.
+	/// </summary>
+	public Task<string?> GetIssueTitleAsync(int number, CancellationToken ct = default)
+	{
+		// The question in flight is what is kept, not only its answer: a page rebuilt twice in
+		// a row would otherwise ask twice about every number before either reply arrived.
+		if (!issueTitles.TryGetValue(number, out var pending))
+			issueTitles[number] = pending = AskAsync();
+		return pending;
+
+		async Task<string?> AskAsync()
+		{
+			var result = await CliWrap.Cli.Wrap("gh")
+				.WithArguments(["api", $"repos/{{owner}}/{{repo}}/issues/{number}", "--jq", ".title"])
+				.WithWorkingDirectory(repoPath)
+				.WithValidation(CliWrap.CommandResultValidation.None)
+				.ExecuteBufferedAsync(ct);
+			// A 404 is the answer, not a failure: it says the number is not an issue.
+			string? title = result.ExitCode == 0 && result.StandardOutput.Trim() is { Length: > 0 } text
+				? text
+				: null;
+			CliLog.Write("gh", $"issue {number} -> {(title is null ? "not an issue" : "exists")}");
+			return title;
+		}
+	}
+
+	/// <summary>Asked once per number and kept for the session; the callers are on the UI
+	/// thread, which is what makes an unlocked dictionary enough.</summary>
+	readonly Dictionary<int, Task<string?>> issueTitles = [];
+
 	/// <summary>The merge methods the repository allows; a setting, so it is read once.</summary>
 	public async Task<MergeMethods> GetMergeMethodsAsync(CancellationToken ct = default)
 		=> mergeMethods ??= await JsonAsync<MergeMethods>(ct,

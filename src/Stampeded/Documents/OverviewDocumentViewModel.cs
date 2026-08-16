@@ -34,7 +34,7 @@ public sealed record CheckLine(string Marker, string Name, string? Link);
 /// <summary>One reviewer's standing, coloured by it.</summary>
 public sealed record ReviewerLine(IBrush Foreground, string Text);
 
-public sealed record IssueRef(string Display, int Number);
+public sealed record IssueRef(string Display, int Number, string Title);
 
 public sealed partial class OverviewState : ObservableObject
 {
@@ -184,7 +184,7 @@ public class OverviewDocumentViewModel : Document
 			? Core.GitHub.IssueLinks.Autolink(body.ReplaceLineEndings("\n"), workspace.IssueUrlPrefix)
 			: "(no description)";
 		RebuildCommitScope();
-		RebuildLinkedIssues();
+		RebuildLinkedIssuesAsync().HandleExceptions();
 		RebuildFiles();
 		RebuildChecks();
 		RebuildReviewers();
@@ -215,20 +215,40 @@ public class OverviewDocumentViewModel : Document
 
 	public void ExitCommitScope() => workspace.ExitScopeAsync().HandleExceptions();
 
-	void RebuildLinkedIssues()
+	/// <summary>
+	/// The issues a description points at. A "#123" in prose is only a candidate - a colour
+	/// like "#141414" and a "#0" that answers to nothing read exactly the same - so each one
+	/// is put to GitHub and only the numbers something answers to are shown, carrying the
+	/// title they answered with.
+	/// </summary>
+	async Task RebuildLinkedIssuesAsync()
 	{
-		LinkedIssues.Clear();
-		if (workspace.CurrentPr?.Body is not { } body)
-			return;
-		foreach (Match match in Regex.Matches(body, @"#(\d{2,6})\b").Take(12))
+		// Asking takes a moment, and the page is rebuilt on several events: the answers are
+		// collected aside and shown at once, and a pass that has been overtaken drops them.
+		int pass = ++linkedIssuesPass;
+		if (workspace.CurrentPr?.Body is not { } body || !workspace.CanComment)
 		{
-			int number = int.Parse(match.Groups[1].Value);
-			if (workspace.CurrentPr is { } pr && number == pr.Number)
-				continue;
-			if (LinkedIssues.All(i => i.Number != number))
-				LinkedIssues.Add(new IssueRef($"#{number}", number));
+			LinkedIssues.Clear();
+			return;
 		}
+		var found = new List<IssueRef>();
+		foreach (int number in Regex.Matches(body, @"#(\d{1,6})\b")
+			.Select(m => int.Parse(m.Groups[1].Value))
+			.Where(n => n != workspace.CurrentPr?.Number)
+			.Distinct()
+			.Take(12))
+		{
+			if (await workspace.GitHub.GetIssueTitleAsync(number) is { } title)
+				found.Add(new IssueRef($"#{number}", number, title));
+		}
+		if (pass != linkedIssuesPass)
+			return;
+		LinkedIssues.Clear();
+		foreach (var issue in found)
+			LinkedIssues.Add(issue);
 	}
+
+	int linkedIssuesPass;
 
 	public void OpenIssue(IssueRef issue)
 		=> ExternalTool.RunAsync("gh", ["browse", issue.Number.ToString()], workspace.RepoPath).HandleExceptions();

@@ -191,7 +191,7 @@
           <ItemsControl.ItemTemplate>
             <DataTemplate x:DataType="docs:IssueRef">
               <Button Content="{Binding Display}" FontSize="12.5" Padding="6,2" Margin="0,0,4,0"
-                      Click="OnIssueClick" ToolTip.Tip="Open on GitHub" />
+                      Click="OnIssueClick" ToolTip.Tip="{Binding Title}" />
             </DataTemplate>
           </ItemsControl.ItemTemplate>
         </ItemsControl>
