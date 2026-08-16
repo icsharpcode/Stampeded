@@ -1523,6 +1523,32 @@ public sealed class ReviewWorkspace(string repoPath)
 		CloseReview();
 	}
 
+	/// <summary>
+	/// Reads the review again at whatever its head is now. A review is a snapshot: it is taken
+	/// when it is opened and nothing behind it moves it, so a push during the read left the
+	/// only way to see it as closing the review and opening it again.
+	///
+	/// It goes through the same open the start page does, at the same PR number or the same
+	/// pair of refs, which is what makes it a reload rather than a second thing to keep
+	/// correct. Nothing recorded is lost: drafts and viewed flags live with the review, and a
+	/// head that moved lands in the re-review carry-over, which keeps the flags of the files
+	/// the new head did not touch and says what it invalidated.
+	/// </summary>
+	public async Task ReloadReviewAsync()
+	{
+		string? before = HeadSha;
+		if (CurrentPr is { } pr)
+			await OpenPrAsync(pr.Number);
+		else if (LocalRange is { } local)
+			await OpenLocalRangeAsync(local.Base, local.Head);
+		else
+			return;
+		// A head that moved is reported by the carry-over, which knows what it kept; standing
+		// still is the outcome nothing else would mention.
+		if (HeadSha == before)
+			PostStatus($"Reloaded: the head is still {before?[..9]}.");
+	}
+
 	static Avalonia.Controls.Window? MainWindowOrNull()
 		=> (Avalonia.Application.Current?.ApplicationLifetime
 			as Avalonia.Controls.ApplicationLifetimes.IClassicDesktopStyleApplicationLifetime)?.MainWindow;

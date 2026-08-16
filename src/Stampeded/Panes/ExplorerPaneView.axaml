@@ -76,6 +76,8 @@
           <Button Content="Approve / Decline" FontSize="10" Padding="6,1" Margin="0,0,4,3" FontWeight="SemiBold"
                   Click="OnOpenReview"
                   ToolTip.Tip="Open the review: every comment under the lines it is about, and the verdict" />
+          <Button Content="Reload" FontSize="10" Padding="6,1" Margin="0,0,4,3" Click="OnReloadReview"
+                  ToolTip.Tip="Read the review again at the head it has now, picking up commits pushed since it was opened (F5)" />
           <Button Content="Close review" FontSize="10" Padding="6,1" Margin="0,0,4,3" Click="OnCloseReview"
                   ToolTip.Tip="End this review: close its documents and return to the start page" />
         </WrapPanel>

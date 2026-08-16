@@ -116,4 +116,6 @@ public partial class ExplorerPaneViewModel : Tool
 
 
 	public void CloseReview() => workspace.CloseReviewAsync().HandleExceptions();
+
+	public void ReloadReview() => workspace.ReloadReviewAsync().HandleExceptions();
 }

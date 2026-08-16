@@ -79,6 +79,7 @@
         <MenuItem Header="Open PR on GitHub" Click="OnOpenOnGitHub" />
         <MenuItem Header="Open Head Worktree in VS Code" Click="OnOpenVsCode" />
         <MenuItem Header="Open Affected Fixtures in ILSpy" Click="OnOpenFixtures" />
+        <MenuItem Header="Reload Review  ( F5 )" Click="OnReloadReview" />
         <MenuItem Header="Close Review" Click="OnCloseReview" />
         <MenuItem Header="Rebase PR onto Target Branch" Click="OnRebasePr" />
         <MenuItem Header="Show Semantic Load Log" Click="OnShowSemanticLog" />

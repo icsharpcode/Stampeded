@@ -50,4 +50,6 @@ public partial class ExplorerPaneView : UserControl
 	void OnOpenReview(object? sender, Avalonia.Interactivity.RoutedEventArgs e) => Vm?.OpenReview();
 
 	void OnCloseReview(object? sender, Avalonia.Interactivity.RoutedEventArgs e) => Vm?.CloseReview();
+
+	void OnReloadReview(object? sender, Avalonia.Interactivity.RoutedEventArgs e) => Vm?.ReloadReview();
 }

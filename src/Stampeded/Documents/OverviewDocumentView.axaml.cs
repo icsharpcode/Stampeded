@@ -88,6 +88,8 @@ public partial class OverviewDocumentView : UserControl
 
 	void OnCloseReview(object? sender, RoutedEventArgs e) => App.Workspace?.CloseReviewAsync().HandleExceptions();
 
+	void OnReloadReview(object? sender, RoutedEventArgs e) => App.Workspace?.ReloadReviewAsync().HandleExceptions();
+
 	void OnIssueClick(object? sender, RoutedEventArgs e)
 	{
 		if (Vm is { } vm && (sender as Button)?.DataContext is IssueRef issue)

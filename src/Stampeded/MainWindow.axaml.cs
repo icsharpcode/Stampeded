@@ -101,6 +101,9 @@ public partial class MainWindow : Window
 			case (Key.Right, KeyModifiers.Alt):
 				App.Workspace?.GoForwardAsync().HandleExceptions();
 				break;
+			case (Key.F5, KeyModifiers.None):
+				App.Workspace?.ReloadReviewAsync().HandleExceptions();
+				break;
 			case (Key.W, KeyModifiers.Control):
 				App.Workspace?.CloseActiveDocument();
 				break;
@@ -187,6 +190,8 @@ public partial class MainWindow : Window
 	void OnOpenStart(object? s, RoutedEventArgs e) => App.Workspace?.OpenStart();
 
 	void OnCloseReview(object? s, RoutedEventArgs e) => App.Workspace?.CloseReviewAsync().HandleExceptions();
+
+	void OnReloadReview(object? s, RoutedEventArgs e) => App.Workspace?.ReloadReviewAsync().HandleExceptions();
 
 	void OnOpenOverview(object? s, RoutedEventArgs e) => App.Workspace?.OpenOverview();
 

@@ -58,6 +58,8 @@
                   ToolTip.Tip="Read only what changed since you last opened this review; after a rebase, the author's own edits without the commits it brought in" />
           <Button Content="Bounce..." FontSize="11" Click="OnBounce"
                   ToolTip.Tip="Draft a decline-with-reason review comment" />
+          <Button Content="Reload" FontSize="11" Click="OnReloadReview"
+                  ToolTip.Tip="Read the review again at the head it has now, picking up commits pushed since it was opened (F5)" />
           <Button Content="Close review" FontSize="11" Click="OnCloseReview"
                   ToolTip.Tip="End this review: close its documents and return to the start page" />
         </StackPanel>
