@@ -89,6 +89,11 @@ public sealed class GitBlobReader : IDisposable
 			RedirectStandardOutput = true,
 			RedirectStandardError = true,
 			UseShellExecute = false,
+			// Windows gives a console process its own console window when the process starting
+			// it has none, which a desktop application does not. This one outlives the review
+			// that started it, so without this the reader gets a black window in their face for
+			// as long as they are reading. Ignored everywhere else.
+			CreateNoWindow = true,
 		};
 		git = Process.Start(info);
 		if (git is null)
