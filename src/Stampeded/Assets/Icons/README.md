@@ -26,6 +26,44 @@ repository's LICENSE), which documents their origin as follows:
 | SubTypes     |  x  |  based on VS 2017 Icon Pack (BaseType) rotated +90 degrees      |
 | SuperTypes   |  x  |  based on VS 2017 Icon Pack (BaseType) rotated -90 degrees      |
 
+Toolbar icons
+-------------
+
+The commands in the toolbars - the header over the changed-file list, the overview, the tests
+and run panes, the start page rows - use the Visual Studio 2026 Image Library directly, taken
+from it unmodified and under the name it gives them:
+
+| Command                          | Image                |
+|----------------------------------|----------------------|
+| Commit by commit                 | Commit               |
+| Since last pass                  | History              |
+| Whole change                     | Diff                 |
+| Previous / next commit           | Previous / Next      |
+| Open in VS Code                  | VisualStudioCode     |
+| Open on GitHub                   | GitHub               |
+| Approve / Decline                | Checkmark            |
+| Bounce                           | Undo                 |
+| Reload, refresh                  | Refresh              |
+| Close review                     | Close                |
+| Run tests / cancel               | RunTest / Cancel     |
+| Run + coverage                   | CodeCoverage         |
+| Run A/B                          | CompareFiles         |
+| Impacted filter                  | Filter               |
+| Clear output                     | ClearWindowContent   |
+| Run application                  | Run                  |
+| Fetch, pull, push, rebase        | Fetch, Pull, Push, Rebase |
+| Branch from stash                | Branch               |
+| Delete branch                    | Delete               |
+| Open worktree                    | FolderOpened         |
+| Open repository / from URL       | OpenFolder / OpenWebSite |
+| Add draft comment                | Comment              |
+| Merge                            | Merge                |
+
+The library is licensed, not public domain: it may be used in applications developed with the
+Visual Studio family of products, and its EULA - shipped with the download - is what governs
+that. The images are used here as icons for commands, not as content of their own.
+
 ## Information on Sources
 
 * VS 2017 Image Library https://www.microsoft.com/en-us/download/details.aspx?id=35825
+* VS 2026 Image Library https://www.microsoft.com/en-us/download/details.aspx?id=35825

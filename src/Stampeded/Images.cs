@@ -56,6 +56,38 @@ public static class Images
 	public static readonly IImage SubTypes = LoadSvg(nameof(SubTypes));
 	public static readonly IImage SuperTypes = LoadSvg(nameof(SuperTypes));
 
+	// The toolbar commands. Same source and the same treatment as the tree icons above: an SVG
+	// at 16 by 16, drawn at whatever size the button asks for.
+	public static readonly IImage Commit = LoadSvg(nameof(Commit));
+	public static readonly IImage History = LoadSvg(nameof(History));
+	public static readonly IImage Diff = LoadSvg(nameof(Diff));
+	public static readonly IImage Previous = LoadSvg(nameof(Previous));
+	public static readonly IImage Next = LoadSvg(nameof(Next));
+	public static readonly IImage VisualStudioCode = LoadSvg(nameof(VisualStudioCode));
+	public static readonly IImage GitHub = LoadSvg(nameof(GitHub));
+	public static readonly IImage Checkmark = LoadSvg(nameof(Checkmark));
+	public static readonly IImage Undo = LoadSvg(nameof(Undo));
+	public static readonly IImage Refresh = LoadSvg(nameof(Refresh));
+	public static readonly IImage Close = LoadSvg(nameof(Close));
+	public static readonly IImage RunTest = LoadSvg(nameof(RunTest));
+	public static readonly IImage CodeCoverage = LoadSvg(nameof(CodeCoverage));
+	public static readonly IImage CompareFiles = LoadSvg(nameof(CompareFiles));
+	public static readonly IImage Filter = LoadSvg(nameof(Filter));
+	public static readonly IImage Clear = LoadSvg("ClearWindowContent");
+	public static readonly IImage Run = LoadSvg(nameof(Run));
+	public static readonly IImage Fetch = LoadSvg(nameof(Fetch));
+	public static readonly IImage Pull = LoadSvg(nameof(Pull));
+	public static readonly IImage Push = LoadSvg(nameof(Push));
+	public static readonly IImage Rebase = LoadSvg(nameof(Rebase));
+	public static readonly IImage Branch = LoadSvg(nameof(Branch));
+	public static readonly IImage Delete = LoadSvg(nameof(Delete));
+	public static readonly IImage FolderOpened = LoadSvg(nameof(FolderOpened));
+	public static readonly IImage OpenWebSite = LoadSvg(nameof(OpenWebSite));
+	public static readonly IImage OpenFolder = LoadSvg(nameof(OpenFolder));
+	public static readonly IImage Comment = LoadSvg(nameof(Comment));
+	public static readonly IImage Merge = LoadSvg(nameof(Merge));
+	public static readonly IImage Cancel = LoadSvg(nameof(Cancel));
+
 	/// <summary>Icon for a DocumentOutline node kind (lowercase syntax kinds).</summary>
 	public static IImage? ForOutlineKind(string kind) => kind switch {
 		"class" or "record" => Class,

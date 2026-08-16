@@ -9,8 +9,13 @@ namespace Stampeded.Panes;
 
 public partial class RunPaneView : UserControl
 {
-	public static readonly IValueConverter RunButtonText =
-		new FuncValueConverter<bool, string>(running => running ? "Stop" : "Run");
+	/// <summary>The run button is also the stop button: one place to press, and its icon says
+	/// which of the two it currently is.</summary>
+	public static readonly IValueConverter RunButtonIcon =
+		new FuncValueConverter<bool, Avalonia.Media.IImage>(running => running ? Images.Cancel : Images.Run);
+
+	public static readonly IValueConverter RunButtonTip =
+		new FuncValueConverter<bool, string>(running => running ? "Stop the running application" : "Run the application");
 
 	RunPaneViewModel? viewModel;
 

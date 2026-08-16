@@ -1,13 +1,16 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:panes="using:Stampeded.Panes"
+             xmlns:app="using:Stampeded"
              x:Class="Stampeded.Panes.ChecksPaneView"
              x:DataType="panes:ChecksPaneViewModel">
   <DockPanel>
     <DockPanel DockPanel.Dock="Bottom">
-      <Button DockPanel.Dock="Right" Content="Refresh" FontSize="10" Padding="5,1" Margin="0,2,4,2"
+      <Button DockPanel.Dock="Right" Classes="tool" Margin="0,2,4,2"
               VerticalAlignment="Center" Click="OnRefresh"
-              ToolTip.Tip="Re-fetch CI check state from GitHub" />
+              ToolTip.Tip="Refresh - re-fetch CI check state from GitHub">
+        <Image Source="{x:Static app:Images.Refresh}" />
+      </Button>
       <TextBlock Margin="6,4" Opacity="0.7" TextWrapping="Wrap" Text="{Binding State.Status}" />
     </DockPanel>
     <ListBox x:Name="CheckList" ItemsSource="{Binding Items}" DoubleTapped="OnDoubleTapped"

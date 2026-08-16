@@ -1,20 +1,28 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:panes="using:Stampeded.Panes"
+             xmlns:app="using:Stampeded"
              x:Class="Stampeded.Panes.CommentsPaneView"
              x:DataType="panes:CommentsPaneViewModel">
   <Grid RowDefinitions="Auto,Auto,*,Auto">
     <DockPanel Grid.Row="0" Margin="6,4">
-      <Button DockPanel.Dock="Right" x:Name="RefreshComments" Content="Refresh" FontSize="10" Padding="6,1" Margin="4,0,0,0"
+      <Button DockPanel.Dock="Right" x:Name="RefreshComments" Classes="tool" Margin="4,0,0,0"
               Click="OnRefresh" IsEnabled="{Binding State.CanComment}"
-              ToolTip.Tip="Re-read the posted comments from GitHub: replies and resolved threads since this review opened" />
+              ToolTip.Tip="Refresh - re-read the posted comments from GitHub: replies and resolved threads since this review opened">
+        <Image Source="{x:Static app:Images.Refresh}" />
+      </Button>
       <TextBlock Opacity="0.7" TextWrapping="Wrap" VerticalAlignment="Center" Text="{Binding State.Status}" />
     </DockPanel>
     <StackPanel Grid.Row="1" Margin="4" Spacing="4"
                 IsVisible="{Binding State.Target, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
       <TextBlock FontSize="11" Opacity="0.8" TextWrapping="Wrap" Text="{Binding State.Target}" />
       <DockPanel>
-        <Button DockPanel.Dock="Right" Margin="4,0,0,0" Content="Add Draft" Click="OnAddDraft" />
+        <Button DockPanel.Dock="Right" Margin="4,0,0,0" Click="OnAddDraft">
+          <StackPanel Orientation="Horizontal" Spacing="5">
+            <Image Source="{x:Static app:Images.Comment}" Width="16" Height="16" />
+            <TextBlock Text="Add Draft" />
+          </StackPanel>
+        </Button>
         <TextBox Text="{Binding State.DraftBody}" AcceptsReturn="True" MaxHeight="80"
                  PlaceholderText="Draft comment text..." />
       </DockPanel>

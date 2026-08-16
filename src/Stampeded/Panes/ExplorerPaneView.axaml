@@ -51,33 +51,50 @@
         <!-- Wrapped: the pane is narrow, and a command that falls off its right edge is
              the same as not having it here at all. -->
         <WrapPanel Orientation="Horizontal">
-          <Button Content="Commit by commit" FontSize="10" Padding="6,1" Margin="0,0,4,3" Click="OnEnterCommitScope"
-                  IsVisible="{Binding !InScope}"
-                  ToolTip.Tip="Read the change one commit at a time, in the order it was written" />
-          <Button Content="Since last pass" FontSize="10" Padding="6,1" Margin="0,0,4,3" Click="OnSinceLastPass"
+          <Button Classes="tool" Click="OnEnterCommitScope" IsVisible="{Binding !InScope}"
+                  ToolTip.Tip="Commit by commit - read the change one commit at a time, in the order it was written">
+            <Image Source="{x:Static app:Images.Commit}" />
+          </Button>
+          <Button Classes="tool" Click="OnSinceLastPass"
                   IsVisible="{Binding !InScope}" IsEnabled="{Binding CanEnterSinceLastPass}"
-                  ToolTip.Tip="Read only what changed since you last opened this review; after a rebase, the author's own edits without the commits it brought in" />
-          <Button Content="Prev" FontSize="10" Padding="6,1" Margin="0,0,4,3" Click="OnPreviousCommit"
-                  IsVisible="{Binding InCommitScope}"
-                  ToolTip.Tip="Previous commit (Ctrl+[ in a diff)" />
-          <Button Content="Next" FontSize="10" Padding="6,1" Margin="0,0,4,3" FontWeight="SemiBold" Click="OnNextCommit"
-                  IsVisible="{Binding InCommitScope}"
-                  ToolTip.Tip="Next commit (Ctrl+] in a diff)" />
-          <Button Content="Whole change" FontSize="10" Padding="6,1" Margin="0,0,4,3" Click="OnExitCommitScope"
-                  FontWeight="SemiBold" IsVisible="{Binding InScope}" />
+                  ToolTip.Tip="Since last pass - only what changed since you last opened this review; after a rebase, the author's own edits without the commits it brought in">
+            <Image Source="{x:Static app:Images.History}" />
+          </Button>
+          <Button Classes="tool" Click="OnPreviousCommit" IsVisible="{Binding InCommitScope}"
+                  ToolTip.Tip="Previous commit  ( Ctrl+[ )">
+            <Image Source="{x:Static app:Images.Previous}" />
+          </Button>
+          <Button Classes="tool" Click="OnNextCommit" IsVisible="{Binding InCommitScope}"
+                  ToolTip.Tip="Next commit  ( Ctrl+] )">
+            <Image Source="{x:Static app:Images.Next}" />
+          </Button>
+          <Button Classes="tool" Click="OnExitCommitScope" IsVisible="{Binding InScope}"
+                  ToolTip.Tip="Whole change - stop reading a part of it and read it as one diff">
+            <Image Source="{x:Static app:Images.Diff}" />
+          </Button>
+          <Border Classes="toolsep" />
           <!-- Verification and close-out, the commands used repeatedly during a pass. -->
-          <Button Content="VS Code" FontSize="10" Padding="6,1" Margin="0,0,4,3" Click="OnOpenVsCode"
-                  ToolTip.Tip="Open the head worktree in VS Code for building and debugging this revision" />
-          <Button Content="Open on GitHub" FontSize="10" Padding="6,1" Margin="0,0,4,3" Click="OnOpenOnGitHub"
-                  IsVisible="{Binding HasPullRequest}"
-                  ToolTip.Tip="Open this pull request in the browser" />
-          <Button Content="Approve / Decline" FontSize="10" Padding="6,1" Margin="0,0,4,3" FontWeight="SemiBold"
-                  Click="OnOpenReview"
-                  ToolTip.Tip="Open the review: every comment under the lines it is about, and the verdict" />
-          <Button Content="Reload" FontSize="10" Padding="6,1" Margin="0,0,4,3" Click="OnReloadReview"
-                  ToolTip.Tip="Read the review again at the head it has now, picking up commits pushed since it was opened (F5)" />
-          <Button Content="Close review" FontSize="10" Padding="6,1" Margin="0,0,4,3" Click="OnCloseReview"
-                  ToolTip.Tip="End this review: close its documents and return to the start page" />
+          <Button Classes="tool" Click="OnOpenVsCode"
+                  ToolTip.Tip="Open the head worktree in VS Code for building and debugging this revision">
+            <Image Source="{x:Static app:Images.VisualStudioCode}" />
+          </Button>
+          <Button Classes="tool" Click="OnOpenOnGitHub" IsVisible="{Binding HasPullRequest}"
+                  ToolTip.Tip="Open this pull request in the browser">
+            <Image Source="{x:Static app:Images.GitHub}" />
+          </Button>
+          <Button Classes="tool" Click="OnOpenReview"
+                  ToolTip.Tip="Approve / Decline - every comment under the lines it is about, and the verdict">
+            <Image Source="{x:Static app:Images.Checkmark}" />
+          </Button>
+          <Border Classes="toolsep" />
+          <Button Classes="tool" Click="OnReloadReview"
+                  ToolTip.Tip="Reload - read the review again at the head it has now, picking up commits pushed since it was opened  ( F5 )">
+            <Image Source="{x:Static app:Images.Refresh}" />
+          </Button>
+          <Button Classes="tool" Click="OnCloseReview"
+                  ToolTip.Tip="Close review - close its documents and return to the start page">
+            <Image Source="{x:Static app:Images.Close}" />
+          </Button>
         </WrapPanel>
       </StackPanel>
     </Border>

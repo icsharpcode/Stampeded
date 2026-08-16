@@ -1,13 +1,19 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:panes="using:Stampeded.Panes"
+             xmlns:app="using:Stampeded"
              x:Class="Stampeded.Panes.RunPaneView"
              x:DataType="panes:RunPaneViewModel">
   <Grid RowDefinitions="Auto,Auto,*">
     <DockPanel Grid.Row="0" Margin="4">
-      <Button DockPanel.Dock="Right" Margin="4,0,0,0" Content="Clear" Click="OnClearClicked" />
-      <Button DockPanel.Dock="Right" Margin="4,0,0,0" Click="OnRunClicked"
-              Content="{Binding State.Running, Converter={x:Static panes:RunPaneView.RunButtonText}}" />
+      <Button DockPanel.Dock="Right" Classes="tool" Click="OnClearClicked"
+              ToolTip.Tip="Clear the output">
+        <Image Source="{x:Static app:Images.Clear}" />
+      </Button>
+      <Button DockPanel.Dock="Right" Classes="tool" Click="OnRunClicked"
+              ToolTip.Tip="{Binding State.Running, Converter={x:Static panes:RunPaneView.RunButtonTip}}">
+        <Image Source="{Binding State.Running, Converter={x:Static panes:RunPaneView.RunButtonIcon}}" />
+      </Button>
       <TextBox DockPanel.Dock="Right" Width="180" Margin="4,0,0,0" Text="{Binding State.Arguments}"
                PlaceholderText="app arguments" FontFamily="monospace" />
       <ComboBox ItemsSource="{Binding Projects}" SelectedItem="{Binding State.SelectedProject}"

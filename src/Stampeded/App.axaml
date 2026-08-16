@@ -34,6 +34,40 @@
          scales its content, so the window zoom never reached them. Scaling their host here
          reaches all of them at once - context menus, tooltips, the comment editor - and from
          the top-left, so a popup still starts where it was placed and grows away from it. -->
+    <!-- A row of commands over a list is a toolbar: pressed with the mouse, read at a glance,
+         and narrow enough that a pane keeps room for what it is about. The name each icon
+         stands for lives in its tooltip, which is also where the gesture goes when there is
+         one - the menu bar remains the place where every command is written out. -->
+    <Style Selector="Button.tool">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="Padding" Value="4,3" />
+      <Setter Property="CornerRadius" Value="3" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+    <Style Selector="Button.tool /template/ ContentPresenter">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="CornerRadius" Value="3" />
+    </Style>
+    <Style Selector="Button.tool:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="#28808080" />
+    </Style>
+    <Style Selector="Button.tool:pressed /template/ ContentPresenter">
+      <Setter Property="Background" Value="#48808080" />
+    </Style>
+    <Style Selector="Button.tool:disabled">
+      <Setter Property="Opacity" Value="0.35" />
+    </Style>
+    <Style Selector="Button.tool Image">
+      <Setter Property="Width" Value="16" />
+      <Setter Property="Height" Value="16" />
+    </Style>
+    <!-- Between two groups of a toolbar: a hairline, so the groups read as groups. -->
+    <Style Selector="Border.toolsep">
+      <Setter Property="Width" Value="1" />
+      <Setter Property="Margin" Value="3,3" />
+      <Setter Property="Background" Value="#40808080" />
+    </Style>
     <!-- The tab in front says which scope it belongs to, in the colour the headers use: a
          diff read one commit at a time looks the same as the whole change until something
          says otherwise, and the tab is what the reader is looking at. -->

@@ -1,13 +1,16 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:docs="using:Stampeded.Documents"
+             xmlns:app="using:Stampeded"
              x:Class="Stampeded.Documents.ReviewDocumentView"
              x:DataType="docs:ReviewDocumentViewModel">
   <Grid RowDefinitions="Auto,*,Auto" Margin="8">
     <DockPanel Grid.Row="0" Margin="0,0,0,6">
-      <Button DockPanel.Dock="Right" Content="Refresh" FontSize="11" Padding="8,2" Margin="6,0,0,0"
+      <Button DockPanel.Dock="Right" Classes="tool" Margin="6,0,0,0"
               Click="OnRefresh" IsEnabled="{Binding State.CanComment}"
-              ToolTip.Tip="Re-read the posted comments from GitHub" />
+              ToolTip.Tip="Refresh - re-read the posted comments from GitHub">
+        <Image Source="{x:Static app:Images.Refresh}" />
+      </Button>
       <TextBlock Opacity="0.8" TextWrapping="Wrap" VerticalAlignment="Center" Text="{Binding State.Status}" />
     </DockPanel>
 
@@ -66,8 +69,13 @@
                       SelectedItem="{Binding State.SelectedMergeMethod}"
                       IsEnabled="{Binding State.CanMerge}"
                       ToolTip.Tip="Merge method; only the ones this repository allows are listed" />
-            <Button Content="Merge" Click="OnMerge" IsEnabled="{Binding State.CanMerge}"
-                    ToolTip.Tip="Merge this pull request on GitHub, for everyone. Asks first." />
+            <Button Click="OnMerge" IsEnabled="{Binding State.CanMerge}"
+                    ToolTip.Tip="Merge this pull request on GitHub, for everyone. Asks first.">
+              <StackPanel Orientation="Horizontal" Spacing="5">
+                <Image Source="{x:Static app:Images.Merge}" Width="16" Height="16" />
+                <TextBlock Text="Merge" />
+              </StackPanel>
+            </Button>
           </StackPanel>
         </StackPanel>
       </StackPanel>

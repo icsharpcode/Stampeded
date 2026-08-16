@@ -1,6 +1,7 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:docs="using:Stampeded.Documents"
+             xmlns:app="using:Stampeded"
              xmlns:gh="using:Stampeded.Core.GitHub"
              x:Class="Stampeded.Documents.StartDocumentView"
              x:DataType="docs:StartDocumentViewModel"
@@ -47,21 +48,39 @@
       <Setter Property="MinWidth" Value="0" />
       <Setter Property="VerticalAlignment" Value="Center" />
     </Style>
+    <!-- The icons of a row action sit in a line of text, so they take its size rather than a
+         toolbar's. -->
+    <Style Selector="StackPanel.rowactions Image">
+      <Setter Property="Width" Value="14" />
+      <Setter Property="Height" Value="14" />
+    </Style>
   </UserControl.Styles>
   <Grid ColumnDefinitions="1*,8,2*,8,2*" Margin="8">
     <DockPanel Grid.Column="0">
       <TextBlock DockPanel.Dock="Top" Classes="colhead" Text="Repositories" />
       <StackPanel DockPanel.Dock="Bottom" Spacing="4" Margin="0,4,0,0">
-        <Button Content="Open Repository..." HorizontalAlignment="Stretch" Click="OnOpenRepository" />
-        <Button Content="Open from URL..." HorizontalAlignment="Stretch" Click="OnOpenFromUrl" />
+        <Button HorizontalAlignment="Stretch" Click="OnOpenRepository">
+          <StackPanel Orientation="Horizontal" Spacing="6">
+            <Image Source="{x:Static app:Images.OpenFolder}" Width="16" Height="16" />
+            <TextBlock Text="Open Repository..." />
+          </StackPanel>
+        </Button>
+        <Button HorizontalAlignment="Stretch" Click="OnOpenFromUrl">
+          <StackPanel Orientation="Horizontal" Spacing="6">
+            <Image Source="{x:Static app:Images.OpenWebSite}" Width="16" Height="16" />
+            <TextBlock Text="Open from URL..." />
+          </StackPanel>
+        </Button>
       </StackPanel>
       <ListBox x:Name="RecentList" ItemsSource="{Binding Recents}" DoubleTapped="OnRecentDoubleTapped"
                FontSize="13" ScrollViewer.HorizontalScrollBarVisibility="Disabled" />
     </DockPanel>
     <DockPanel Grid.Column="2">
       <DockPanel DockPanel.Dock="Top" Margin="0,0,0,4">
-        <Button DockPanel.Dock="Right" Classes="headbutton" Content="Refresh" Click="OnPrRefresh"
-                ToolTip.Tip="Re-read the open pull requests from GitHub" />
+        <Button DockPanel.Dock="Right" Classes="tool" Click="OnPrRefresh"
+                ToolTip.Tip="Refresh - re-read the open pull requests from GitHub">
+          <Image Source="{x:Static app:Images.Refresh}" />
+        </Button>
         <TextBlock Classes="colhead" Margin="0" Text="{Binding State.PrColumnHeader}" />
       </DockPanel>
       <ListBox x:Name="PrListBox" ItemsSource="{Binding PrList.Items}" DoubleTapped="OnPrDoubleTapped"
@@ -100,9 +119,14 @@
                             Spacing="4" Margin="6,0">
                   <Button Content="Review" FontWeight="SemiBold" Click="OnRowPrReview"
                           ToolTip.Tip="Open this pull request for review" />
-                  <Button Content="Pull" Click="OnRowPrPull"
-                          ToolTip.Tip="Bring this PR's head branch into the local repository: created if it is not there yet, fast-forwarded if it is behind. Nothing is checked out." />
-                  <Button Content="GitHub" Click="OnRowPrGitHub" ToolTip.Tip="Open this pull request in the browser" />
+                  <Button Classes="tool" Click="OnRowPrPull"
+                          ToolTip.Tip="Pull - bring this PR's head branch into the local repository: created if it is not there yet, fast-forwarded if it is behind. Nothing is checked out.">
+                    <Image Source="{x:Static app:Images.Pull}" />
+                  </Button>
+                  <Button Classes="tool" Click="OnRowPrGitHub"
+                          ToolTip.Tip="Open this pull request in the browser">
+                    <Image Source="{x:Static app:Images.GitHub}" />
+                  </Button>
                 </StackPanel>
                 <TextBlock FontWeight="SemiBold" TextTrimming="CharacterEllipsis">
                   <Run Text="{Binding NumberDisplay}" /> <Run Text="{Binding Title}" />
@@ -118,10 +142,14 @@
     </DockPanel>
     <DockPanel Grid.Column="4">
       <DockPanel DockPanel.Dock="Top" Margin="0,0,0,4">
-        <Button DockPanel.Dock="Right" Classes="headbutton" Content="Refresh" Click="OnRefsRefresh"
-                ToolTip.Tip="Re-read branches and stashes from the repository" />
-        <Button DockPanel.Dock="Right" Classes="headbutton" Content="Fetch" Click="OnFetch"
-                ToolTip.Tip="git fetch origin: update the remote-tracking refs, then re-read both lists. Branches whose sync state reads 'differs' need this before it can be measured." />
+        <Button DockPanel.Dock="Right" Classes="tool" Click="OnRefsRefresh"
+                ToolTip.Tip="Refresh - re-read branches and stashes from the repository">
+          <Image Source="{x:Static app:Images.Refresh}" />
+        </Button>
+        <Button DockPanel.Dock="Right" Classes="tool" Click="OnFetch"
+                ToolTip.Tip="Fetch - git fetch origin: update the remote-tracking refs, then re-read both lists. Branches whose sync state reads 'differs' need this before it can be measured.">
+          <Image Source="{x:Static app:Images.Fetch}" />
+        </Button>
         <StackPanel Orientation="Horizontal" Spacing="12">
           <RadioButton x:Name="BranchesMode" Classes="colhead" GroupName="RefKind"
                        Content="{Binding State.BranchesLabel}"
@@ -194,22 +222,36 @@
                             Spacing="4" Margin="6,0">
                   <Button Content="Review" FontWeight="SemiBold" Click="OnRowBranchReview"
                           ToolTip.Tip="Open this for review" />
-                  <Button Content="Pull" Click="OnRowBranchPull" IsVisible="{Binding IsBranch}"
-                          ToolTip.Tip="Fast-forward this branch to origin's copy; a diverged branch is left alone" />
-                  <Button Content="Worktree" Click="OnRowBranchWorktree" IsVisible="{Binding HasWorktree}"
-                          ToolTip.Tip="{Binding WorktreePath}" />
+                  <Button Classes="tool" Click="OnRowBranchPull" IsVisible="{Binding IsBranch}"
+                          ToolTip.Tip="Pull - fast-forward this branch to origin's copy; a diverged branch is left alone">
+                    <Image Source="{x:Static app:Images.Pull}" />
+                  </Button>
+                  <Button Classes="tool" Click="OnRowBranchWorktree" IsVisible="{Binding HasWorktree}"
+                          ToolTip.Tip="{Binding WorktreePath}">
+                    <Image Source="{x:Static app:Images.FolderOpened}" />
+                  </Button>
                   <!-- Only for a branch already in the default branch, so it can never be
                        the button that loses work. -->
-                  <Button Content="Delete" Click="OnRowBranchDelete" IsVisible="{Binding ShowMerge}"
-                          ToolTip.Tip="Delete this local branch, and the worktree holding it if there is one. It is already in the default branch, and the commit it points at is reported so it can be put back. A worktree with uncommitted or untracked files stops the whole thing." />
-                  <Button Content="Push" Click="OnRowBranchPush" IsVisible="{Binding IsBranch}"
-                          ToolTip.Tip="Push this branch to origin. Diverged branches - what a rebase leaves - are force-pushed with --force-with-lease, which still refuses if origin moved since the last fetch." />
-                  <Button Content="Rebase" Click="OnRowBranchRebase" IsVisible="{Binding IsBranch}"
-                          ToolTip.Tip="Rebase onto the default base. A branch no checkout has is rebased in a throwaway worktree; one that a checkout has is rebased there, so that checkout moves with it" />
-                  <Button Content="Branch..." Click="OnRowStashBranch" IsVisible="{Binding IsStash}"
-                          ToolTip.Tip="Point a new branch at this stash; the stash is kept and nothing is checked out" />
-                  <Button Content="PR" Click="OnRowBranchPrGitHub" IsVisible="{Binding HasPrTag}"
-                          ToolTip.Tip="Open this branch's pull request in the browser" />
+                  <Button Classes="tool" Click="OnRowBranchDelete" IsVisible="{Binding ShowMerge}"
+                          ToolTip.Tip="Delete this local branch, and the worktree holding it if there is one. It is already in the default branch, and the commit it points at is reported so it can be put back. A worktree with uncommitted or untracked files stops the whole thing.">
+                    <Image Source="{x:Static app:Images.Delete}" />
+                  </Button>
+                  <Button Classes="tool" Click="OnRowBranchPush" IsVisible="{Binding IsBranch}"
+                          ToolTip.Tip="Push this branch to origin. Diverged branches - what a rebase leaves - are force-pushed with --force-with-lease, which still refuses if origin moved since the last fetch.">
+                    <Image Source="{x:Static app:Images.Push}" />
+                  </Button>
+                  <Button Classes="tool" Click="OnRowBranchRebase" IsVisible="{Binding IsBranch}"
+                          ToolTip.Tip="Rebase onto the default base. A branch no checkout has is rebased in a throwaway worktree; one that a checkout has is rebased there, so that checkout moves with it">
+                    <Image Source="{x:Static app:Images.Rebase}" />
+                  </Button>
+                  <Button Classes="tool" Click="OnRowStashBranch" IsVisible="{Binding IsStash}"
+                          ToolTip.Tip="Branch - point a new branch at this stash; the stash is kept and nothing is checked out">
+                    <Image Source="{x:Static app:Images.Branch}" />
+                  </Button>
+                  <Button Classes="tool" Click="OnRowBranchPrGitHub" IsVisible="{Binding HasPrTag}"
+                          ToolTip.Tip="Open this branch's pull request in the browser">
+                    <Image Source="{x:Static app:Images.GitHub}" />
+                  </Button>
                 </StackPanel>
                 <TextBlock FontWeight="SemiBold" Text="{Binding Info.Name}" TextTrimming="CharacterEllipsis" />
               </DockPanel>
