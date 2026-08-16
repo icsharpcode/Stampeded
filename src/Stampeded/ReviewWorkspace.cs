@@ -1758,7 +1758,14 @@ public sealed class ReviewWorkspace(string repoPath)
 	{
 		var file = CurrentFile;
 		if (file is null)
+		{
+			// Pressed where there is no file to mark - the overview, or a tab that is not a
+			// diff. The key means "on to the next thing to read" wherever it is pressed, and
+			// from here that is the first file still unread.
+			if (FirstUnread() is { } start && await OpenFileAsync(start) is { } opened)
+				FocusEditorOf(opened);
 			return;
+		}
 		bool viewed = !Store.IsViewed(file.Path);
 		Store.SetViewed(file.Path, viewed);
 		ViewedChanged?.Invoke(file.Path, viewed);
@@ -1800,6 +1807,11 @@ public sealed class ReviewWorkspace(string repoPath)
 		await OpenAdjacentFileAsync(1);
 	}
 
+	/// <summary>The file a pass continues at: the first one not marked viewed, or the first of
+	/// all of them once everything has been.</summary>
+	FileDiff? FirstUnread()
+		=> Files.FirstOrDefault(f => !Store.IsViewed(f.Path)) ?? Files.FirstOrDefault();
+
 	string? fileBeforeOverview;
 
 	/// <summary>
@@ -1814,7 +1826,7 @@ public sealed class ReviewWorkspace(string repoPath)
 			var back = Files.FirstOrDefault(f => f.Path == fileBeforeOverview)
 				// Nothing to return to (the file went away with a reload, or the overview was
 				// the first thing opened): the file to read is the first unread one.
-				?? Files.FirstOrDefault(f => !Store.IsViewed(f.Path)) ?? Files.FirstOrDefault();
+				?? FirstUnread();
 			if (back is not null && await OpenFileAsync(back) is { } opened)
 				FocusEditorOf(opened);
 			return;
