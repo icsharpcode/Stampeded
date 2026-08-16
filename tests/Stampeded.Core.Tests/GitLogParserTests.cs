@@ -10,8 +10,8 @@ public class GitLogParserTests
 	[Test]
 	public void ParsesTabSeparatedCommits()
 	{
-		const string log = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\taaaaaaaaa\tAlice\t2026-08-01\tFix the thing\n\0"
-			+ "\nbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\tbbbbbbbbb\tBob B.\t2026-07-30\tSubject\twith\ttabs\n\0\n";
+		const string log = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\taaaaaaaaa\tAlice\t2026-08-01\tpppppppp\tFix the thing\n\0"
+			+ "\nbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\tbbbbbbbbb\tBob B.\t2026-07-30\tpppppppp qqqqqqqq\tSubject\twith\ttabs\n\0\n";
 
 		var commits = GitLogParser.Parse(log);
 
@@ -21,16 +21,19 @@ public class GitLogParserTests
 		Assert.That(commits[0].Date, Is.EqualTo("2026-08-01"));
 		Assert.That(commits[0].Subject, Is.EqualTo("Fix the thing"));
 		Assert.That(commits[0].Body, Is.Empty);
-		// Tabs inside the subject must survive: only the first four separators split.
+		// Tabs inside the subject must survive: only the separators before it split.
 		Assert.That(commits[1].Subject, Is.EqualTo("Subject\twith\ttabs"));
+		// The parents come with the commit; a merge lists more than one, mainline first.
+		Assert.That(commits[0].FirstParent, Is.EqualTo("pppppppp"));
+		Assert.That(commits[1].FirstParent, Is.EqualTo("pppppppp"));
 	}
 
 	[Test]
 	public void KeepsTheBodyWholeIncludingItsBlankLines()
 	{
-		const string log = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\taaaaaaaaa\tAlice\t2026-08-01\tFix the thing\n"
+		const string log = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\taaaaaaaaa\tAlice\t2026-08-01\tpppppppp\tFix the thing\n"
 			+ "Why it had to change.\n\nWhat was rejected.\n\n\0"
-			+ "\nbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\tbbbbbbbbb\tBob\t2026-07-30\tNo body here\n\0\n";
+			+ "\nbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\tbbbbbbbbb\tBob\t2026-07-30\tpppppppp\tNo body here\n\0\n";
 
 		var commits = GitLogParser.Parse(log);
 

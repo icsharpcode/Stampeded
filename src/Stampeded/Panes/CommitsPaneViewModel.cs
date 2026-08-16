@@ -71,7 +71,6 @@ public class CommitsPaneViewModel : Tool
 		CommitFiles.Clear();
 		if (workspace.CommitRange is not { } range)
 			return;
-		(string baseSha, string headSha) = range;
 		State.Status = "Loading commits...";
 		try
 		{
@@ -87,7 +86,7 @@ public class CommitsPaneViewModel : Tool
 						IsUncommitted: true));
 				}
 			}
-			var commits = await workspace.Git.LogAsync($"{baseSha}..{headSha}", null, follow: false, limit: 200);
+			var commits = await workspace.GetCommitsAsync(range);
 			foreach (var commit in commits)
 				Commits.Add(new CommitRow(commit));
 			State.Status = $"{commits.Count} commit(s) in the review range"

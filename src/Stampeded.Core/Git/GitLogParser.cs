@@ -1,9 +1,17 @@
 namespace Stampeded.Core.Git;
 
-public sealed record CommitInfo(string Sha, string ShortSha, string Author, string Date, string Subject, string Body = "")
+/// <summary><paramref name="Parents"/> is what the commit was written on top of, first one
+/// first - the mainline for a merge. Carried with the commit because asking git for it one
+/// commit at a time is a process each, and reading a series asks for every one of them.</summary>
+public sealed record CommitInfo(string Sha, string ShortSha, string Author, string Date, string Subject,
+	string Body = "", string Parents = "")
 {
 	/// <summary>The message as it was written: subject, blank line, body.</summary>
 	public string Message => Body.Length == 0 ? Subject : $"{Subject}\n\n{Body}";
+
+	/// <summary>The commit this one is read against: its first parent, or null for a root.</summary>
+	public string? FirstParent
+		=> Parents.Split(' ', StringSplitOptions.RemoveEmptyEntries) is [var first, ..] ? first : null;
 }
 
 public sealed record BranchInfo(string Name, string Sha, string Date, string Subject);
@@ -13,10 +21,11 @@ public sealed record BranchInfo(string Name, string Sha, string Date, string Sub
 public static class GitLogParser
 {
 	/// <summary>
-	/// Parses one record per commit, NUL-terminated: a header line of five tab-separated
+	/// Parses one record per commit, NUL-terminated: a header line of six tab-separated
 	/// fields, then the body until the NUL. The body is the only multi-line field, which is
 	/// why it needs a terminator no commit message can contain - and why it comes after the
-	/// newline rather than after a tab, so a subject with tabs in it stays whole.
+	/// newline rather than after a tab, so a subject with tabs in it stays whole. The subject
+	/// is last on that line for the same reason: only the separators before it split.
 	/// </summary>
 	public static IReadOnlyList<CommitInfo> Parse(string output)
 	{
@@ -29,10 +38,10 @@ public static class GitLogParser
 			int firstBreak = trimmed.IndexOf('\n');
 			string header = firstBreak < 0 ? trimmed : trimmed[..firstBreak];
 			string body = firstBreak < 0 ? "" : trimmed[(firstBreak + 1)..].TrimEnd('\n');
-			var parts = header.Split('\t', 5);
-			if (parts.Length < 5)
+			var parts = header.Split('\t', 6);
+			if (parts.Length < 6)
 				continue;
-			commits.Add(new CommitInfo(parts[0], parts[1], parts[2], parts[3], parts[4], body));
+			commits.Add(new CommitInfo(parts[0], parts[1], parts[2], parts[3], parts[5], body, parts[4]));
 		}
 		return commits;
 	}

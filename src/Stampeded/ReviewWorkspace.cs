@@ -952,6 +952,102 @@ public sealed class ReviewWorkspace(string repoPath)
 
 	public bool CanEnterCommitScope => HeadSha is not null && DirtyWorktreePath is null;
 
+	(string Base, string Head)? cachedCommitsRange;
+	IReadOnlyList<CommitInfo> cachedCommits = [];
+	Dictionary<string, (int Added, int Removed)>? cachedCommitStats;
+
+	/// <summary>
+	/// The commits of the review, newest first, fetched once per range. Everything that shows
+	/// the series - the overview, the commits pane, the per-commit reader - was asking git for
+	/// it separately, and asking again on every step through it, although stepping changes
+	/// which commit is being read and not which commits there are. On a large repository that
+	/// was most of a second per step.
+	/// </summary>
+	public async Task<IReadOnlyList<CommitInfo>> GetRangeCommitsAsync(CancellationToken ct = default)
+	{
+		if (ReviewRange is not { } range)
+			return [];
+		if (cachedCommitsRange != range)
+		{
+			cachedCommits = await Git.LogAsync($"{range.Base}..{range.Head}", null, follow: false, limit: 200, ct);
+			cachedCommitStats = null;
+			cachedCommitsRange = range;
+		}
+		return cachedCommits;
+	}
+
+	/// <summary>
+	/// The commits of a range. The review's own are the cache; a range inside it - the single
+	/// commit being read in per-commit mode - is a slice of that same list, which is why the
+	/// log carries each commit's parents. Anything else, such as the work since the last pass,
+	/// starts at a tree no commit names and has to be asked for.
+	/// </summary>
+	public async Task<IReadOnlyList<CommitInfo>> GetCommitsAsync(
+		(string Base, string Head) range, CancellationToken ct = default)
+	{
+		if (ReviewRange == range)
+			return await GetRangeCommitsAsync(ct);
+		var all = await GetRangeCommitsAsync(ct);
+		int head = IndexOf(all, range.Head);
+		if (head >= 0)
+		{
+			for (int i = head; i < all.Count; i++)
+			{
+				if (all[i].FirstParent is { } parent && SameCommit(parent, range.Base))
+					return [.. all.Skip(head).Take(i - head + 1)];
+			}
+		}
+		return await Git.LogAsync($"{range.Base}..{range.Head}", null, follow: false, limit: 200, ct);
+	}
+
+	static int IndexOf(IReadOnlyList<CommitInfo> commits, string sha)
+	{
+		for (int i = 0; i < commits.Count; i++)
+		{
+			if (SameCommit(commits[i].Sha, sha))
+				return i;
+		}
+		return -1;
+	}
+
+	/// <summary>Whether two revisions name the same commit, either of them abbreviated: what a
+	/// scope carries is whatever resolved it, and the log always answers in full.</summary>
+	static bool SameCommit(string a, string b)
+		=> a.Length >= b.Length
+			? a.StartsWith(b, StringComparison.Ordinal)
+			: b.StartsWith(a, StringComparison.Ordinal);
+
+	/// <summary>Lines added and removed per commit of the range, from one pass over it.</summary>
+	public async Task<IReadOnlyDictionary<string, (int Added, int Removed)>> GetRangeCommitStatsAsync(
+		CancellationToken ct = default)
+	{
+		await GetRangeCommitsAsync(ct);
+		if (cachedCommitStats is not null || ReviewRange is not { } range)
+			return cachedCommitStats ?? [];
+		var stats = new Dictionary<string, (int Added, int Removed)>(StringComparer.Ordinal);
+		string output = await ExternalTool.RunAsync(
+			"git", ["log", "--format=%H", "--shortstat", $"{range.Base}..{range.Head}"], RepoPath, ct);
+		string? sha = null;
+		foreach (var line in output.ReplaceLineEndings("\n").Split('\n'))
+		{
+			string trimmed = line.Trim();
+			if (trimmed.Length == 40 && trimmed.All(char.IsAsciiHexDigit))
+			{
+				sha = trimmed;
+			}
+			else if (sha is not null && trimmed.Contains("changed", StringComparison.Ordinal))
+			{
+				var insertions = System.Text.RegularExpressions.Regex.Match(trimmed, @"(\d+) insertion");
+				var deletions = System.Text.RegularExpressions.Regex.Match(trimmed, @"(\d+) deletion");
+				stats[sha] = (
+					insertions.Success ? int.Parse(insertions.Groups[1].Value) : 0,
+					deletions.Success ? int.Parse(deletions.Groups[1].Value) : 0);
+			}
+		}
+		cachedCommitStats = stats;
+		return stats;
+	}
+
 	/// <summary>Reads the review one commit at a time, starting at the oldest.</summary>
 	public async Task EnterCommitScopeAsync(int index = 0)
 	{
@@ -964,9 +1060,8 @@ public sealed class ReviewWorkspace(string repoPath)
 		(string baseSha, string headSha) = range;
 		if (ScopeCommits.Count == 0)
 		{
-			var commits = await Git.LogAsync($"{baseSha}..{headSha}", null, follow: false, limit: 200);
 			// Oldest first: the series is meant to be read in the order it was written.
-			ScopeCommits = [.. commits.Reverse()];
+			ScopeCommits = [.. (await GetRangeCommitsAsync()).Reverse()];
 		}
 		if (ScopeCommits.Count == 0)
 		{
@@ -987,7 +1082,9 @@ public sealed class ReviewWorkspace(string repoPath)
 		var commit = ScopeCommits[index];
 		CommitScopeIndex = index;
 		CommitScope = commit;
-		string parent = await ResolveAsync($"{commit.Sha}^", CancellationToken.None);
+		// The parent came with the commit: asking git for it is a process per step, and the
+		// log that listed the series already said what each one was written on top of.
+		string parent = commit.FirstParent ?? await ResolveAsync($"{commit.Sha}^", CancellationToken.None);
 		BaseSha = parent;
 		HeadSha = commit.Sha;
 		Files = await Git.DiffAsync(parent, commit.Sha);
@@ -1058,6 +1155,9 @@ public sealed class ReviewWorkspace(string repoPath)
 	/// </summary>
 	void ResetScope()
 	{
+		cachedCommitsRange = null;
+		cachedCommits = [];
+		cachedCommitStats = null;
 		CommitScope = null;
 		ScopeCommits = [];
 		CommitScopeIndex = 0;

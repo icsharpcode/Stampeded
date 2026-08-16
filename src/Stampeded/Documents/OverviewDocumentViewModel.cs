@@ -264,9 +264,8 @@ public class OverviewDocumentViewModel : Document
 		State.CommitsHeader = "";
 		// The review's range, not the displayed one: while a commit is in scope BaseSha and
 		// HeadSha describe that commit, and this section is about the series it belongs to.
-		if (workspace.ReviewRange is not { } range)
+		if (workspace.ReviewRange is null)
 			return;
-		var (baseSha, headSha) = range;
 		try
 		{
 			// Uncommitted work leads the list: it sits on top of every commit below it, and
@@ -275,8 +274,8 @@ public class OverviewDocumentViewModel : Document
 			State.CommitsExpanded = uncommitted is not null;
 			if (uncommitted is not null)
 				CommitLines.Add(uncommitted);
-			var commits = await workspace.Git.LogAsync($"{baseSha}..{headSha}", null, follow: false, limit: 20);
-			var stats = await LoadCommitStatsAsync(baseSha, headSha);
+			var commits = await workspace.GetRangeCommitsAsync();
+			var stats = await workspace.GetRangeCommitStatsAsync();
 			foreach (var commit in commits.Take(8))
 			{
 				var (added, removed) = stats.GetValueOrDefault(commit.Sha);
@@ -300,31 +299,6 @@ public class OverviewDocumentViewModel : Document
 		{
 			// No commit summary is fine; the Commits pane still works.
 		}
-	}
-
-	async Task<Dictionary<string, (int Added, int Removed)>> LoadCommitStatsAsync(string baseSha, string headSha)
-	{
-		var stats = new Dictionary<string, (int, int)>(StringComparer.Ordinal);
-		string output = await ExternalTool.RunAsync("git",
-			["log", "--format=%H", "--shortstat", $"{baseSha}..{headSha}"], workspace.RepoPath);
-		string? currentSha = null;
-		foreach (var line in output.ReplaceLineEndings("\n").Split('\n'))
-		{
-			string trimmed = line.Trim();
-			if (trimmed.Length == 40 && trimmed.All(char.IsAsciiHexDigit))
-			{
-				currentSha = trimmed;
-			}
-			else if (currentSha is not null && trimmed.Contains("changed", StringComparison.Ordinal))
-			{
-				var insertions = Regex.Match(trimmed, @"(\d+) insertion");
-				var deletions = Regex.Match(trimmed, @"(\d+) deletion");
-				stats[currentSha] = (
-					insertions.Success ? int.Parse(insertions.Groups[1].Value) : 0,
-					deletions.Success ? int.Parse(deletions.Groups[1].Value) : 0);
-			}
-		}
-		return stats;
 	}
 
 	void OnChangeMap()
