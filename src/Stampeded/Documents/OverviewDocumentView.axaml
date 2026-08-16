@@ -70,7 +70,8 @@
            below refers to. Stepping belongs to the per-commit scope alone; leaving is the
            same for both. -->
       <Border Margin="0,6,0,0" Padding="8,4" CornerRadius="3" BorderThickness="1"
-              BorderBrush="#803794FF" IsVisible="{Binding State.InScope}">
+              Background="{Binding State.ScopeTint}" BorderBrush="{Binding State.ScopeAccent}"
+              IsVisible="{Binding State.InScope}">
         <DockPanel>
           <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="6">
             <Button Content="Previous" FontSize="11" Click="OnPreviousCommit"

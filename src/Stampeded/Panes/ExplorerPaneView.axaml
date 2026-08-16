@@ -4,12 +4,6 @@
              x:Class="Stampeded.Panes.ExplorerPaneView"
              x:DataType="panes:ExplorerPaneViewModel">
   <UserControl.Styles>
-    <!-- A scope is not a detail of the header, it is what everything below the header means,
-         so it is worth a colour of its own rather than a sentence to read. -->
-    <Style Selector="Border.scoped">
-      <Setter Property="Background" Value="#1A3794FF" />
-      <Setter Property="BorderBrush" Value="#3794FF" />
-    </Style>
     <Style Selector="TextBlock.section">
       <Setter Property="FontSize" Value="11" />
       <Setter Property="FontWeight" Value="SemiBold" />
@@ -23,11 +17,14 @@
   <Grid RowDefinitions="Auto,2*,4,3*">
     <!-- While stepping, the commit is what the list below contains, so the stepper sits
          with it rather than somewhere the reader has to go back to. -->
-    <Border Grid.Row="0" Padding="6,3" BorderThickness="0,0,0,1" BorderBrush="#803794FF"
-            Classes.scoped="{Binding InScope}"
+    <!-- A scope is not a detail of the header, it is what everything below the header means,
+         so each one is worth a colour of its own rather than a sentence to read: the header
+         is washed in it and the badge is painted with it. -->
+    <Border Grid.Row="0" Padding="6,3" BorderThickness="0,0,0,1"
+            Background="{Binding ScopeTint}" BorderBrush="{Binding ScopeAccent}"
             IsVisible="{Binding HasReview}">
       <StackPanel Spacing="3">
-        <Border IsVisible="{Binding InScope}" Background="#3794FF" CornerRadius="2"
+        <Border IsVisible="{Binding InScope}" Background="{Binding ScopeAccent}" CornerRadius="2"
                 Padding="5,1" HorizontalAlignment="Left">
           <TextBlock Text="{Binding ScopeBadge}" FontSize="9" FontWeight="Bold"
                      Foreground="White" />

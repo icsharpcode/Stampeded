@@ -50,6 +50,17 @@ public sealed partial class ReviewDocumentState : ObservableObject
 
 	[ObservableProperty]
 	string selectedMergeMethod = "";
+
+	/// <summary>Set once the list has been filled and a starting choice made: what is worth
+	/// remembering is a choice the reader made, not the one this repository's allowed methods
+	/// left over.</summary>
+	public bool RememberMergeMethod { get; set; }
+
+	partial void OnSelectedMergeMethodChanged(string value)
+	{
+		if (RememberMergeMethod && value.Length > 0)
+			MergeMethodPreference.Save(value);
+	}
 }
 
 /// <summary>
@@ -129,10 +140,13 @@ public sealed class ReviewDocumentViewModel : Document
 			{
 				foreach (var method in (await workspace.GitHub.GetMergeMethodsAsync()).Allowed)
 					State.MergeMethods.Add(method);
-				// Squash first when the repository allows it: it is what most projects want
-				// from a review branch, and the others stay one click away.
-				State.SelectedMergeMethod = State.MergeMethods.FirstOrDefault(m => m == "squash")
+				// Whatever was chosen last, if this repository allows it; a merge commit
+				// otherwise, because the series a review was read as is worth keeping.
+				string remembered = MergeMethodPreference.Load();
+				State.SelectedMergeMethod = State.MergeMethods.FirstOrDefault(m => m == remembered)
+					?? State.MergeMethods.FirstOrDefault(m => m == MergeMethodPreference.Default)
 					?? State.MergeMethods.FirstOrDefault() ?? "";
+				State.RememberMergeMethod = true;
 			}
 			var merge = await workspace.GitHub.GetMergeStateAsync(pr.Number);
 			State.MergeState = $"merge: {merge.Describe}";

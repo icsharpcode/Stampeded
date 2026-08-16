@@ -36,6 +36,13 @@ public partial class ExplorerPaneViewModel : Tool
 	[ObservableProperty]
 	bool canEnterSinceLastPass;
 
+	/// <summary>The colour of the scope being read, for the header that states it.</summary>
+	[ObservableProperty]
+	Avalonia.Media.IBrush scopeAccent = ScopePalette.WholeChange;
+
+	[ObservableProperty]
+	Avalonia.Media.IBrush scopeTint = Avalonia.Media.Brushes.Transparent;
+
 	/// <summary>The heading over the file list, carrying how much there is to read. It counts
 	/// what the list holds, so in a scope it is the scope's size and not the review's.</summary>
 	[ObservableProperty]
@@ -82,6 +89,8 @@ public partial class ExplorerPaneViewModel : Tool
 		InCommitScope = workspace.CommitScope is not null;
 		InScope = workspace.InScope;
 		CanEnterSinceLastPass = workspace.CanEnterSinceLastPassScope;
+		ScopeAccent = ScopePalette.Accent(workspace);
+		ScopeTint = ScopePalette.Tint(workspace);
 		ScopeBadge = workspace.CommitScope is not null
 			? $"COMMIT {workspace.CommitScopeIndex + 1} OF {workspace.ScopeCommits.Count}"
 			: workspace.InSinceLastPassScope ? "SINCE YOUR LAST PASS"

@@ -106,6 +106,13 @@ public sealed partial class OverviewState : ObservableObject
 	[ObservableProperty]
 	bool canEnterSinceLastPass;
 
+	/// <summary>The colour of the scope being read; the bar that states it wears it.</summary>
+	[ObservableProperty]
+	IBrush scopeAccent = ScopePalette.WholeChange;
+
+	[ObservableProperty]
+	IBrush scopeTint = Brushes.Transparent;
+
 	[ObservableProperty]
 	string toolStatus = "";
 
@@ -199,6 +206,8 @@ public class OverviewDocumentViewModel : Document
 		State.CanEnterCommitScope = workspace.CanEnterCommitScope;
 		State.InCommitScope = workspace.CommitScope is not null;
 		State.InScope = workspace.InScope;
+		State.ScopeAccent = ScopePalette.Accent(workspace);
+		State.ScopeTint = ScopePalette.Tint(workspace);
 		State.CanEnterSinceLastPass = workspace.CanEnterSinceLastPassScope;
 		State.CommitScopeLine = workspace.CommitScope is { } commit
 			? $"Commit {workspace.CommitScopeIndex + 1} of {workspace.ScopeCommits.Count}:  "
