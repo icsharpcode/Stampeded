@@ -64,6 +64,8 @@ public sealed class ReviewWorkspace(string repoPath)
 	public void SetChecks(IReadOnlyList<CheckRun> checks)
 	{
 		Checks = checks;
+		if (snapshot is { } current && checks is not null)
+			KeepSnapshot(current with { Checks = checks });
 		ChecksLoaded?.Invoke();
 	}
 
@@ -207,6 +209,26 @@ public sealed class ReviewWorkspace(string repoPath)
 	public string? WorktreePath { get; private set; }
 	public string? BaseWorktreePath { get; private set; }
 
+	/// <summary>
+	/// True while the open review was read from the snapshot of its last online pass instead of
+	/// from GitHub. Everything git knows is exact - the commits were fetched then and have not
+	/// moved - and everything GitHub alone knows is as old as <see cref="OfflineSince"/>.
+	/// </summary>
+	public bool Offline { get; private set; }
+
+	public DateTimeOffset? OfflineSince { get; private set; }
+
+	/// <summary>What is kept for the next time GitHub cannot be reached, updated as the parts
+	/// of it arrive.</summary>
+	PrSnapshot? snapshot;
+
+	void KeepSnapshot(PrSnapshot updated)
+	{
+		snapshot = updated;
+		if (!Offline)
+			PrCache.Save(Path.GetFileName(RepoPath), updated);
+	}
+
 	public event Action? ReviewChanged;
 	public event Action<string, bool>? ViewedChanged;
 	public event Action? SemanticsChanged;
@@ -287,10 +309,33 @@ public sealed class ReviewWorkspace(string repoPath)
 
 		using var busy = Busy.Begin($"Opening PR #{number}");
 		CliLog.Write("action", $"open PR #{number}");
-		var detail = await GitHub.GetPrAsync(number, ct);
-		string headSha = await Git.FetchPrHeadAsync(number, ct);
-		await Git.FetchBranchAsync(detail.BaseRefName, ct);
-		string baseSha = await Git.GetMergeBaseAsync($"origin/{detail.BaseRefName}", headSha, ct);
+		PrDetail detail;
+		string headSha, baseSha;
+		Offline = false;
+		OfflineSince = null;
+		snapshot = null;
+		try
+		{
+			detail = await GitHub.GetPrAsync(number, ct);
+			headSha = await Git.FetchPrHeadAsync(number, ct);
+			await Git.FetchBranchAsync(detail.BaseRefName, ct);
+			baseSha = await Git.GetMergeBaseAsync($"origin/{detail.BaseRefName}", headSha, ct);
+		}
+		catch (ToolFailedException ex)
+		{
+			// GitHub, or the network under it, is not there. A pull request read before left a
+			// snapshot of what only GitHub knows, and its commits are in the object database
+			// from that pass - so the review can be opened exactly as it was then, said so.
+			if (await OpenableSnapshotAsync(number, ct) is not { } cached)
+				throw;
+			CliLog.Write("action", $"PR #{number} opened offline, from the snapshot of {cached.TakenAt:g}: {ex.Message}");
+			detail = cached.Detail;
+			headSha = cached.HeadSha;
+			baseSha = cached.BaseSha;
+			Offline = true;
+			OfflineSince = cached.TakenAt;
+			snapshot = cached;
+		}
 		DirtyWorktreePath = null;
 		UncommittedFileCount = 0;
 		var files = await Git.DiffAsync(baseSha, headSha, ct);
@@ -315,12 +360,39 @@ public sealed class ReviewWorkspace(string repoPath)
 		// one tab at a time, instead of arriving as a wall of them.
 		OpenOverview();
 		CloseStartPage();
-		LoadIssueUrlPrefixAsync(ct).HandleExceptions();
+		KeepSnapshot((snapshot ?? new PrSnapshot(detail, headSha, baseSha, DateTimeOffset.Now))
+			with { Detail = detail, HeadSha = headSha, BaseSha = baseSha });
+		// The snapshot's checks go through the same door the pane's do, so the overview stops
+		// waiting for an answer that is not coming. Saying it is offline is the overview's job;
+		// a status line as well would say it twice on the page that shows both.
+		if (Offline && snapshot?.Checks is { } cachedChecks)
+			SetChecks(cachedChecks);
 		LoadSemanticsAsync(headSha, baseSha, ct).HandleExceptions();
 		LoadGeneratedSourcesAsync(ct).HandleExceptions();
 		ReattachDraftsAsync(ct).HandleExceptions();
 		LoadPostedCommentsAsync(number, ct).HandleExceptions();
-		LoadReviewersAsync(number, ct).HandleExceptions();
+		// Nothing here can be answered from a snapshot, so offline it is left alone rather than
+		// asked and failed.
+		if (!Offline)
+		{
+			LoadIssueUrlPrefixAsync(ct).HandleExceptions();
+			LoadReviewersAsync(number, ct).HandleExceptions();
+		}
+	}
+
+	/// <summary>
+	/// The snapshot of a pull request, when there is one and the commits it names are still in
+	/// the object database. A snapshot whose head has been garbage-collected describes a review
+	/// that cannot be built, and reporting the original failure is the honest answer then.
+	/// </summary>
+	async Task<PrSnapshot?> OpenableSnapshotAsync(int number, CancellationToken ct)
+	{
+		if (PrCache.Load(Path.GetFileName(RepoPath), number) is not { } cached)
+			return null;
+		return await Git.TryRevParseAsync(cached.HeadSha, ct) is not null
+			&& await Git.TryRevParseAsync(cached.BaseSha, ct) is not null
+			? cached
+			: null;
 	}
 
 	async Task LoadIssueUrlPrefixAsync(CancellationToken ct)
@@ -2385,7 +2457,13 @@ public sealed class ReviewWorkspace(string repoPath)
 		CommentsLoaded = false;
 		try
 		{
-			var raw = await GitHub.GetReviewCommentsAsync(number, ct);
+			// Offline the snapshot is the answer; asking would only fail slowly. A review
+			// opened online keeps what it read, for the next time it cannot be.
+			var raw = Offline
+				? snapshot?.Comments ?? []
+				: await GitHub.GetReviewCommentsAsync(number, ct);
+			if (!Offline && snapshot is { } current)
+				KeepSnapshot(current with { Comments = raw });
 			Dictionary<long, (string ThreadId, bool Resolved)> resolutionByComment = [];
 			try
 			{
@@ -2594,6 +2672,12 @@ public sealed class ReviewWorkspace(string repoPath)
 		// to it. This used to be answered inside the submit, with a status line and a return
 		// value that said a review had been submitted: the verdict did nothing and said it had
 		// worked.
+		if (Offline)
+		{
+			return $"Offline: this review was opened from a snapshot taken {OfflineSince:g}, and a "
+				+ $"verdict has to go to GitHub. Reload (F5) when there is a connection; your "
+				+ $"{Drafts.Count} draft(s) are kept.";
+		}
 		if (InScope)
 		{
 			return "A review covers the whole change, and this is a part of it: press 'Whole change' "
@@ -2629,6 +2713,11 @@ public sealed class ReviewWorkspace(string repoPath)
 	{
 		if (CurrentPr is not { } pr)
 			return "No pull request is open.";
+		if (Offline)
+		{
+			return $"Offline: this review was opened from a snapshot taken {OfflineSince:g}. "
+				+ "Whether it would merge is not something a snapshot can say; reload (F5) first.";
+		}
 		Core.GitHub.MergeState state;
 		try
 		{

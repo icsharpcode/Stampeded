@@ -106,6 +106,11 @@ public sealed partial class OverviewState : ObservableObject
 	[ObservableProperty]
 	bool canEnterSinceLastPass;
 
+	/// <summary>Set while the review was opened from a snapshot: what is exact, what is old,
+	/// and how to get the rest.</summary>
+	[ObservableProperty]
+	string offlineLine = "";
+
 	[ObservableProperty]
 	string toolStatus = "";
 
@@ -179,6 +184,11 @@ public class OverviewDocumentViewModel : Document
 		State.WorkingTreeLine = workspace.DirtyWorktreePath is { } dirty
 			? $"Head is the working tree at {dirty} - uncommitted changes included"
 			+ (workspace.UncommittedFileCount > 0 ? $" ({workspace.UncommittedFileCount} file(s) beyond the last commit)." : ".")
+			: "";
+		State.OfflineLine = workspace is { Offline: true, OfflineSince: { } since }
+			? $"Offline: opened from the snapshot taken {since:g}. The change and its diff are exact; "
+				+ "the description, comments, checks and reviews are as old as the snapshot, and the "
+				+ "verdict cannot be given until GitHub is reachable. F5 tries again."
 			: "";
 		State.Description = workspace.CurrentPr?.Body is { Length: > 0 } body
 			? Core.GitHub.IssueLinks.Autolink(body.ReplaceLineEndings("\n"), workspace.IssueUrlPrefix)

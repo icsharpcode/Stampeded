@@ -54,6 +54,11 @@ someone else belongs in it.
   exist to prevent. `RebaseBranchAsync` and `PullBranchAsync` both do this.
 - **Review worktrees are detached** (`WorktreeManager`), under `~/.cache/stampeded/worktrees`, so
   they never hold the branch being reviewed.
+- **A pull request read once can be read again without GitHub.** `PrCache` keeps what only
+  GitHub knows - the description, the posted comments, the check runs and the two SHAs - under
+  `~/.cache/stampeded/prs`, and `OpenPrAsync` falls back to it when `gh` fails and the commits
+  are still in the object database. The change itself is never cached: it is read from those
+  commits. An offline review says so and refuses to submit a verdict or a merge.
 - **GitHub is the authority for facts git cannot know**: the viewer's login, a repository's
   default branch. The local `origin/HEAD` is a clone-time snapshot and goes stale.
 - **`Stampeded.Core/TreeView/` and `Stampeded/Controls/TreeView/` are vendored from ILSpy.** They
