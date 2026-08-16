@@ -30,12 +30,12 @@ public static class ContextGaps
 	public const int Step = 20;
 
 	/// <summary>
-	/// How many lines a piece of a cut run has to hide to be worth a control of its own. A run
-	/// cut around the headers a change sits under is read as one thing, and a bar standing for
-	/// three lines between a signature and the hunk under it costs the reader more attention
-	/// than the three lines do.
+	/// How many lines a collapsed section has to hide to be worth the control that hides them.
+	/// A bar standing for three lines - between a signature and the hunk under it, or between
+	/// two hunks - costs the reader more attention than reading the three lines does, and a
+	/// diff broken up by bars that save nothing is harder to read than the lines they replace.
 	/// </summary>
-	public const int MinFragment = 6;
+	public const int MinHidden = 6;
 
 	/// <summary>
 	/// The gaps of a diff, closed. Nothing is hidden in a document without changes, which is
@@ -125,7 +125,7 @@ public static class ContextGaps
 			return [gap];
 		if (cursor <= gap.LastLine)
 			pieces.Add(new ContextGap(cursor, gap.LastLine));
-		return [.. pieces.Where(p => p.HiddenCount >= MinFragment)];
+		return [.. pieces.Where(p => p.HiddenCount >= MinHidden)];
 	}
 
 	static void Add(List<ContextGap> gaps, int tagCount, int firstTag, int lastTag)
@@ -134,8 +134,7 @@ public static class ContextGaps
 		// has a hunk on one side only, so it hides all the way to the edge.
 		int first = firstTag == 0 ? firstTag : firstTag + Context;
 		int last = lastTag == tagCount - 1 ? lastTag : lastTag - Context;
-		// A single hidden line is worth less than the control that would hide it.
-		if (last - first + 1 < 2)
+		if (last - first + 1 < MinHidden)
 			return;
 		gaps.Add(new ContextGap(first + 1, last + 1));
 	}

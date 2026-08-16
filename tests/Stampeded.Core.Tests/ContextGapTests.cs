@@ -57,11 +57,26 @@ public class ContextGapTests
 	}
 
 	[Test]
+	public void LeavesARunOfFiveLinesOrFewerAlone()
+	{
+		// Two hunks with fifteen unchanged lines between them: ten of those stay visible as the
+		// context beside each hunk, and the five left over are read rather than hidden - a
+		// control that saves five lines costs more attention than the five lines do.
+		var tags = Tags("+" + new string('.', 2 * ContextGaps.Context + 5) + "+");
+		Assert.That(ContextGaps.Compute(tags, hasChanges: true), Is.Empty);
+
+		// One line more, and there is enough behind the control to be worth it.
+		var wider = Tags("+" + new string('.', 2 * ContextGaps.Context + ContextGaps.MinHidden) + "+");
+		Assert.That(ContextGaps.Compute(wider, hasChanges: true).Single().HiddenCount,
+			Is.EqualTo(ContextGaps.MinHidden));
+	}
+
+	[Test]
 	public void CutsARunAroundTheSignatureTheChangeIsUnder()
 	{
 		// Forty unchanged lines, then a change: without any structure the run hides everything
 		// up to the hunk's own context.
-		var tags = Tags(new string('.', 40) + "+" + new string('.', 10));
+		var tags = Tags(new string('.', 40) + "+" + new string('.', 12));
 		Assert.That(ContextGaps.Compute(tags, hasChanges: true)[0].LastLine,
 			Is.EqualTo(40 - ContextGaps.Context));
 
@@ -145,7 +160,7 @@ public class ContextGapTests
 	{
 		// A short run with a header near its top: what is left on either side of that header is
 		// less than a control is worth, so the run is simply read.
-		var tags = Tags(new string('.', 12) + "+" + new string('.', 10));
+		var tags = Tags(new string('.', 12) + "+" + new string('.', 12));
 
 		var gaps = ContextGaps.Compute(tags, hasChanges: true, [Decl(4, 20, 5)]);
 
