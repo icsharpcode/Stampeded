@@ -68,7 +68,9 @@ guessing at an unknown extension would say something the name does not.
 | Shown for                              | Image (VS 2026)  |
 |----------------------------------------|------------------|
 | .cs / .vb / .fs                        | CSFileNode / VBFileNode / FSFileNode |
-| .csproj and friends / .sln, .slnx      | Project / Solution |
+| .csproj / .vbproj / .fsproj            | CSProjectNode / VBProjectNode / FSProjectNode |
+| .proj, .shproj (no language of its own)| Project          |
+| .sln, .slnx                            | Solution         |
 | .xml, .config, .props, .targets, .resx | XmlFile          |
 | .xaml, .axaml                          | WPFFile          |
 | .json                                  | JSONScript       |

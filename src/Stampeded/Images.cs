@@ -93,6 +93,13 @@ public static class Images
 	public static readonly IImage FileCSharp = LoadSvg("CSFileNode");
 	public static readonly IImage FileVisualBasic = LoadSvg("VBFileNode");
 	public static readonly IImage FileFSharp = LoadSvg("FSFileNode");
+	// A project file is shown as its language's project node, which is the same glyph as the
+	// language's source files in a box. The generic "Project" image is a badge of its own that
+	// looks like nothing else in the tree, and a .csproj is not a different kind of thing from
+	// the .cs files under it.
+	public static readonly IImage FileCSharpProject = LoadSvg("CSProjectNode");
+	public static readonly IImage FileVisualBasicProject = LoadSvg("VBProjectNode");
+	public static readonly IImage FileFSharpProject = LoadSvg("FSProjectNode");
 	public static readonly IImage FileProject = LoadSvg("Project");
 	public static readonly IImage FileSolution = LoadSvg("Solution");
 	public static readonly IImage FileXml = LoadSvg("XmlFile");
@@ -137,7 +144,12 @@ public static class Images
 		".cs" or ".csx" => FileCSharp,
 		".vb" => FileVisualBasic,
 		".fs" or ".fsi" or ".fsx" => FileFSharp,
-		".csproj" or ".vbproj" or ".fsproj" or ".proj" or ".shproj" or ".projitems" => FileProject,
+		".csproj" => FileCSharpProject,
+		".vbproj" => FileVisualBasicProject,
+		".fsproj" => FileFSharpProject,
+		// A project of no particular language - a build-only project, a shared one - keeps the
+		// generic badge, which is the one place it says something.
+		".proj" or ".shproj" or ".projitems" => FileProject,
 		".sln" or ".slnx" or ".slnf" => FileSolution,
 		".xml" or ".config" or ".props" or ".targets" or ".nuspec" or ".resx" or ".xsd"
 			or ".xslt" or ".vsixmanifest" or ".xshd" or ".ruleset" => FileXml,
