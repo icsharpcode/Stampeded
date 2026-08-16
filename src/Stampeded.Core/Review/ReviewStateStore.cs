@@ -62,6 +62,12 @@ public sealed class ReviewStateStore
 	public void OpenCommitScope(string repoKey, string commitSha)
 		=> OpenFile($"{Sanitize(repoKey)}_commit_{commitSha[..9]}.json", commitSha, null);
 
+	/// <summary>State for reading the uncommitted work on its own. Keyed by the commit it sits
+	/// on rather than by content: what is in the checkout changes with every save, and a file
+	/// read there has been read for the tip it was written against.</summary>
+	public void OpenWorkingTreeScope(string repoKey, string tipSha)
+		=> OpenFile($"{Sanitize(repoKey)}_worktree_{tipSha[..9]}.json", tipSha, null);
+
 	/// <summary>State for a local base..head review (no PR); keyed by the range text.</summary>
 	public void OpenLocal(string repoKey, string rangeKey, string headSha, string? baseSha = null)
 		=> OpenFile($"{Sanitize(repoKey)}_local_{Sanitize(rangeKey)}.json", headSha, baseSha);

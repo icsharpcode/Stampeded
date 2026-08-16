@@ -98,12 +98,17 @@ public partial class ExplorerPaneViewModel : Tool
 		CanEnterCommitScope = workspace.Scopes.CanEnterCommit;
 		CommitScopeTip = workspace.Scopes.CommitScopeTip;
 		SinceLastPassTip = workspace.Scopes.SinceLastPassTip;
-		ScopeBadge = workspace.Scopes.Commit is not null
-			? $"COMMIT {workspace.Scopes.CommitIndex + 1} OF {workspace.Scopes.Series.Count}"
+		// The working tree is the last entry of the series but is not a commit, and a badge
+		// reading "COMMIT 3 OF 3" over "not committed yet" contradicts itself.
+		string position = $"{workspace.Scopes.CommitIndex + 1} OF {workspace.Scopes.Series.Count}";
+		ScopeBadge = workspace.Scopes.Commit is { } badged
+			? badged.IsWorkingTree ? $"UNCOMMITTED, {position}" : $"COMMIT {position}"
 			: workspace.Scopes.InSinceLastPass ? "SINCE YOUR LAST PASS"
 			: "";
 		CommitScopeLine = workspace.Scopes.Commit is { } commit
-			? $"Commit {workspace.Scopes.CommitIndex + 1} of {workspace.Scopes.Series.Count}: {commit.Subject}"
+			? commit.IsWorkingTree
+				? $"Uncommitted work, {position.ToLowerInvariant()}: {commit.Subject}"
+				: $"Commit {position.ToLowerInvariant()}: {commit.Subject}"
 			: workspace.Scopes.InSinceLastPass ? workspace.Scopes.ScopeLine
 			: "Whole change";
 		CommitMessage = workspace.Scopes.Commit?.Message ?? "";

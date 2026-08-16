@@ -76,15 +76,18 @@ public sealed class ReviewScopes(ReviewWorkspace workspace)
 		{
 			if (workspace.HeadSha is null)
 				return "No review is open.";
-			if (workspace.DirtyWorktreePath is not null)
-			{
-				return "This review includes uncommitted work, which belongs to no commit - there is no "
-					+ "series to step through.";
-			}
 			// Null until the series has been read: how many commits there are cannot be guessed,
 			// and refusing on a count nobody has counted would disable the button on every open.
-			return knownCommitCount switch {
+			if (knownCommitCount is not { } commits)
+				return null;
+			// The uncommitted work is a step of its own, so a checkout that has some is one
+			// longer than its history.
+			bool uncommitted = workspace.DirtyWorktreePath is not null;
+			int steps = commits + (uncommitted ? 1 : 0);
+			return steps switch {
 				0 => "This review has no commits to step through.",
+				1 when uncommitted => "This review is uncommitted work and nothing else, so stepping through "
+					+ "it would show the one change you are already looking at.",
 				1 => "This change is a single commit, so reading it commit by commit is reading the whole "
 					+ "change - which is what you are looking at.",
 				_ => null,
@@ -259,8 +262,12 @@ public sealed class ReviewScopes(ReviewWorkspace workspace)
 			return;
 		if (Series.Count == 0)
 		{
-			// Oldest first: the series is meant to be read in the order it was written.
-			Series = [.. (await GetRangeCommitsAsync()).Reverse()];
+			// Oldest first: the series is meant to be read in the order it was written - and the
+			// uncommitted work last, because it is written on top of all of it.
+			var written = (await GetRangeCommitsAsync()).Reverse();
+			Series = workspace.DirtyWorktreePath is null
+				? [.. written]
+				: [.. written, CommitInfo.WorkingTree];
 		}
 		// Asked after the series has been read, because that is when the count is known - a
 		// change of one commit turns the offer down here and the control down through the same
@@ -284,12 +291,27 @@ public sealed class ReviewScopes(ReviewWorkspace workspace)
 		var commit = Series[index];
 		CommitIndex = index;
 		Commit = commit;
-		// The parent came with the commit: asking git for it is a process per step, and the
-		// log that listed the series already said what each one was written on top of.
-		string parent = commit.FirstParent
-			?? await workspace.Git.RevParseAsync($"{commit.Sha}^", CancellationToken.None);
-		workspace.SetScopeContent(parent, commit.Sha, await workspace.Git.DiffAsync(parent, commit.Sha));
-		workspace.Store.OpenCommitScope(Path.GetFileName(workspace.RepoPath), commit.Sha);
+		string repoKey = Path.GetFileName(workspace.RepoPath);
+		if (commit.IsWorkingTree)
+		{
+			// Against the tip, which is the last commit of the series: what is left once every
+			// commit has been read is exactly what the checkout has on top of them. Both ends of
+			// the range are that commit - the working tree is not one, and the head side is read
+			// from the checkout's files rather than from the object database.
+			string tip = (fullRange ?? ReviewRange)?.Head ?? workspace.HeadSha!;
+			workspace.SetScopeContent(tip, tip,
+				await workspace.Git.DiffWorkingTreeAsync(workspace.DirtyWorktreePath!, tip));
+			workspace.Store.OpenWorkingTreeScope(repoKey, tip);
+		}
+		else
+		{
+			// The parent came with the commit: asking git for it is a process per step, and the
+			// log that listed the series already said what each one was written on top of.
+			string parent = commit.FirstParent
+				?? await workspace.Git.RevParseAsync($"{commit.Sha}^", CancellationToken.None);
+			workspace.SetScopeContent(parent, commit.Sha, await workspace.Git.DiffAsync(parent, commit.Sha));
+			workspace.Store.OpenCommitScope(repoKey, commit.Sha);
+		}
 		// The semantic workspaces stay on the review's head: they describe where the code
 		// ends up, which is the right frame for navigating out of a commit being read.
 		await workspace.ApplyScopeSemanticsAsync();

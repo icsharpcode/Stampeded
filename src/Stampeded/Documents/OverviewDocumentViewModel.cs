@@ -220,9 +220,13 @@ public class OverviewDocumentViewModel : Document
 		State.InCommitScope = workspace.Scopes.Commit is not null;
 		State.InScope = workspace.Scopes.InScope;
 		State.CanEnterSinceLastPass = workspace.Scopes.CanEnterSinceLastPass;
+		// "Commit 3 of 3 ... not committed yet" contradicts itself: the working tree is the last
+		// entry of the series and is the one entry that is not a commit.
+		string position = $"{workspace.Scopes.CommitIndex + 1} of {workspace.Scopes.Series.Count}";
 		State.CommitScopeLine = workspace.Scopes.Commit is { } commit
-			? $"Commit {workspace.Scopes.CommitIndex + 1} of {workspace.Scopes.Series.Count}:  "
-				+ $"{commit.ShortSha}  {commit.Subject}"
+			? commit.IsWorkingTree
+				? $"Uncommitted work, {position}:  {commit.Subject}"
+				: $"Commit {position}:  {commit.ShortSha}  {commit.Subject}"
 			: workspace.Scopes.InSinceLastPass ? workspace.Scopes.ScopeLine
 			: "";
 	}

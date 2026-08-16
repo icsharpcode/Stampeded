@@ -12,6 +12,18 @@ public sealed record CommitInfo(string Sha, string ShortSha, string Author, stri
 	/// <summary>The commit this one is read against: its first parent, or null for a root.</summary>
 	public string? FirstParent
 		=> Parents.Split(' ', StringSplitOptions.RemoveEmptyEntries) is [var first, ..] ? first : null;
+
+	/// <summary>
+	/// The pending working tree rather than a commit: it has no SHA because nothing has
+	/// recorded it yet. A review of a checkout that has uncommitted work reads it as one more
+	/// entry of the series, sitting on top of every commit below it, so that a reader stepping
+	/// through the change reaches the part nobody else can see yet.
+	/// </summary>
+	public bool IsWorkingTree => Sha.Length == 0;
+
+	/// <summary>The working tree as an entry of a commit series.</summary>
+	public static CommitInfo WorkingTree { get; } =
+		new("", "uncommitted", "", "", "the work in your checkout, not committed yet");
 }
 
 public sealed record BranchInfo(string Name, string Sha, string Date, string Subject);
