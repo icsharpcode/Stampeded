@@ -3,8 +3,10 @@
              xmlns:editor="using:Stampeded.Editor"
              xmlns:diff="using:Stampeded.Diff"
              x:Class="Stampeded.Documents.DiffDocumentView">
+  <!-- The strip on the right IS the vertical scrollbar: the editor's own is hidden, so what
+       shows where the change is and what shows where the reader is are one thing. -->
   <Grid ColumnDefinitions="*,14">
-    <editor:ReviewTextEditor x:Name="Editor" IsReadOnly="True">
+    <editor:ReviewTextEditor x:Name="Editor" IsReadOnly="True" VerticalScrollBarVisibility="Hidden">
       <editor:ReviewTextEditor.ContextMenu>
         <ContextMenu Opening="OnContextMenuOpening">
           <MenuItem x:Name="CtxGoToDefinition" Header="Go to Definition" InputGesture="F12" Click="OnCtxGoToDefinition" />
