@@ -286,6 +286,31 @@ static class ScreenshotWatcher
 					else
 						RaisePointer(window, point, parts[0] == "press", modifiers);
 				}
+				// tooltip:<x>,<y> - shows the tooltip of whatever is under a point, so a capture
+				// can hold it. Moving the pointer there does not: being hovered is state the
+				// platform keeps, not an event a control can be handed.
+				foreach (var command in lines.Where(l => l.StartsWith("tooltip:", StringComparison.Ordinal)))
+				{
+					var coords = command["tooltip:".Length..].Split(',');
+					if (coords.Length != 2
+						|| !double.TryParse(coords[0], out double tx) || !double.TryParse(coords[1], out double ty))
+					{
+						CliLog.Write("action", $"tooltip: cannot read '{command}'");
+						continue;
+					}
+					// Up from what was hit until something carries a tip: the text of a button
+					// is what a point lands on, and the tip belongs to the button.
+					var hit = Avalonia.Input.InputExtensions.InputHitTest(window, new Avalonia.Point(tx, ty)) as Control;
+					while (hit is not null && Avalonia.Controls.ToolTip.GetTip(hit) is null)
+						hit = hit.GetVisualParent() as Control;
+					if (hit is null)
+					{
+						CliLog.Write("action", $"tooltip {tx:0},{ty:0}: nothing there carries one");
+						continue;
+					}
+					Avalonia.Controls.ToolTip.SetIsOpen(hit, true);
+					CliLog.Write("action", $"tooltip {tx:0},{ty:0} -> {hit.GetType().Name}");
+				}
 				// context:<x>,<y> - asks for the context menu at a point. A synthesized right
 				// button does not produce this: the request is raised for the platform's own
 				// gesture, not by the control that would show the menu.

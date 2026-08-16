@@ -90,7 +90,8 @@ script `merge.tool` so a conflicted rebase runs without anything interactive.
 The app screenshots itself when a trigger file appears, because Wayland blocks external capture
 of its window: write the target PNG path into `/tmp/stampeded-screenshot-request`, optionally
 followed by command lines (`goto:<path>:<line>`, `pane:<id>`, `commit-scope`, `overview`, `sbs`,
-`press:<x>,<y>[:<modifiers>]` / `release:...`, `context:<x>,<y>`, `folder:<path>|cancel`,
+`press:<x>,<y>[:<modifiers>]` / `release:...`, `context:<x>,<y>`, `tooltip:<x>,<y>`,
+`folder:<path>|cancel`,
 ... - see `ScreenshotWatcher`). The file is consumed on capture. Only one instance can serve a
 request, so shut down extra instances first.
 
