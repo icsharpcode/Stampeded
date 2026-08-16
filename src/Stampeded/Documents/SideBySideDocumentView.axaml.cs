@@ -114,7 +114,11 @@ public partial class SideBySideDocumentView : UserControl
 		base.OnDataContextChanged(e);
 		if (DataContext is not SideBySideDocumentViewModel vm)
 			return;
-		var highlighting = HighlightingService.GetByExtension(Path.GetExtension(vm.File.Path));
+		// The side the file still has: a pane's own text carries the filler rows that keep the
+		// two in step, and those are not part of any format.
+		var highlighting = HighlightingService.GetForFile(
+			vm.File.Path,
+			() => vm.Pair.GetSideText(oldSide: vm.File.Kind == FileChangeKind.Deleted).Text);
 		Left.SyntaxHighlighting = highlighting;
 		Right.SyntaxHighlighting = highlighting;
 		Left.Text = vm.Pair.LeftText;

@@ -886,7 +886,11 @@ public partial class DiffDocumentView : UserControl
 		viewsByDocument.AddOrUpdate(vm, this);
 		vm.CaretRequested += OnCaretRequested;
 		model = vm.Model;
-		Editor.SyntaxHighlighting = HighlightingService.GetByExtension(Path.GetExtension(vm.File.Path));
+		// One side's text, not the document's: the unified diff interleaves the two, and no
+		// format parses as itself with the lines it used to have spliced back into it.
+		Editor.SyntaxHighlighting = HighlightingService.GetForFile(
+			vm.File.Path,
+			() => vm.Model.GetSideText(oldSide: vm.File.Kind == Core.Diff.FileChangeKind.Deleted).Text);
 		Editor.Text = vm.Model.Text;
 		margin.Tags = vm.Model.Tags;
 		margin.InvalidateMeasure();
