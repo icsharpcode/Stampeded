@@ -63,14 +63,18 @@
                 IsVisible="{Binding State.MergeState, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
         <StackPanel Orientation="Vertical" Spacing="2"
                     IsVisible="{Binding State.MergeState, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
-          <TextBlock FontSize="10" Opacity="0.7" Text="{Binding State.MergeState}" />
+          <!-- The state line carries the detail: what refuses the merge and what would settle
+               it. It is on the line rather than only on the button because a disabled button
+               shows no tooltip, and a refusal is exactly when the reader wants the reason. -->
+          <TextBlock FontSize="10" Opacity="0.7" Text="{Binding State.MergeState}"
+                     ToolTip.Tip="{Binding State.MergeExplanation}" ToolTip.ShowDelay="200" />
           <StackPanel Orientation="Horizontal" Spacing="4">
             <ComboBox ItemsSource="{Binding State.MergeMethods}" MinWidth="88"
                       SelectedItem="{Binding State.SelectedMergeMethod}"
                       IsEnabled="{Binding State.CanMerge}"
                       ToolTip.Tip="Merge method; only the ones this repository allows are listed" />
             <Button Click="OnMerge" IsEnabled="{Binding State.CanMerge}"
-                    ToolTip.Tip="Merge this pull request on GitHub, for everyone. Asks first.">
+                    ToolTip.Tip="{Binding State.MergeButtonTip}">
               <StackPanel Orientation="Horizontal" Spacing="5">
                 <Image Source="{x:Static app:Images.Merge}" Width="16" Height="16" />
                 <TextBlock Text="Merge" />

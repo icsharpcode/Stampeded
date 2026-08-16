@@ -45,6 +45,18 @@ public sealed partial class ReviewDocumentState : ObservableObject
 	[ObservableProperty]
 	string mergeState = "";
 
+	/// <summary>The same state spelled out - what refuses the merge and what would settle it -
+	/// for the tooltip. Two words are a name for the refusal, not an account of it.</summary>
+	[ObservableProperty]
+	string mergeExplanation = "";
+
+	/// <summary>The button says what pressing it would do, and then why it can or cannot be
+	/// pressed: one hover, both halves of the question.</summary>
+	public string MergeButtonTip => "Merge this pull request on GitHub, for everyone. Asks first.\n\n"
+		+ MergeExplanation;
+
+	partial void OnMergeExplanationChanged(string value) => OnPropertyChanged(nameof(MergeButtonTip));
+
 	/// <summary>The merge methods this repository allows, as gh flag names.</summary>
 	public ObservableCollection<string> MergeMethods { get; } = [];
 
@@ -132,6 +144,7 @@ public sealed class ReviewDocumentViewModel : Document
 		{
 			State.CanMerge = false;
 			State.MergeState = "";
+			State.MergeExplanation = "";
 			return;
 		}
 		try
@@ -150,12 +163,17 @@ public sealed class ReviewDocumentViewModel : Document
 			}
 			var merge = await workspace.GitHub.GetMergeStateAsync(pr.Number);
 			State.MergeState = $"merge: {merge.Describe}";
+			State.MergeExplanation = merge.Explain
+				+ (State.MergeMethods.Count == 0
+					? "\n- This repository allows no merge method through the API."
+					: "");
 			State.CanMerge = merge.CanMerge && State.MergeMethods.Count > 0;
 		}
 		catch (ToolFailedException ex)
 		{
 			State.CanMerge = false;
 			State.MergeState = $"merge state unknown ({ex.Message})";
+			State.MergeExplanation = $"Asking GitHub about the merge state failed:\n{ex.Message}";
 		}
 	}
 

@@ -21,31 +21,8 @@ public sealed record PrSummary(
 	string? HeadRefOid = null,
 	string? ReviewDecision = null)
 {
-	/// <summary>"fail" / "pending" / "green" / "none", folded from the check rollup
-	/// (check runs carry status+conclusion, legacy status contexts carry state).</summary>
-	public string ChecksBucket {
-		get {
-			if (StatusCheckRollup is not { ValueKind: System.Text.Json.JsonValueKind.Array } rollup
-				|| rollup.GetArrayLength() == 0)
-				return "none";
-			bool pending = false;
-			foreach (var item in rollup.EnumerateArray())
-			{
-				string? conclusion = item.TryGetProperty("conclusion", out var c) ? c.GetString() : null;
-				string? state = item.TryGetProperty("state", out var s) ? s.GetString() : null;
-				string verdict = (conclusion is { Length: > 0 } ? conclusion : state) ?? "";
-				switch (verdict.ToUpperInvariant())
-				{
-					case "FAILURE" or "ERROR" or "TIMED_OUT" or "STARTUP_FAILURE" or "CANCELLED" or "ACTION_REQUIRED":
-						return "fail";
-					case "" or "PENDING" or "IN_PROGRESS" or "QUEUED" or "EXPECTED" or "WAITING" or "REQUESTED":
-						pending = true;
-						break;
-				}
-			}
-			return pending ? "pending" : "green";
-		}
-	}
+	/// <summary>"fail" / "pending" / "green" / "none", folded from the check rollup.</summary>
+	public string ChecksBucket => CheckRollup.Bucket(StatusCheckRollup);
 
 	public bool ChecksFailed => ChecksBucket == "fail";
 	public bool ChecksPending => ChecksBucket == "pending";
@@ -69,11 +46,72 @@ public sealed record PrDetail(
 public sealed record CheckRun(string Name, string State, string Bucket, string? Link, string? Workflow);
 
 /// <summary>
+/// A pull request's status-check rollup as GitHub hands it over: check runs carry status and
+/// conclusion, the older status contexts carry state, and both kinds arrive in one list. Read
+/// in one place because the pull request list and the merge state fold it the same way, and
+/// two foldings that drift apart would have the same review reported green in one pane and
+/// failing in another.
+/// </summary>
+public static class CheckRollup
+{
+	/// <summary>"fail", "pending" or "green" for one entry. Anything not named is green:
+	/// SUCCESS, but also SKIPPED and NEUTRAL, which are not a check saying no.</summary>
+	public static string Verdict(System.Text.Json.JsonElement item)
+	{
+		string? conclusion = item.TryGetProperty("conclusion", out var c) ? c.GetString() : null;
+		string? state = item.TryGetProperty("state", out var s) ? s.GetString() : null;
+		return ((conclusion is { Length: > 0 } ? conclusion : state) ?? "").ToUpperInvariant() switch {
+			"FAILURE" or "ERROR" or "TIMED_OUT" or "STARTUP_FAILURE" or "CANCELLED" or "ACTION_REQUIRED" => "fail",
+			"" or "PENDING" or "IN_PROGRESS" or "QUEUED" or "EXPECTED" or "WAITING" or "REQUESTED" => "pending",
+			_ => "green",
+		};
+	}
+
+	/// <summary>"fail" / "pending" / "green" / "none" for the whole rollup, worst first.</summary>
+	public static string Bucket(System.Text.Json.JsonElement? rollup)
+	{
+		bool pending = false;
+		foreach (var item in Entries(rollup))
+		{
+			switch (Verdict(item))
+			{
+				case "fail":
+					return "fail";
+				case "pending":
+					pending = true;
+					break;
+			}
+		}
+		return pending ? "pending" : Entries(rollup).Any() ? "green" : "none";
+	}
+
+	/// <summary>The checks with one verdict, named, in the order GitHub listed them.</summary>
+	public static IReadOnlyList<string> Names(System.Text.Json.JsonElement? rollup, string verdict)
+		=> [.. Entries(rollup).Where(item => Verdict(item) == verdict).Select(Name)];
+
+	static string Name(System.Text.Json.JsonElement item)
+		=> (item.TryGetProperty("name", out var name) ? name.GetString() : null)
+			?? (item.TryGetProperty("context", out var context) ? context.GetString() : null)
+			?? "(unnamed check)";
+
+	static IEnumerable<System.Text.Json.JsonElement> Entries(System.Text.Json.JsonElement? rollup)
+		=> rollup is { ValueKind: System.Text.Json.JsonValueKind.Array } array
+			? array.EnumerateArray()
+			: [];
+}
+
+/// <summary>
 /// Whether GitHub would take a merge of this pull request right now, in its own words:
 /// <see cref="Mergeable"/> is MERGEABLE / CONFLICTING / UNKNOWN, <see cref="MergeStateStatus"/>
 /// is CLEAN, UNSTABLE, BLOCKED, BEHIND, DIRTY, DRAFT, HAS_HOOKS or UNKNOWN.
 /// </summary>
-public sealed record MergeState(string? Mergeable, string? MergeStateStatus)
+public sealed record MergeState(
+	string? Mergeable,
+	string? MergeStateStatus,
+	string? ReviewDecision = null,
+	bool IsDraft = false,
+	string? BaseRefName = null,
+	System.Text.Json.JsonElement? StatusCheckRollup = null)
 {
 	/// <summary>
 	/// UNSTABLE is a failing or pending check on a pull request GitHub would still merge, so
@@ -85,6 +123,73 @@ public sealed record MergeState(string? Mergeable, string? MergeStateStatus)
 		&& MergeStateStatus is "CLEAN" or "UNSTABLE" or "HAS_HOOKS";
 
 	public string Describe => $"{Mergeable ?? "UNKNOWN"} / {MergeStateStatus ?? "UNKNOWN"}";
+
+	/// <summary>
+	/// Why the merge would be refused, in as much detail as GitHub gives from here. Its two
+	/// words say the kind of refusal; what the reader needs is which of the several things
+	/// behind that word is missing, and GitHub answers that in other fields - the review
+	/// decision, the checks, the draft flag - which are read here alongside it.
+	///
+	/// BLOCKED is the one it will not always explain: a rule can require a check that has not
+	/// reported at all, or a code-owner review, and neither shows up in what a reader can see.
+	/// Saying so is better than listing nothing and looking broken.
+	/// </summary>
+	public string Explain
+	{
+		get
+		{
+			string target = BaseRefName is { Length: > 0 } ? BaseRefName : "the target branch";
+			// A field GitHub left out is a state it does not know, which is what UNKNOWN means.
+			string status = MergeStateStatus is { Length: > 0 } ? MergeStateStatus : "UNKNOWN";
+			var lines = new List<string> { $"GitHub says: {Describe}." };
+			if (Mergeable == "CONFLICTING" || MergeStateStatus == "DIRTY")
+			{
+				lines.Add($"The branch conflicts with {target}. Rebase it onto {target}, or merge "
+					+ $"{target} into it, and push.");
+			}
+			switch (status)
+			{
+				case "BEHIND":
+					lines.Add($"The branch is behind {target}, and this repository requires it to be "
+						+ "up to date before a merge. Rebase it and push.");
+					break;
+				case "DRAFT":
+					lines.Add("The pull request is a draft. It has to be marked ready for review.");
+					break;
+				case "BLOCKED":
+					lines.Add($"A branch protection rule on {target} refuses it.");
+					break;
+				case "UNSTABLE":
+					lines.Add("GitHub would take it as it is; a check is failing or has not finished, "
+						+ "and whether that matters is the reader's call.");
+					break;
+				case "UNKNOWN":
+					lines.Add("GitHub has not worked the state out yet, or this account has no push "
+						+ "access to the repository. Refreshing in a moment usually answers it.");
+					break;
+			}
+			var reasons = new List<string>();
+			if (ReviewDecision == "REVIEW_REQUIRED")
+				reasons.Add("No approving review yet.");
+			else if (ReviewDecision == "CHANGES_REQUESTED")
+				reasons.Add("A review has requested changes.");
+			if (CheckRollup.Names(StatusCheckRollup, "fail") is { Count: > 0 } failing)
+				reasons.Add($"Checks failing: {string.Join(", ", failing)}.");
+			if (CheckRollup.Names(StatusCheckRollup, "pending") is { Count: > 0 } running)
+				reasons.Add($"Checks not finished: {string.Join(", ", running)}.");
+			if (IsDraft && status != "DRAFT")
+				reasons.Add("The pull request is a draft.");
+			if (reasons.Count == 0 && status == "BLOCKED")
+			{
+				reasons.Add("Which rule is not visible from here: a required check that has not "
+					+ "reported, a review from a code owner, or a rule this account cannot read.");
+			}
+			lines.AddRange(reasons.Select(r => "- " + r));
+			if (CanMerge && reasons.Count == 0 && status is "CLEAN" or "HAS_HOOKS")
+				lines.Add("Nothing blocks it.");
+			return string.Join("\n", lines);
+		}
+	}
 }
 
 /// <summary>The merge methods the repository's settings allow.</summary>
@@ -218,7 +323,10 @@ public sealed class GitHubService(string repoPath)
 	/// <summary>What GitHub says about merging this pull request right now. Not cached: it
 	/// changes with every push to either branch and with every review someone else leaves.</summary>
 	public Task<MergeState> GetMergeStateAsync(int number, CancellationToken ct = default)
-		=> JsonAsync<MergeState>(ct, "pr", "view", number.ToString(), "--json", "mergeable,mergeStateStatus");
+		=> JsonAsync<MergeState>(ct, "pr", "view", number.ToString(),
+			// The fields beyond the two verdicts are what turns "BLOCKED" into a reason: the
+			// review decision, the checks and the draft flag are where GitHub keeps the detail.
+			"--json", "mergeable,mergeStateStatus,reviewDecision,isDraft,baseRefName,statusCheckRollup");
 
 	/// <summary>The merge methods the repository allows; a setting, so it is read once.</summary>
 	public async Task<MergeMethods> GetMergeMethodsAsync(CancellationToken ct = default)
