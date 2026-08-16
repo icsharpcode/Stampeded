@@ -226,6 +226,8 @@ public partial class MainWindow : Window
 
 	void OnExit(object? s, RoutedEventArgs e) => Close();
 
+	void OnToggleMultiRowTabs(object? s, RoutedEventArgs e) => TabRowsPreference.Set(!TabRowsPreference.MultiRow);
+
 	void OnKeyboardShortcuts(object? s, RoutedEventArgs e)
 		=> App.Workspace?.OpenTextDocument("keys", "Keyboard shortcuts", KeyboardShortcuts.Text);
 
@@ -275,6 +277,7 @@ public partial class MainWindow : Window
 	{
 		var view = View;
 		var file = App.Workspace?.CurrentFile;
+		MultiRowTabsItem.IsChecked = TabRowsPreference.MultiRow;
 		NextHunkItem.IsEnabled = view is not null;
 		PrevHunkItem.IsEnabled = view is not null;
 		NextUncoveredItem.IsEnabled = view is not null;

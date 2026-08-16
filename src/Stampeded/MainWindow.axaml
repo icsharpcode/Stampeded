@@ -129,6 +129,8 @@
         <Separator />
         <MenuItem Header="Side-by-Side of Current File" x:Name="SideBySideItem" Click="OnSideBySide" />
         <MenuItem Header="Blame Margin  ( b )" x:Name="BlameItem" Click="OnToggleBlame" ToggleType="CheckBox" />
+        <MenuItem Header="Document Tabs in Several Rows" x:Name="MultiRowTabsItem"
+                  Click="OnToggleMultiRowTabs" ToggleType="CheckBox" />
         <Separator />
         <MenuItem Header="Panes">
           <MenuItem Header="Explorer" Tag="Explorer" Click="OnShowPane" />

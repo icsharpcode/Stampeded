@@ -2,6 +2,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:dockTheme="using:Dock.Avalonia.Themes.Simple"
              xmlns:dockControls="using:Dock.Avalonia.Controls"
+             xmlns:controls="using:Stampeded.Controls"
              xmlns:local="using:Stampeded"
              x:Class="Stampeded.App"
              RequestedThemeVariant="Default">
@@ -71,6 +72,11 @@
     <!-- The tab in front says which scope it belongs to, in the colour the headers use: a
          diff read one commit at a time looks the same as the whole change until something
          says otherwise, and the tab is what the reader is looking at. -->
+    <!-- Document tabs in one scrolling row or wrapped onto several; the wheel over the strip
+         says which, and the choice is remembered. -->
+    <Style Selector="dockControls|DocumentTabStrip">
+      <Setter Property="controls:MultiRowTabStrip.Enable" Value="True" />
+    </Style>
     <Style Selector="dockControls|DocumentTabStripItem:selected">
       <Setter Property="Background" Value="{x:Static local:ScopePalette.Accent}" />
     </Style>
