@@ -2,6 +2,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:docs="using:Stampeded.Documents"
              xmlns:app="using:Stampeded"
+             xmlns:controls="using:Stampeded.Controls"
              xmlns:gh="using:Stampeded.Core.GitHub"
              x:Class="Stampeded.Documents.StartDocumentView"
              x:DataType="docs:StartDocumentViewModel"
@@ -81,8 +82,17 @@
                 ToolTip.Tip="Refresh - re-read the open pull requests from GitHub">
           <Image Source="{x:Static app:Images.Refresh}" />
         </Button>
-        <TextBlock Classes="colhead" Margin="0" Text="{Binding State.PrColumnHeader}" />
+        <TextBlock DockPanel.Dock="Left" Classes="colhead" Margin="0"
+                   Text="{Binding State.PrColumnHeader}" />
+        <controls:WaveSpinner SquareSize="4" Width="60" Margin="8,0,0,0"
+                              HorizontalAlignment="Left" VerticalAlignment="Center"
+                              IsVisible="{Binding PrList.State.Loading}" />
       </DockPanel>
+      <!-- An empty list is an answer only when it says which one: no pull requests, or no
+           GitHub to ask. -->
+      <TextBlock DockPanel.Dock="Bottom" Margin="2,4,0,0" FontSize="12" Opacity="0.75"
+                 TextWrapping="Wrap" Text="{Binding PrList.State.Status}"
+                 IsVisible="{Binding !PrList.Items.Count}" />
       <ListBox x:Name="PrListBox" ItemsSource="{Binding PrList.Items}" DoubleTapped="OnPrDoubleTapped"
                ScrollViewer.HorizontalScrollBarVisibility="Disabled">
         <ListBox.ContextMenu>
@@ -141,6 +151,9 @@
       </ListBox>
     </DockPanel>
     <DockPanel Grid.Column="4">
+      <TextBlock DockPanel.Dock="Bottom" Margin="2,4,0,0" FontSize="12" Opacity="0.75"
+                 TextWrapping="Wrap" Text="{Binding State.RefsStatus}"
+                 IsVisible="{Binding State.RefsStatus, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
       <DockPanel DockPanel.Dock="Top" Margin="0,0,0,4">
         <Button DockPanel.Dock="Right" Classes="tool" Click="OnRefsRefresh"
                 ToolTip.Tip="Refresh - re-read branches and stashes from the repository">
@@ -150,6 +163,8 @@
                 ToolTip.Tip="Fetch - git fetch origin: update the remote-tracking refs, then re-read both lists. Branches whose sync state reads 'differs' need this before it can be measured.">
           <Image Source="{x:Static app:Images.Fetch}" />
         </Button>
+        <controls:WaveSpinner DockPanel.Dock="Right" SquareSize="4" Width="60" Margin="0,0,8,0"
+                              VerticalAlignment="Center" IsVisible="{Binding State.RefsLoading}" />
         <StackPanel Orientation="Horizontal" Spacing="12">
           <RadioButton x:Name="BranchesMode" Classes="colhead" GroupName="RefKind"
                        Content="{Binding State.BranchesLabel}"

@@ -91,6 +91,15 @@ public sealed partial class StartState : ObservableObject
 	[ObservableProperty]
 	string prColumnHeader = "Pull Requests";
 
+	/// <summary>True while the refs are being read - and, the first time, while gh is asked
+	/// which branch is the default, which is the part that hangs without a network.</summary>
+	[ObservableProperty]
+	bool refsLoading;
+
+	/// <summary>Why the ref list is empty, when it is.</summary>
+	[ObservableProperty]
+	string refsStatus = "";
+
 	[ObservableProperty]
 	string branchesLabel = "Branches";
 
@@ -185,6 +194,7 @@ public class StartDocumentViewModel : Document
 
 	async Task LoadStartPageAsync()
 	{
+		State.RefsLoading = true;
 		try
 		{
 			defaultBranch = await workspace.GetDefaultBranchAsync();
@@ -196,9 +206,15 @@ public class StartDocumentViewModel : Document
 				.Where(w => w.Branch is not null)
 				.ToDictionary(w => w.Branch!, w => w.Path, StringComparer.Ordinal);
 		}
-		catch (ToolFailedException)
+		catch (ToolFailedException ex)
 		{
-			// Not a repo or no origin; the start page simply shows no branches.
+			// Not a repo, or no origin to ask about the default branch: the list is empty, and
+			// saying why beats an empty box.
+			State.RefsStatus = ex.Message;
+		}
+		finally
+		{
+			State.RefsLoading = false;
 		}
 		AnnotateBranches();
 	}
@@ -207,6 +223,19 @@ public class StartDocumentViewModel : Document
 
 	/// <summary>Re-reads branches and stashes after an operation changed them.</summary>
 	async Task ReloadRefsAsync()
+	{
+		State.RefsLoading = true;
+		try
+		{
+			await ReloadRefsCoreAsync();
+		}
+		finally
+		{
+			State.RefsLoading = false;
+		}
+	}
+
+	async Task ReloadRefsCoreAsync()
 	{
 		rawBranches = await workspace.Git.ListBranchesAsync();
 		rawStashes = await workspace.Git.ListStashesAsync();

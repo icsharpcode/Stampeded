@@ -13,6 +13,11 @@ public sealed partial class PrListState : ObservableObject
 {
 	[ObservableProperty]
 	string status = "";
+
+	/// <summary>True while gh is being asked. Reading the pull requests takes a second or two
+	/// on a good connection and forever on none, and an empty list says neither.</summary>
+	[ObservableProperty]
+	bool loading;
 }
 
 /// <summary>
@@ -62,6 +67,7 @@ public class PrListPaneViewModel : Tool
 	public async Task LoadAsync()
 	{
 		State.Status = "Loading pull requests...";
+		State.Loading = true;
 		Items.Clear();
 		try
 		{
@@ -82,6 +88,10 @@ public class PrListPaneViewModel : Tool
 		catch (ToolFailedException ex)
 		{
 			State.Status = ex.Message;
+		}
+		finally
+		{
+			State.Loading = false;
 		}
 	}
 
