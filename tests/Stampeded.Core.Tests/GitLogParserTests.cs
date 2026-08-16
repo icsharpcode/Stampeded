@@ -51,6 +51,36 @@ public class GitLogParserTests
 	}
 
 	[Test]
+	public void ParsesShortStatPerCommit()
+	{
+		const string output =
+			"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n\n 2 files changed, 12 insertions(+), 4 deletions(-)\n"
+			+ "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\n\n 1 file changed, 3 insertions(+)\n"
+			+ "cccccccccccccccccccccccccccccccccccccccc\n\n 1 file changed, 7 deletions(-)\n"
+			// A commit that changed nothing (an empty commit, or a merge) prints no summary.
+			+ "dddddddddddddddddddddddddddddddddddddddd\n";
+
+		var stats = GitLogParser.ParseShortStat(output);
+
+		Assert.That(stats["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"], Is.EqualTo((12, 4)));
+		Assert.That(stats["bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"], Is.EqualTo((3, 0)));
+		Assert.That(stats["cccccccccccccccccccccccccccccccccccccccc"], Is.EqualTo((0, 7)));
+		Assert.That(stats.ContainsKey("dddddddddddddddddddddddddddddddddddddddd"), Is.False);
+	}
+
+	[Test]
+	public void CountsHowManyCommitsTouchedEachPath()
+	{
+		const string output = "src/A.cs\nsrc/B.cs\n\nsrc/A.cs\n\nsrc/A.cs\nsrc/C.cs\n";
+
+		var churn = GitLogParser.CountPathTouches(output);
+
+		Assert.That(churn["src/A.cs"], Is.EqualTo(3));
+		Assert.That(churn["src/B.cs"], Is.EqualTo(1));
+		Assert.That(churn["src/C.cs"], Is.EqualTo(1));
+	}
+
+	[Test]
 	public void ParsesNameStatusIncludingRenames()
 	{
 		const string output = "M\tsrc/A.cs\nA\tsrc/New.cs\nD\told/Gone.cs\nR100\tfrom/Old.cs\tto/New.cs\n";

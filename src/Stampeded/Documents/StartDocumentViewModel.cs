@@ -182,7 +182,7 @@ public class StartDocumentViewModel : Document
 		workspace.ChangeMapChanged += () => Dispatcher.UIThread.Post(UpdatePreparation);
 		workspace.ChecksLoaded += () => Dispatcher.UIThread.Post(UpdatePreparation);
 		workspace.ChurnChanged += () => Dispatcher.UIThread.Post(UpdatePreparation);
-		workspace.CommentsChanged += () => Dispatcher.UIThread.Post(UpdatePreparation);
+		workspace.Comments.Changed += () => Dispatcher.UIThread.Post(UpdatePreparation);
 		workspace.GeneratedSourcesChanged += () => Dispatcher.UIThread.Post(UpdatePreparation);
 		workspace.StatusMessage += message => Dispatcher.UIThread.Post(() => State.Status = message);
 		State.PropertyChanged += (_, e) => {
@@ -639,7 +639,7 @@ public class StartDocumentViewModel : Document
 			: ("loading...", false));
 		Set(5, workspace.ChurnByFile is not null ? ("done", true) : ("computing...", false));
 		Set(6, !reviewOpen ? ("waiting", false)
-			: workspace.CommentsLoaded ? ($"{workspace.PostedComments.Count} comment(s)", true)
+			: workspace.Comments.Loaded ? ($"{workspace.Comments.Posted.Count} comment(s)", true)
 			: ("loading...", false));
 		Set(7, (workspace.GeneratedSourcesStatus, workspace.GeneratedSourcesDone));
 

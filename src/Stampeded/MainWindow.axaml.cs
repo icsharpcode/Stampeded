@@ -69,10 +69,10 @@ public partial class MainWindow : Window
 				App.Workspace?.OpenAdjacentFileAsync(-1).HandleExceptions();
 				break;
 			case (Key.OemCloseBrackets, KeyModifiers.Control):
-				App.Workspace?.StepCommitScopeAsync(1).HandleExceptions();
+				App.Workspace?.Scopes.StepCommitAsync(1).HandleExceptions();
 				break;
 			case (Key.OemOpenBrackets, KeyModifiers.Control):
-				App.Workspace?.StepCommitScopeAsync(-1).HandleExceptions();
+				App.Workspace?.Scopes.StepCommitAsync(-1).HandleExceptions();
 				break;
 			case (Key.V, KeyModifiers.None):
 				App.Workspace?.ToggleViewedAndAdvanceAsync().HandleExceptions();
@@ -177,15 +177,15 @@ public partial class MainWindow : Window
 	void OnRebasePr(object? s, RoutedEventArgs e) => App.Workspace?.RebaseCurrentPrOnTargetAsync().HandleExceptions();
 
 	// The overview page's commands, so they are reachable without going back to that tab.
-	void OnEnterCommitScope(object? s, RoutedEventArgs e) => App.Workspace?.EnterCommitScopeAsync().HandleExceptions();
-	void OnNextCommit(object? s, RoutedEventArgs e) => App.Workspace?.StepCommitScopeAsync(1).HandleExceptions();
-	void OnPreviousCommit(object? s, RoutedEventArgs e) => App.Workspace?.StepCommitScopeAsync(-1).HandleExceptions();
-	void OnExitCommitScope(object? s, RoutedEventArgs e) => App.Workspace?.ExitScopeAsync().HandleExceptions();
+	void OnEnterCommitScope(object? s, RoutedEventArgs e) => App.Workspace?.Scopes.EnterCommitAsync().HandleExceptions();
+	void OnNextCommit(object? s, RoutedEventArgs e) => App.Workspace?.Scopes.StepCommitAsync(1).HandleExceptions();
+	void OnPreviousCommit(object? s, RoutedEventArgs e) => App.Workspace?.Scopes.StepCommitAsync(-1).HandleExceptions();
+	void OnExitCommitScope(object? s, RoutedEventArgs e) => App.Workspace?.Scopes.ExitAsync().HandleExceptions();
 	void OnBounce(object? s, RoutedEventArgs e) => App.Workspace?.PrepareBounceBody();
 	void OnOpenVsCode(object? s, RoutedEventArgs e) => App.Workspace?.OpenInVsCodeAsync(oldSide: false).HandleExceptions();
 	void OnOpenFixtures(object? s, RoutedEventArgs e) => App.Workspace?.OpenAffectedFixturesInILSpyAsync().HandleExceptions();
 
-	void OnSinceLastPass(object? s, RoutedEventArgs e) => App.Workspace?.EnterSinceLastPassScopeAsync().HandleExceptions();
+	void OnSinceLastPass(object? s, RoutedEventArgs e) => App.Workspace?.Scopes.EnterSinceLastPassAsync().HandleExceptions();
 
 	void OnOpenStart(object? s, RoutedEventArgs e) => App.Workspace?.OpenStart();
 

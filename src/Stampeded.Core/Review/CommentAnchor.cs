@@ -51,6 +51,32 @@ public sealed record CommentAnchor(
 		return bestScore > 0 ? bestLine : Math.Clamp(Line, 1, Math.Max(1, fileLines.Count));
 	}
 
+	/// <summary>
+	/// The anchor a posted comment carries with it. GitHub drops a comment's line number once
+	/// the diff has moved on, but keeps the excerpt it was written against, and that excerpt
+	/// ends at the commented line - so the last line of the side the comment is on is the line
+	/// itself, and what comes before it is its context. Null when the excerpt holds nothing of
+	/// that side at all.
+	/// </summary>
+	public static CommentAnchor? FromDiffHunk(string path, bool oldSide, int originalLine, string diffHunk)
+	{
+		var sideLines = new List<string>();
+		foreach (var hunkLine in diffHunk.ReplaceLineEndings("\n").Split('\n'))
+		{
+			if (hunkLine.StartsWith("@@", StringComparison.Ordinal))
+				continue;
+			char marker = hunkLine.Length > 0 ? hunkLine[0] : ' ';
+			if (marker == ' ' || (oldSide ? marker == '-' : marker == '+'))
+				sideLines.Add(hunkLine.Length > 0 ? hunkLine[1..] : "");
+		}
+		if (sideLines.Count == 0)
+			return null;
+		var before = sideLines.Count > 1
+			? sideLines.GetRange(Math.Max(0, sideLines.Count - 3), Math.Min(2, sideLines.Count - 1))
+			: [];
+		return new CommentAnchor(path, oldSide, originalLine, sideLines[^1], before, []);
+	}
+
 	public static CommentAnchor Create(string path, bool oldSide, int line, IReadOnlyList<string> fileLines, int context = 2)
 	{
 		int index = line - 1;

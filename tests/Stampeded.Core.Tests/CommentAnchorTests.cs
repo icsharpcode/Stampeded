@@ -88,6 +88,39 @@ public class CommentAnchorTests
 		Assert.That(anchor.Reattach(without), Is.Null);
 	}
 
+	// GitHub's excerpt of what a comment was written against: it ends at the commented line.
+	const string DiffHunk = "@@ -8,5 +8,6 @@ class C\n \tint x;\n-\tvoid Old()\n+\tvoid New()\n+\t{";
+
+	[Test]
+	public void AnchorsAPostedCommentAtTheLastLineOfItsOwnSide()
+	{
+		var anchor = CommentAnchor.FromDiffHunk("f.cs", oldSide: false, originalLine: 12, DiffHunk);
+
+		Assert.That(anchor, Is.Not.Null);
+		Assert.That(anchor!.LineText, Is.EqualTo("\t{"));
+		Assert.That(anchor.ContextBefore, Is.EqualTo(new[] { "\tint x;", "\tvoid New()" }),
+			"the added lines and the context above them, not the removed ones");
+		Assert.That(anchor.Line, Is.EqualTo(12));
+	}
+
+	[Test]
+	public void TheOldSideOfTheSameHunkAnchorsOnItsRemovedLine()
+	{
+		var anchor = CommentAnchor.FromDiffHunk("f.cs", oldSide: true, originalLine: 9, DiffHunk);
+
+		Assert.That(anchor, Is.Not.Null);
+		Assert.That(anchor!.LineText, Is.EqualTo("\tvoid Old()"));
+		Assert.That(anchor.ContextBefore, Is.EqualTo(new[] { "\tint x;" }));
+	}
+
+	[Test]
+	public void AHunkWithNothingOfThatSideAnchorsNowhere()
+	{
+		// Only additions: the old side of it is empty, so there is no line to anchor to.
+		Assert.That(CommentAnchor.FromDiffHunk("f.cs", oldSide: true, 3, "@@ -0,0 +1,2 @@\n+one\n+two"),
+			Is.Null);
+	}
+
 	[Test]
 	public void FuzzyMatchOutsideRangeIsRejected()
 	{

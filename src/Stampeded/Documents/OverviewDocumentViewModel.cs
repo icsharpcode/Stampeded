@@ -155,7 +155,7 @@ public class OverviewDocumentViewModel : Document
 		workspace.CoverageChanged += () => Dispatcher.UIThread.Post(RebuildCoverage);
 		workspace.TestResultsChanged += () => Dispatcher.UIThread.Post(RebuildTests);
 		workspace.StatusMessage += message => Dispatcher.UIThread.Post(() => State.ToolStatus = message);
-		workspace.CommitScopeChanged += () => Dispatcher.UIThread.Post(RebuildCommitScope);
+		workspace.Scopes.Changed += () => Dispatcher.UIThread.Post(RebuildCommitScope);
 		State.HasFixtureTools = workspace.HasDecompilerTestCases;
 		RebuildAll();
 	}
@@ -206,24 +206,24 @@ public class OverviewDocumentViewModel : Document
 
 	void RebuildCommitScope()
 	{
-		State.CanEnterCommitScope = workspace.CanEnterCommitScope;
-		State.InCommitScope = workspace.CommitScope is not null;
-		State.InScope = workspace.InScope;
-		State.CanEnterSinceLastPass = workspace.CanEnterSinceLastPassScope;
-		State.CommitScopeLine = workspace.CommitScope is { } commit
-			? $"Commit {workspace.CommitScopeIndex + 1} of {workspace.ScopeCommits.Count}:  "
+		State.CanEnterCommitScope = workspace.Scopes.CanEnterCommit;
+		State.InCommitScope = workspace.Scopes.Commit is not null;
+		State.InScope = workspace.Scopes.InScope;
+		State.CanEnterSinceLastPass = workspace.Scopes.CanEnterSinceLastPass;
+		State.CommitScopeLine = workspace.Scopes.Commit is { } commit
+			? $"Commit {workspace.Scopes.CommitIndex + 1} of {workspace.Scopes.Series.Count}:  "
 				+ $"{commit.ShortSha}  {commit.Subject}"
-			: workspace.InSinceLastPassScope ? workspace.ScopeLine
+			: workspace.Scopes.InSinceLastPass ? workspace.Scopes.ScopeLine
 			: "";
 	}
 
-	public void EnterCommitScope() => workspace.EnterCommitScopeAsync().HandleExceptions();
+	public void EnterCommitScope() => workspace.Scopes.EnterCommitAsync().HandleExceptions();
 
-	public void EnterSinceLastPass() => workspace.EnterSinceLastPassScopeAsync().HandleExceptions();
+	public void EnterSinceLastPass() => workspace.Scopes.EnterSinceLastPassAsync().HandleExceptions();
 
-	public void StepCommitScope(int direction) => workspace.StepCommitScopeAsync(direction).HandleExceptions();
+	public void StepCommitScope(int direction) => workspace.Scopes.StepCommitAsync(direction).HandleExceptions();
 
-	public void ExitCommitScope() => workspace.ExitScopeAsync().HandleExceptions();
+	public void ExitCommitScope() => workspace.Scopes.ExitAsync().HandleExceptions();
 
 	/// <summary>
 	/// The issues a description points at. A "#123" in prose is only a candidate - a colour
@@ -236,7 +236,7 @@ public class OverviewDocumentViewModel : Document
 		// Asking takes a moment, and the page is rebuilt on several events: the answers are
 		// collected aside and shown at once, and a pass that has been overtaken drops them.
 		int pass = ++linkedIssuesPass;
-		if (workspace.CurrentPr?.Body is not { } body || !workspace.CanComment)
+		if (workspace.CurrentPr?.Body is not { } body || !workspace.Comments.CanComment)
 		{
 			LinkedIssues.Clear();
 			return;
@@ -294,7 +294,7 @@ public class OverviewDocumentViewModel : Document
 		State.CommitsHeader = "";
 		// The review's range, not the displayed one: while a commit is in scope BaseSha and
 		// HeadSha describe that commit, and this section is about the series it belongs to.
-		if (workspace.ReviewRange is null)
+		if (workspace.Scopes.ReviewRange is null)
 			return;
 		try
 		{
@@ -304,13 +304,13 @@ public class OverviewDocumentViewModel : Document
 			State.CommitsExpanded = uncommitted is not null;
 			if (uncommitted is not null)
 				CommitLines.Add(uncommitted);
-			var commits = await workspace.GetRangeCommitsAsync();
-			var stats = await workspace.GetRangeCommitStatsAsync();
+			var commits = await workspace.Scopes.GetRangeCommitsAsync();
+			var stats = await workspace.Scopes.GetRangeCommitStatsAsync();
 			foreach (var commit in commits.Take(8))
 			{
 				var (added, removed) = stats.GetValueOrDefault(commit.Sha);
 				// The one being read is marked, so the series says where in it you are.
-				bool inScope = workspace.CommitScope?.Sha == commit.Sha;
+				bool inScope = workspace.Scopes.Commit?.Sha == commit.Sha;
 				CommitLines.Add(new CommitLine(commit.ShortSha, $"+{added}", $"-{removed}",
 					inScope ? $"> {commit.Subject}" : commit.Subject) {
 					Message = commit.Message,
@@ -422,7 +422,7 @@ public class OverviewDocumentViewModel : Document
 			State.ReviewersHeader = "could not be read";
 			return;
 		}
-		string head = workspace.ReviewRange?.Head ?? workspace.HeadSha ?? "";
+		string head = workspace.Scopes.ReviewRange?.Head ?? workspace.HeadSha ?? "";
 		foreach (var verdict in verdicts)
 		{
 			bool stale = verdict.CommitId is { Length: > 0 } commit && commit != head;

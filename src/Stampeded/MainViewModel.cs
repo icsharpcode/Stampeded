@@ -110,7 +110,7 @@ public partial class MainViewModel : ObservableObject
 		StartPage = workspace.StartPage;
 		workspace.ReviewChanged += UpdateTitle;
 		workspace.ReviewChanged += RefreshReviewState;
-		workspace.CommitScopeChanged += RefreshReviewState;
+		workspace.Scopes.Changed += RefreshReviewState;
 		workspace.SemanticsChanged += () =>
 			Avalonia.Threading.Dispatcher.UIThread.Post(() => SemanticsReady = workspace.SemanticsReady);
 		UpdateTitle();
@@ -125,13 +125,13 @@ public partial class MainViewModel : ObservableObject
 		var workspace = App.Workspace;
 		HasReview = workspace is { CurrentPr: not null } or { LocalRange: not null };
 		HasPullRequest = workspace?.CurrentPr is not null;
-		CanComment = workspace?.CanComment ?? false;
-		InScope = workspace?.InScope ?? false;
+		CanComment = workspace?.Comments.CanComment ?? false;
+		InScope = workspace?.Scopes.InScope ?? false;
 		WholeChangeActive = HasReview && !InScope;
-		InCommitScope = workspace?.CommitScope is not null;
-		InSinceLastPassScope = workspace?.InSinceLastPassScope ?? false;
-		CanEnterCommitScope = workspace?.CanEnterCommitScope ?? false;
-		CanEnterSinceLastPass = workspace?.CanEnterSinceLastPassScope ?? false;
+		InCommitScope = workspace?.Scopes.Commit is not null;
+		InSinceLastPassScope = workspace?.Scopes.InSinceLastPass ?? false;
+		CanEnterCommitScope = workspace?.Scopes.CanEnterCommit ?? false;
+		CanEnterSinceLastPass = workspace?.Scopes.CanEnterSinceLastPass ?? false;
 		HasDecompilerTestCases = workspace?.HasDecompilerTestCases ?? false;
 		ScopePalette.Set(workspace);
 	}

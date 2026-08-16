@@ -32,8 +32,8 @@ public static class ScopePalette
 	public static void Set(ReviewWorkspace? workspace)
 	{
 		(Color color, double tint) = workspace switch {
-			{ CommitScope: not null } => (CommitByCommit, 0.10),
-			{ InSinceLastPassScope: true } => (SinceLastPass, 0.10),
+			{ Scopes.Commit: not null } => (CommitByCommit, 0.10),
+			{ Scopes.InSinceLastPass: true } => (SinceLastPass, 0.10),
 			// A tenth of the accent is enough to read as a coloured area and not enough to
 			// fight the text on it; the whole change washes nothing at all.
 			_ => (WholeChange, 0.0),

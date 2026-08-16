@@ -114,7 +114,7 @@ public sealed class ReviewDocumentViewModel : Document
 	public ReviewDocumentViewModel(ReviewWorkspace workspace)
 	{
 		this.workspace = workspace;
-		workspace.CommentsChanged += Rebuild;
+		workspace.Comments.Changed += Rebuild;
 		Rebuild();
 	}
 
@@ -128,14 +128,14 @@ public sealed class ReviewDocumentViewModel : Document
 
 	async Task RefreshVerdictAsync()
 	{
-		State.CanComment = workspace.CanComment;
-		State.CanGiveVerdict = workspace.CanComment && !await workspace.IsOwnPullRequestAsync();
+		State.CanComment = workspace.Comments.CanComment;
+		State.CanGiveVerdict = workspace.Comments.CanComment && !await workspace.Comments.IsOwnPullRequestAsync();
 	}
 
 	async Task RebuildAsync()
 	{
 		Comments.Clear();
-		foreach (var draft in workspace.Drafts)
+		foreach (var draft in workspace.Comments.Drafts)
 		{
 			Comments.Add(new ReviewCommentRow(
 				draft.Stored.Anchor.Path, draft.CurrentLine, draft.Stored.Anchor.OldSide, "",
@@ -143,7 +143,7 @@ public sealed class ReviewDocumentViewModel : Document
 				await ContextAsync(draft.Stored.Anchor.Path, draft.CurrentLine, draft.Stored.Anchor.OldSide),
 				IsDraft: true));
 		}
-		foreach (var posted in workspace.PostedComments)
+		foreach (var posted in workspace.Comments.Posted)
 		{
 			Comments.Add(new ReviewCommentRow(
 				posted.RelPath, posted.Line, posted.OldSide,
@@ -153,10 +153,10 @@ public sealed class ReviewDocumentViewModel : Document
 				IsDraft: false));
 		}
 		State.IsEmpty = Comments.Count == 0;
-		State.CanComment = workspace.CanComment;
-		int drafts = workspace.Drafts.Count;
-		State.Status = workspace.CanComment
-			? $"{drafts} draft(s) will be posted with this review; {workspace.PostedComments.Count} comment(s) already on the pull request."
+		State.CanComment = workspace.Comments.CanComment;
+		int drafts = workspace.Comments.Drafts.Count;
+		State.Status = workspace.Comments.CanComment
+			? $"{drafts} draft(s) will be posted with this review; {workspace.Comments.Posted.Count} comment(s) already on the pull request."
 			: "Local review: comments need a pull request to post to.";
 		await RefreshMergeAsync();
 	}
@@ -266,7 +266,7 @@ public sealed class ReviewDocumentViewModel : Document
 			State.HasOutcome = false;
 			State.Outcome = $"Submitting {eventType}...";
 			State.OutcomeBackground = Brushes.Transparent;
-			string result = await workspace.SubmitReviewCheckedAsync(eventType, State.Summary.Trim());
+			string result = await workspace.Comments.SubmitCheckedAsync(eventType, State.Summary.Trim());
 			bool posted = result.StartsWith("Review submitted", StringComparison.Ordinal);
 			if (posted)
 				State.Summary = "";
@@ -286,7 +286,7 @@ public sealed class ReviewDocumentViewModel : Document
 		State.Status = "Refreshing posted comments...";
 		try
 		{
-			await workspace.RefreshPostedCommentsAsync();
+			await workspace.Comments.RefreshPostedAsync();
 		}
 		catch (ToolFailedException ex)
 		{

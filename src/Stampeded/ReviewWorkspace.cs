@@ -35,6 +35,15 @@ public sealed class ReviewWorkspace(string repoPath)
 	public ReviewStateStore Store { get; } = new();
 	public BusyTracker Busy { get; } = new();
 
+	/// <summary>The review's comments, drafted and posted, and which part of the change is
+	/// being read. Not field initializers: both are given this workspace, which an initializer
+	/// cannot name.</summary>
+	ReviewComments? comments;
+	public ReviewComments Comments => comments ??= new(this);
+
+	ReviewScopes? scopes;
+	public ReviewScopes Scopes => scopes ??= new(this);
+
 	// Set by MainViewModel once the layout exists.
 	public Docking.StampededDockFactory? Factory { get; set; }
 	public DocumentDock? Documents { get; set; }
@@ -95,26 +104,32 @@ public sealed class ReviewWorkspace(string repoPath)
 	public Func<(bool Ok, string Detail)>? ApprovalGate { get; set; }
 
 	public (int Uncovered, int Measured) UncoveredAddedForFile(string path)
+		=> Coverage is { } coverage && coverage.TryGetValue(path, out var hits)
+			? CountUncovered(changed.Added(path), hits)
+			: (0, 0);
+
+	public bool IsUncoveredAdded(string path, int newLine)
+		=> changed.IsAdded(path, newLine)
+			&& Coverage is { } coverage && coverage.TryGetValue(path, out var hits)
+			&& hits.TryGetValue(newLine, out int h) && h == 0;
+
+	/// <summary>How many of the given lines the run never executed, out of those it measured
+	/// at all. A line the report does not mention carries no instructions, so it is neither
+	/// covered nor uncovered and counts as neither.</summary>
+	static (int Uncovered, int Measured) CountUncovered(
+		IEnumerable<int> lines, IReadOnlyDictionary<int, int> hits)
 	{
-		if (Coverage is null || !Coverage.TryGetValue(path, out var hits)
-			|| !addedLinesByFile.TryGetValue(path, out var added))
-			return (0, 0);
 		int uncovered = 0, measured = 0;
-		foreach (var line in added)
+		foreach (int line in lines)
 		{
-			if (!hits.TryGetValue(line, out int h))
+			if (!hits.TryGetValue(line, out int count))
 				continue;
 			measured++;
-			if (h == 0)
+			if (count == 0)
 				uncovered++;
 		}
 		return (uncovered, measured);
 	}
-
-	public bool IsUncoveredAdded(string path, int newLine)
-		=> Coverage is not null
-			&& addedLinesByFile.TryGetValue(path, out var added) && added.Contains(newLine)
-			&& Coverage.TryGetValue(path, out var hits) && hits.TryGetValue(newLine, out int h) && h == 0;
 
 	/// <summary>Test classes referencing the change map's members, for a focused test
 	/// filter ("run the tests that matter for this change").</summary>
@@ -172,21 +187,16 @@ public sealed class ReviewWorkspace(string repoPath)
 	/// <summary>(uncovered, measured) added lines across the diff, from the last coverage run.</summary>
 	public (int Uncovered, int Measured) UncoveredAddedLines()
 	{
-		if (Coverage is null)
+		if (Coverage is not { } coverage)
 			return (0, 0);
 		int uncovered = 0, measured = 0;
-		foreach (var (path, added) in addedLinesByFile)
+		foreach (var (path, added) in changed.AddedByFile)
 		{
-			if (!Coverage.TryGetValue(path, out var hits))
+			if (!coverage.TryGetValue(path, out var hits))
 				continue;
-			foreach (var line in added)
-			{
-				if (!hits.TryGetValue(line, out int h))
-					continue;
-				measured++;
-				if (h == 0)
-					uncovered++;
-			}
+			var (fileUncovered, fileMeasured) = CountUncovered(added, hits);
+			uncovered += fileUncovered;
+			measured += fileMeasured;
 		}
 		return (uncovered, measured);
 	}
@@ -229,6 +239,17 @@ public sealed class ReviewWorkspace(string repoPath)
 			PrCache.Save(Path.GetFileName(RepoPath), updated);
 	}
 
+	/// <summary>The comments the snapshot kept, which are the answer while offline.</summary>
+	public IReadOnlyList<PostedComment>? SnapshotComments => snapshot?.Comments;
+
+	/// <summary>Keeps what GitHub said about the comments for the next time it cannot be
+	/// reached, the same way <see cref="SetChecks"/> keeps the check runs.</summary>
+	public void KeepComments(IReadOnlyList<PostedComment> posted)
+	{
+		if (snapshot is { } current)
+			KeepSnapshot(current with { Comments = posted });
+	}
+
 	public event Action? ReviewChanged;
 	public event Action<string, bool>? ViewedChanged;
 	public event Action? SemanticsChanged;
@@ -246,8 +267,13 @@ public sealed class ReviewWorkspace(string repoPath)
 	public event Action<string, IReadOnlyList<ReferenceItem>>? ReferencesAvailable;
 
 	CancellationTokenSource? sessionCts;
-	Dictionary<string, HashSet<int>> addedLinesByFile = [];
-	Dictionary<string, HashSet<int>> removedLinesByFile = [];
+
+	/// <summary>Which lines the change in scope touches, rebuilt whenever <see cref="Files"/> is.</summary>
+	ChangedLines changed = ChangedLines.Empty;
+
+	/// <summary>The lines of the change in scope, for whatever asks whether a line is part of
+	/// it - the coverage marks, the reference list, the lines a comment can be posted on.</summary>
+	public ChangedLines Changed => changed;
 	readonly NavigationHistory<NavEntry> history = new();
 
 	/// <summary>Opens a review of a local base..head range (no PR: checks, posted comments
@@ -270,22 +296,21 @@ public sealed class ReviewWorkspace(string repoPath)
 		UncommittedFileCount = Math.Max(0, files.Count - committed.Count);
 		ct.ThrowIfCancellationRequested();
 
-		ResetScope();
+		Scopes.Reset();
 		Reviewers = null;
 		CurrentPr = null;
 		LocalRange = (baseRef, headRef);
 		BaseSha = baseSha;
 		HeadSha = headSha;
 		Files = files;
-		IndexAddedLines(files);
+		changed = ChangedLines.From(files);
 		Store.OpenLocal(Path.GetFileName(RepoPath), $"{baseRef}..{headRef}", headSha, baseSha);
 		await ApplyReReviewCarryOverAsync(ct);
 		await PinReviewHeadsAsync(ct);
 		ComputeChurnAsync().HandleExceptions();
 		history.Clear();
 		CloseDocumentsExceptStart();
-		PostedComments = [];
-		CommentsLoaded = true;
+		Comments.NoneToLoad();
 		ReviewChanged?.Invoke();
 		// The overview is where a review starts; files open as the Explorer's list is walked,
 		// one tab at a time, instead of arriving as a wall of them.
@@ -294,8 +319,7 @@ public sealed class ReviewWorkspace(string repoPath)
 		LoadIssueUrlPrefixAsync(ct).HandleExceptions();
 		LoadSemanticsAsync(headSha, baseSha, ct).HandleExceptions();
 		LoadGeneratedSourcesAsync(ct).HandleExceptions();
-		ReattachDraftsAsync(ct).HandleExceptions();
-		CommentsChanged?.Invoke();
+		Comments.ReattachDraftsAsync(ct).HandleExceptions();
 	}
 
 	async Task<string> ResolveAsync(string reference, CancellationToken ct)
@@ -341,14 +365,14 @@ public sealed class ReviewWorkspace(string repoPath)
 		var files = await Git.DiffAsync(baseSha, headSha, ct);
 		ct.ThrowIfCancellationRequested();
 
-		ResetScope();
+		Scopes.Reset();
 		Reviewers = null;
 		CurrentPr = detail;
 		LocalRange = null;
 		BaseSha = baseSha;
 		HeadSha = headSha;
 		Files = files;
-		IndexAddedLines(files);
+		changed = ChangedLines.From(files);
 		Store.Open(Path.GetFileName(RepoPath), number, headSha, baseSha);
 		await ApplyReReviewCarryOverAsync(ct);
 		await PinReviewHeadsAsync(ct);
@@ -369,8 +393,8 @@ public sealed class ReviewWorkspace(string repoPath)
 			SetChecks(cachedChecks);
 		LoadSemanticsAsync(headSha, baseSha, ct).HandleExceptions();
 		LoadGeneratedSourcesAsync(ct).HandleExceptions();
-		ReattachDraftsAsync(ct).HandleExceptions();
-		LoadPostedCommentsAsync(number, ct).HandleExceptions();
+		Comments.ReattachDraftsAsync(ct).HandleExceptions();
+		Comments.LoadPostedAsync(number, ct).HandleExceptions();
 		// Nothing here can be answered from a snapshot, so offline it is left alone rather than
 		// asked and failed.
 		if (!Offline)
@@ -400,7 +424,7 @@ public sealed class ReviewWorkspace(string repoPath)
 		IssueUrlPrefix = await GitHub.GetIssueUrlPrefixAsync(ct);
 		// The description and the comment threads are rendered before this returns.
 		ReviewChanged?.Invoke();
-		CommentsChanged?.Invoke();
+		Comments.Rerender();
 	}
 
 	async Task LoadSemanticsAsync(string headSha, string baseSha, CancellationToken ct)
@@ -503,35 +527,6 @@ public sealed class ReviewWorkspace(string repoPath)
 		using var busy = Busy.Begin("Checking out the base");
 		BaseWorktreePath = await Worktrees.GetOrCreateAsync(baseSha, ct);
 		return BaseWorktreePath;
-	}
-
-	void IndexAddedLines(IReadOnlyList<FileDiff> files)
-	{
-		addedLinesByFile = [];
-		removedLinesByFile = [];
-		foreach (var file in files)
-		{
-			var added = new HashSet<int>();
-			var removed = new HashSet<int>();
-			foreach (var hunk in file.Hunks)
-			{
-				int newLine = hunk.NewStart;
-				int oldLine = hunk.OldStart;
-				foreach (var line in hunk.Lines)
-				{
-					if (line.Kind == PatchLineKind.Added)
-						added.Add(newLine);
-					if (line.Kind == PatchLineKind.Removed)
-						removed.Add(oldLine);
-					if (line.Kind != PatchLineKind.Removed)
-						newLine++;
-					if (line.Kind != PatchLineKind.Added)
-						oldLine++;
-				}
-			}
-			addedLinesByFile[file.Path] = added;
-			removedLinesByFile[file.OldPath] = removed;
-		}
 	}
 
 	/// <summary>Progress of the generated-source pass, for the preparation checklist.</summary>
@@ -694,7 +689,7 @@ public sealed class ReviewWorkspace(string repoPath)
 		LastPassHead = null;
 		LastPassBase = null;
 		TouchedSinceLastPass = null;
-		sinceLastPassTree = null;
+		Scopes.ForgetSinceLastPassTree();
 		if (HeadSha is null)
 			return;
 		// The baseline comes from the store rather than from the move this open discovered:
@@ -737,11 +732,6 @@ public sealed class ReviewWorkspace(string repoPath)
 		}
 	}
 
-	/// <summary>The key a local review's state file is named by: the range as it was opened,
-	/// falling back to the resolved commits when the review was not opened from refs.</summary>
-	string LocalRangeKey((string Base, string Head) range)
-		=> LocalRange is { } local ? $"{local.Base}..{local.Head}" : $"{range.Base[..9]}..{range.Head[..9]}";
-
 	/// <summary>The ref-name component this review's pinned commits live under. A pull
 	/// request is named by its number; a local range by its text, with everything a ref name
 	/// cannot carry replaced.</summary>
@@ -779,7 +769,7 @@ public sealed class ReviewWorkspace(string repoPath)
 		}
 		try
 		{
-			string patch = await ExternalTool.RunAsync("git", ["diff", LastPassHead, HeadSha], RepoPath);
+			string patch = await Git.DiffPatchAsync(LastPassHead, HeadSha);
 			OpenPatchDocument($"interdiff:{LastPassHead[..9]}", $"interdiff {LastPassHead[..9]}..{HeadSha[..9]}", patch, HeadSha);
 		}
 		catch (ToolFailedException ex)
@@ -806,11 +796,7 @@ public sealed class ReviewWorkspace(string repoPath)
 			return;
 		try
 		{
-			string output = await ExternalTool.RunAsync("git", ["log", "--since=1.year", "--name-only", "--format="], RepoPath);
-			var counts = new Dictionary<string, int>(StringComparer.Ordinal);
-			foreach (var line in output.Split('\n', StringSplitOptions.RemoveEmptyEntries))
-				counts[line] = counts.GetValueOrDefault(line) + 1;
-			ChurnByFile = counts;
+			ChurnByFile = await Git.GetChurnAsync("1.year");
 			ChurnChanged?.Invoke();
 		}
 		catch (ToolFailedException)
@@ -818,9 +804,6 @@ public sealed class ReviewWorkspace(string repoPath)
 			// Shallow or odd repos: triage simply shows no churn column.
 		}
 	}
-
-	public int AddedLineCount(string path)
-		=> addedLinesByFile.TryGetValue(path, out var lines) ? lines.Count : 0;
 
 	public string GetDepth(string path) => Store.GetDepth(path);
 
@@ -846,7 +829,7 @@ public sealed class ReviewWorkspace(string repoPath)
 	{
 		var t = ComputeTriage();
 		int changed = t.Rows.Sum(r => r.Added + r.Removed);
-		if (CommentsPane is Panes.CommentsPaneViewModel comments)
+		if (Comments.Pane is Panes.CommentsPaneViewModel comments)
 		{
 			comments.State.ReviewBody =
 				$"Bouncing this for now: {changed} changed lines across {Files.Count} files " +
@@ -893,7 +876,7 @@ public sealed class ReviewWorkspace(string repoPath)
 		// HeadSha say, and keeping the scope's instead would delete the worktrees the
 		// semantic workspaces are loaded from.
 		var keep = new List<string>();
-		if (ReviewRange is { } range)
+		if (Scopes.ReviewRange is { } range)
 			keep.AddRange([range.Base, range.Head]);
 		int removed = await Worktrees.PruneAsync(keep);
 		StatusMessage?.Invoke($"Pruned {removed} cached worktree(s).");
@@ -914,7 +897,7 @@ public sealed class ReviewWorkspace(string repoPath)
 			// the whole commit as text.
 			try
 			{
-				string patch = await ExternalTool.RunAsync("git", ["show", sha], RepoPath);
+				string patch = await Git.ShowCommitAsync(sha);
 				OpenPatchDocument($"show:{sha}", $"commit {sha[..9]}", patch, sha);
 			}
 			catch (ToolFailedException)
@@ -997,192 +980,13 @@ public sealed class ReviewWorkspace(string repoPath)
 		return null;
 	}
 
-	#region Per-commit reading
-
-	/// <summary>
-	/// The commit being read on its own, when the change is being worked through one
-	/// commit at a time instead of as a single diff. A well-made series is the author's
-	/// own decomposition of the change, and following it is usually easier than reading
-	/// every logic change at once.
-	/// </summary>
-	public CommitInfo? CommitScope { get; private set; }
-
-	/// <summary>The commits of the review, oldest first - the order they were written in.</summary>
-	public IReadOnlyList<CommitInfo> ScopeCommits { get; private set; } = [];
-
-	public int CommitScopeIndex { get; private set; }
-
-	(string Base, string Head)? fullRange;
-
-	/// <summary>The range the review is of. BaseSha and HeadSha stop describing it while a
-	/// single commit is in scope - they move to that commit - so anything that talks about
-	/// the review as a whole has to ask here instead.</summary>
-	public (string Base, string Head)? ReviewRange
-		=> fullRange ?? (BaseSha is { } b && HeadSha is { } h ? (b, h) : null);
-
-	public event Action? CommitScopeChanged;
-
-	public bool CanEnterCommitScope => HeadSha is not null && DirtyWorktreePath is null;
-
-	(string Base, string Head)? cachedCommitsRange;
-	IReadOnlyList<CommitInfo> cachedCommits = [];
-	Dictionary<string, (int Added, int Removed)>? cachedCommitStats;
-
-	/// <summary>
-	/// The commits of the review, newest first, fetched once per range. Everything that shows
-	/// the series - the overview, the commits pane, the per-commit reader - was asking git for
-	/// it separately, and asking again on every step through it, although stepping changes
-	/// which commit is being read and not which commits there are. On a large repository that
-	/// was most of a second per step.
-	/// </summary>
-	public async Task<IReadOnlyList<CommitInfo>> GetRangeCommitsAsync(CancellationToken ct = default)
-	{
-		if (ReviewRange is not { } range)
-			return [];
-		if (cachedCommitsRange != range)
-		{
-			cachedCommits = await Git.LogAsync($"{range.Base}..{range.Head}", null, follow: false, limit: 200, ct);
-			cachedCommitStats = null;
-			cachedCommitsRange = range;
-		}
-		return cachedCommits;
-	}
-
-	/// <summary>
-	/// The commits of a range. The review's own are the cache; a range inside it - the single
-	/// commit being read in per-commit mode - is a slice of that same list, which is why the
-	/// log carries each commit's parents. Anything else, such as the work since the last pass,
-	/// starts at a tree no commit names and has to be asked for.
-	/// </summary>
-	public async Task<IReadOnlyList<CommitInfo>> GetCommitsAsync(
-		(string Base, string Head) range, CancellationToken ct = default)
-	{
-		if (ReviewRange == range)
-			return await GetRangeCommitsAsync(ct);
-		var all = await GetRangeCommitsAsync(ct);
-		int head = IndexOf(all, range.Head);
-		if (head >= 0)
-		{
-			for (int i = head; i < all.Count; i++)
-			{
-				if (all[i].FirstParent is { } parent && SameCommit(parent, range.Base))
-					return [.. all.Skip(head).Take(i - head + 1)];
-			}
-		}
-		return await Git.LogAsync($"{range.Base}..{range.Head}", null, follow: false, limit: 200, ct);
-	}
-
-	static int IndexOf(IReadOnlyList<CommitInfo> commits, string sha)
-	{
-		for (int i = 0; i < commits.Count; i++)
-		{
-			if (SameCommit(commits[i].Sha, sha))
-				return i;
-		}
-		return -1;
-	}
-
-	/// <summary>Whether two revisions name the same commit, either of them abbreviated: what a
-	/// scope carries is whatever resolved it, and the log always answers in full.</summary>
-	static bool SameCommit(string a, string b)
-		=> a.Length >= b.Length
-			? a.StartsWith(b, StringComparison.Ordinal)
-			: b.StartsWith(a, StringComparison.Ordinal);
-
-	/// <summary>Lines added and removed per commit of the range, from one pass over it.</summary>
-	public async Task<IReadOnlyDictionary<string, (int Added, int Removed)>> GetRangeCommitStatsAsync(
-		CancellationToken ct = default)
-	{
-		await GetRangeCommitsAsync(ct);
-		if (cachedCommitStats is not null || ReviewRange is not { } range)
-			return cachedCommitStats ?? [];
-		var stats = new Dictionary<string, (int Added, int Removed)>(StringComparer.Ordinal);
-		string output = await ExternalTool.RunAsync(
-			"git", ["log", "--format=%H", "--shortstat", $"{range.Base}..{range.Head}"], RepoPath, ct);
-		string? sha = null;
-		foreach (var line in output.ReplaceLineEndings("\n").Split('\n'))
-		{
-			string trimmed = line.Trim();
-			if (trimmed.Length == 40 && trimmed.All(char.IsAsciiHexDigit))
-			{
-				sha = trimmed;
-			}
-			else if (sha is not null && trimmed.Contains("changed", StringComparison.Ordinal))
-			{
-				var insertions = System.Text.RegularExpressions.Regex.Match(trimmed, @"(\d+) insertion");
-				var deletions = System.Text.RegularExpressions.Regex.Match(trimmed, @"(\d+) deletion");
-				stats[sha] = (
-					insertions.Success ? int.Parse(insertions.Groups[1].Value) : 0,
-					deletions.Success ? int.Parse(deletions.Groups[1].Value) : 0);
-			}
-		}
-		cachedCommitStats = stats;
-		return stats;
-	}
-
-	/// <summary>Reads the review one commit at a time, starting at the oldest.</summary>
-	public async Task EnterCommitScopeAsync(int index = 0)
-	{
-		// The two scopes are alternatives, not layers: the since-last-pass scope diffs
-		// against a tree, which has no history for a commit list to come from.
-		if (InSinceLastPassScope)
-			await ExitScopeAsync();
-		if (ReviewRange is not { } range)
-			return;
-		(string baseSha, string headSha) = range;
-		if (ScopeCommits.Count == 0)
-		{
-			// Oldest first: the series is meant to be read in the order it was written.
-			ScopeCommits = [.. (await GetRangeCommitsAsync()).Reverse()];
-		}
-		if (ScopeCommits.Count == 0)
-		{
-			StatusMessage?.Invoke("This review has no commits to step through.");
-			return;
-		}
-		fullRange ??= (baseSha, headSha);
-		await ApplyCommitScopeAsync(Math.Clamp(index, 0, ScopeCommits.Count - 1));
-	}
-
-	public Task StepCommitScopeAsync(int direction)
-		=> CommitScope is null
-			? Task.CompletedTask
-			: ApplyCommitScopeAsync(Math.Clamp(CommitScopeIndex + direction, 0, ScopeCommits.Count - 1));
-
-	async Task ApplyCommitScopeAsync(int index)
-	{
-		var commit = ScopeCommits[index];
-		CommitScopeIndex = index;
-		CommitScope = commit;
-		// The parent came with the commit: asking git for it is a process per step, and the
-		// log that listed the series already said what each one was written on top of.
-		string parent = commit.FirstParent ?? await ResolveAsync($"{commit.Sha}^", CancellationToken.None);
-		BaseSha = parent;
-		HeadSha = commit.Sha;
-		Files = await Git.DiffAsync(parent, commit.Sha);
-		IndexAddedLines(Files);
-		Store.OpenCommitScope(Path.GetFileName(RepoPath), commit.Sha);
-		await ApplyScopeOverlaysAsync();
-		ResetChangeMap();
-		var open = CaptureOpenDocuments();
-		CloseDocumentsExceptStart();
-		CliLog.Write("action", $"commit scope {index + 1}/{ScopeCommits.Count} {commit.ShortSha}");
-		ReviewChanged?.Invoke();
-		CommitScopeChanged?.Invoke();
-		OpenOverview();
-		await ReopenDocumentsAsync(open);
-		// The semantic workspaces stay on the review's head: they describe where the code
-		// ends up, which is the right frame for navigating out of a commit being read.
-		ComputeChangeMapAsync().HandleExceptions();
-	}
-
 	/// <summary>
 	/// Points the semantic workspaces at the revision being displayed. They stay loaded
 	/// for the review's head - reloading one per commit would mean a checkout and a
 	/// solution load each step - so the files this commit touches are overlaid instead,
 	/// which is what makes positions, symbols and occurrences agree with the text shown.
 	/// </summary>
-	async Task ApplyScopeOverlaysAsync()
+	internal async Task ApplyScopeSemanticsAsync()
 	{
 		if (BaseSha is not { } origin || HeadSha is not { } displayed)
 			return;
@@ -1220,186 +1024,44 @@ public sealed class ReviewWorkspace(string repoPath)
 		SemanticsChanged?.Invoke();
 	}
 
-	/// <summary>
-	/// Forgets what was in scope. A review that has just been opened is the whole change by
-	/// definition, and everything a scope holds belongs to the review it was entered from: the
-	/// range it would return to, the commits it steps through, the tree it diffs against. Left
-	/// behind, they describe a review that is no longer on screen, and the way out of a scope
-	/// leads back to it.
-	/// </summary>
-	void ResetScope()
+	/// <summary>Back to answering about the review's own head, on the way out of a scope.</summary>
+	internal void ClearScopeSemantics()
 	{
-		cachedCommitsRange = null;
-		cachedCommits = [];
-		cachedCommitStats = null;
-		CommitScope = null;
-		ScopeCommits = [];
-		CommitScopeIndex = 0;
-		SinceLastPassBase = null;
-		ScopeLine = "";
-		sinceLastPassTree = null;
-		fullRange = null;
-	}
-
-	/// <summary>Back to reading the whole change at once, out of whichever scope was on.
-	/// One exit for both: the button has always said "Whole change", and that is what it
-	/// means whether a commit or the work since the last pass was being read.</summary>
-	public async Task ExitScopeAsync()
-	{
-		if (fullRange is not { } range)
-			return;
-		CommitScope = null;
-		SinceLastPassBase = null;
-		ScopeLine = "";
 		Semantics?.ClearTextOverlay();
 		BaseSemantics?.ClearTextOverlay();
-		BaseSha = range.Base;
-		HeadSha = range.Head;
-		fullRange = null;
-		Files = DirtyWorktreePath is { } dirty
-			? await Git.DiffWorkingTreeAsync(dirty, range.Base)
-			: await Git.DiffAsync(range.Base, range.Head);
-		IndexAddedLines(Files);
-		if (CurrentPr is { } pr)
-			Store.Open(Path.GetFileName(RepoPath), pr.Number, range.Head, range.Base);
-		else
-			// Keyed by the refs the review was opened with, exactly as OpenLocalRangeAsync
-			// keyed it: a key built from SHAs instead names a state file nobody wrote, and
-			// the review's own - its viewed flags, depth marks and drafts - is orphaned.
-			Store.OpenLocal(Path.GetFileName(RepoPath), LocalRangeKey(range), range.Head, range.Base);
-		ResetChangeMap();
-		var open = CaptureOpenDocuments();
-		CloseDocumentsExceptStart();
-		CliLog.Write("action", "scope off");
-		ReviewChanged?.Invoke();
-		CommitScopeChanged?.Invoke();
-		OpenOverview();
-		await ReopenDocumentsAsync(open);
-		ComputeChangeMapAsync().HandleExceptions();
 	}
 
-	#endregion
-
-	#region Reading only what changed since the last pass
-
 	/// <summary>
-	/// The tree the review is diffed against while only the work since the reader's last
-	/// pass is in scope: everything they already read, replayed onto the current base. A
-	/// tree and not a commit on purpose - after a rebase there is no commit whose diff to
-	/// the head is the author's own edits, because the rebase mixed the new base into every
-	/// one of them.
+	/// Points the review at the range a scope is showing. Only <see cref="Scopes"/> calls this:
+	/// which range is on screen is its decision, and the four things that describe one have to
+	/// move together or the diff, its line index and the state file stop agreeing.
 	/// </summary>
-	public string? SinceLastPassBase { get; private set; }
-
-	public bool InSinceLastPassScope => SinceLastPassBase is not null;
-
-	/// <summary>True while the review is narrowed to anything less than the whole change.</summary>
-	public bool InScope => CommitScope is not null || InSinceLastPassScope;
-
-	/// <summary>What the reader is being shown, for the panes that head the file list. Empty
-	/// when the whole change is in scope.</summary>
-	public string ScopeLine { get; private set; } = "";
-
-	public bool CanEnterSinceLastPassScope
-		=> LastPassHead is not null && DirtyWorktreePath is null && ReviewRange is not null;
-
-	/// <summary>The range whose commits are being read. The since-last-pass scope diffs
-	/// against a synthetic tree, which has no history, so its commits are the ones written
-	/// since the previous pass - however the rewrite arranged them.</summary>
-	public (string Base, string Head)? CommitRange
-		=> InSinceLastPassScope && LastPassHead is { } previous && HeadSha is { } head
-			? (previous, head)
-			: BaseSha is { } b && HeadSha is { } h ? (b, h) : null;
-
-	/// <summary>The replay is a pure function of (base, last pass head), so it is computed
-	/// once and kept for as long as the review is open.</summary>
-	string? sinceLastPassTree;
-
-	/// <summary>
-	/// Narrows the review to what changed since the reader's last pass: the same scoping the
-	/// per-commit reader gets, over the author's own edits rather than one commit.
-	///
-	/// Viewed flags, depth marks and drafts stay in the review's own state file, unlike the
-	/// per-commit scope which keys its own. That is deliberate: this scope's head IS the
-	/// review's head at the same revision, so a file read here has genuinely been read for
-	/// the review - the same bargain the re-review carry-over already makes for the files a
-	/// push did not touch.
-	/// </summary>
-	public async Task EnterSinceLastPassScopeAsync()
+	internal void SetScopeContent(string baseSha, string headSha, IReadOnlyList<FileDiff> files)
 	{
-		if (LastPassHead is not { } previous)
-		{
-			StatusMessage?.Invoke("No earlier pass is recorded for this review - Stampeded compares against the "
-				+ "head you last opened it at, and this is the first.");
-			return;
-		}
-		if (DirtyWorktreePath is not null)
-		{
-			StatusMessage?.Invoke("This review includes uncommitted work, which was never part of a pass; "
-				+ "there is nothing to compare it against.");
-			return;
-		}
-		if (InScope)
-			await ExitScopeAsync();
-		if (ReviewRange is not { } range)
-			return;
-		using var busy = Busy.Begin("Diffing against your last pass");
-		if (sinceLastPassTree is null)
-		{
-			try
-			{
-				sinceLastPassTree = await Git.ReplayTreeAsync(range.Base, previous, LastPassBase);
-			}
-			catch (ToolFailedException ex)
-			{
-				StatusMessage?.Invoke($"Diff since last pass failed: {ex.Message}");
-				return;
-			}
-		}
-		if (sinceLastPassTree is null)
-		{
-			StatusMessage?.Invoke($"The work you read at {previous[..9]} does not replay onto {range.Base[..9]} "
-				+ "without conflicts, so there is no clean diff of the author's edits alone. Showing the raw "
-				+ "interdiff instead - it includes the commits the rebase brought in.");
-			await OpenInterdiffAsync();
-			return;
-		}
-		var files = await Git.DiffAsync(sinceLastPassTree, range.Head);
-		if (files.Count == 0)
-		{
-			StatusMessage?.Invoke($"Nothing has changed since your last pass at {previous[..9]}"
-				+ (await Git.IsAncestorAsync(previous, range.Head) ? "." : " - the branch was only rebased."));
-			return;
-		}
-		bool rewritten = !await Git.IsAncestorAsync(previous, range.Head);
-		// Counted while Files is still the whole change: a reader who works through a scope
-		// where everything is ticked can otherwise approve a change they never read, and this
-		// is what the review still owes them.
-		int wholeChange = Files.Count;
-		int neverViewed = Files.Count(f => !Store.IsViewed(f.Path));
-		fullRange ??= (range.Base, range.Head);
-		SinceLastPassBase = sinceLastPassTree;
-		BaseSha = sinceLastPassTree;
-		HeadSha = range.Head;
+		BaseSha = baseSha;
+		HeadSha = headSha;
 		Files = files;
-		IndexAddedLines(Files);
-		ScopeLine = $"Since your pass at {previous[..9]}{(rewritten ? " (head rewritten)" : "")}: "
-			+ $"{files.Count} file(s). Whole change: {neverViewed} of {wholeChange} file(s) never viewed.";
-		await ApplyScopeOverlaysAsync();
+		changed = ChangedLines.From(files);
+	}
+
+	/// <summary>
+	/// Rebuilds the window around a scope that has just changed what is being read: the change
+	/// map goes (it described the last one), the open tabs are reopened on the new content, and
+	/// the reader lands back in front of the tab they were in. Entering a scope, stepping
+	/// through the series and leaving again all end here, because all three replace the diff
+	/// under the same tabs.
+	/// </summary>
+	internal async Task RebuildForScopeAsync(string logLine)
+	{
 		ResetChangeMap();
 		var open = CaptureOpenDocuments();
 		CloseDocumentsExceptStart();
-		CliLog.Write("action", $"since-last-pass scope {previous[..9]} -> {range.Head[..9]} "
-			+ $"({(rewritten ? "rewritten" : "fast-forward")}), base tree {sinceLastPassTree[..9]}, {files.Count} file(s)");
-		StatusMessage?.Invoke(ScopeLine);
+		CliLog.Write("action", logLine);
 		ReviewChanged?.Invoke();
-		CommitScopeChanged?.Invoke();
 		OpenOverview();
 		await ReopenDocumentsAsync(open);
 		ComputeChangeMapAsync().HandleExceptions();
 	}
-
-	#endregion
 
 	/// <summary>Stops background work and releases the Roslyn workspaces; called when the
 	/// app switches to another repository and this instance is abandoned.</summary>
@@ -1584,17 +1246,18 @@ public sealed class ReviewWorkspace(string repoPath)
 	/// </summary>
 	public async Task CloseReviewAsync()
 	{
-		if (Drafts.Count > 0 && MainWindowOrNull() is { } owner)
+		var drafts = Comments.Drafts;
+		if (drafts.Count > 0 && MainWindowOrNull() is { } owner)
 		{
-			int outdated = Drafts.Count(d => d.CurrentLine is null);
+			int outdated = drafts.Count(d => d.CurrentLine is null);
 			bool close = await new ConfirmWindow("Close review",
-				$"{Drafts.Count} draft comment(s) have not been submitted"
+				$"{drafts.Count} draft comment(s) have not been submitted"
 					+ (outdated > 0 ? $" ({outdated} outdated)" : "") + ".\n\n"
 					+ "Closing keeps them: they are stored with the review and will be here when you open it again.",
 				"Close review").ShowDialog<bool>(owner);
 			if (!close)
 			{
-				PostStatus($"Review left open; {Drafts.Count} draft(s) still unsubmitted.");
+				PostStatus($"Review left open; {drafts.Count} draft(s) still unsubmitted.");
 				return;
 			}
 		}
@@ -1642,18 +1305,16 @@ public sealed class ReviewWorkspace(string repoPath)
 		BaseSemantics = null;
 		CurrentPr = null;
 		LocalRange = null;
-		ResetScope();
+		Scopes.Reset();
 		DirtyWorktreePath = null;
 		UncommittedFileCount = 0;
 		BaseSha = null;
 		HeadSha = null;
 		Files = [];
-		addedLinesByFile = [];
-		removedLinesByFile = [];
+		changed = ChangedLines.Empty;
 		Coverage = null;
 		Checks = null;
-		PostedComments = [];
-		CommentsLoaded = false;
+		Comments.Clear();
 		LastPassHead = null;
 		TouchedSinceLastPass = null;
 		ResetChangeMap();
@@ -1664,7 +1325,6 @@ public sealed class ReviewWorkspace(string repoPath)
 		SemanticsChanged?.Invoke();
 		CoverageChanged?.Invoke();
 		ChecksLoaded?.Invoke();
-		CommentsChanged?.Invoke();
 		CliLog.Write("action", "review closed");
 	}
 
@@ -1850,12 +1510,12 @@ public sealed class ReviewWorkspace(string repoPath)
 		// was still unread. Either way there is nothing left below to advance into.
 		bool through = Files.Count > 0
 			&& (Files[^1].Path == file.Path || Files.All(f => Store.IsViewed(f.Path)));
-		if (through && CommitScope is not null)
+		if (through && Scopes.Commit is not null)
 		{
 			int unread = Files.Count(f => !Store.IsViewed(f.Path));
-			if (CommitScopeIndex + 1 < ScopeCommits.Count)
+			if (Scopes.CommitIndex + 1 < Scopes.Series.Count)
 			{
-				await StepCommitScopeAsync(1);
+				await Scopes.StepCommitAsync(1);
 				// Straight into the next commit's first file. Stepping on its own opens the
 				// overview, which is right when the step was asked for - the message is worth
 				// reading before the diff - but reading the series with 'v' is one continuous
@@ -1870,7 +1530,7 @@ public sealed class ReviewWorkspace(string repoPath)
 			// The series is read: the next thing is the verdict. Leaving the scope first is
 			// part of that - a review is submitted for the whole change, so a verdict page
 			// reached while still inside one commit is a page whose buttons cannot work.
-			await ExitScopeAsync();
+			await Scopes.ExitAsync();
 			OpenReviewDocument();
 			StatusMessage?.Invoke("Last commit read; back to the whole change, where the verdict is given.");
 			return;
@@ -2030,7 +1690,7 @@ public sealed class ReviewWorkspace(string repoPath)
 			.Where(x => x.Rel is not null)
 			.Select(x => new ReferenceItem(
 				x.Rel!, x.Hit.Line, x.Hit.LineText,
-				!oldSide && addedLinesByFile.TryGetValue(x.Rel!, out var lines) && lines.Contains(x.Hit.Line),
+				!oldSide && changed.IsAdded(x.Rel!, x.Hit.Line),
 				oldSide))
 			.ToList();
 		ReferencesAvailable?.Invoke(symbol.Name + (oldSide ? " (base)" : ""), items);
@@ -2245,7 +1905,8 @@ public sealed class ReviewWorkspace(string repoPath)
 				continue;
 			string project = file.Path.Split('/')[0];
 			var baseSem = BaseSemantics is { State: SemanticState.Ready or SemanticState.SyntaxOnly } b ? b : null;
-			var headMembers = addedLinesByFile.TryGetValue(file.Path, out var added) && added.Count > 0
+			var added = changed.Added(file.Path);
+			var headMembers = added.Count > 0
 				? await head.MapLinesToMembersAsync(file.Path, added, CancellationToken.None)
 				: [];
 			var baseDisplays = baseSem is not null && file.Kind != FileChangeKind.Added
@@ -2256,8 +1917,7 @@ public sealed class ReviewWorkspace(string repoPath)
 				string kind = baseDisplays.Contains(member.Display) ? "Modified" : "Added";
 				entries.Add(new ChangeMapEntry(file.Path, project, kind, member.Display, member.FirstLine, false, member.Kind));
 			}
-			if (baseSem is not null
-				&& removedLinesByFile.TryGetValue(file.OldPath, out var removed) && removed.Count > 0)
+			if (baseSem is not null && changed.Removed(file.OldPath) is { Count: > 0 } removed)
 			{
 				var baseMembers = await baseSem.MapLinesToMembersAsync(file.OldPath, removed, CancellationToken.None);
 				var headDisplays = file.Kind != FileChangeKind.Deleted
@@ -2308,309 +1968,6 @@ public sealed class ReviewWorkspace(string repoPath)
 
 	#endregion
 
-	#region Review comments
-
-	public sealed record DraftComment(StoredComment Stored, int? CurrentLine, bool IsApproximate = false);
-
-	/// <summary><paramref name="InReplyTo"/> names the posted comment this one answers, when
-	/// the reader is replying rather than starting a thread.</summary>
-	public sealed record CommentTarget(string RelPath, bool OldSide, int Line, string LineText, long? InReplyTo = null);
-
-	public sealed record PostedCommentView(string RelPath, int? Line, bool OldSide, string Body, string Author,
-		bool IsApproximate = false, string? ThreadId = null, bool IsResolved = false, string? Url = null,
-		long CommentId = 0);
-
-	public IReadOnlyList<DraftComment> Drafts { get; private set; } = [];
-	public IReadOnlyList<PostedCommentView> PostedComments { get; private set; } = [];
-
-	/// <summary>True once the posted-comments fetch for the current review finished
-	/// (successfully or not) - distinguishes "none" from "still loading".</summary>
-	public bool CommentsLoaded { get; private set; }
-	public CommentTarget? PendingCommentTarget { get; private set; }
-
-	public event Action? CommentsChanged;
-	public event Action? CommentTargetRequested;
-
-	/// <summary>Set by the dock factory so 'comment here' can surface the Comments pane.</summary>
-	public Dock.Model.Core.IDockable? CommentsPane { get; set; }
-
-	/// <summary>Review comments live on a pull request. A local-branch or uncommitted-work
-	/// review has nowhere to post them, so drafting one would only ever produce a draft that
-	/// can never leave the machine.</summary>
-	public bool CanComment => CurrentPr is not null;
-
-	public void BeginComment(CommentTarget target, bool activatePane = true)
-	{
-		if (!CanComment)
-		{
-			PostStatus("Comments need a pull request; this is a local review.");
-			return;
-		}
-		if (target.OldSide && InSinceLastPassScope)
-		{
-			// The left side here is the reader's last pass replayed onto the current base,
-			// not the pull request's base. GitHub reads a LEFT line against the latter, so
-			// this comment would be posted against a line nobody wrote.
-			PostStatus("The left side of this scope is your last pass, not the pull request's base, so a "
-				+ "comment there has no line to land on. Press 'Whole change' to comment on removed code.");
-			return;
-		}
-		PendingCommentTarget = target;
-		if (activatePane && CommentsPane is not null && Factory is not null)
-			Factory.SetActiveDockable(CommentsPane);
-		CommentTargetRequested?.Invoke();
-	}
-
-	public async Task CommitDraftAsync(string body)
-	{
-		if (PendingCommentTarget is not { } target || body.Length == 0)
-			return;
-		string rev = target.OldSide ? BaseSha! : HeadSha!;
-		var lines = SplitBlobLines(await Git.ShowFileAsync(rev, target.RelPath));
-		if (target.Line < 1 || target.Line > lines.Length)
-			return;
-		var anchor = CommentAnchor.Create(target.RelPath, target.OldSide, target.Line, lines);
-		Store.AddDraft(new StoredComment(Guid.NewGuid(), anchor, body, DateTimeOffset.Now, target.InReplyTo));
-		PendingCommentTarget = null;
-		RebuildDrafts();
-	}
-
-	public void UpdateDraft(Guid id, string body)
-	{
-		if (body.Trim().Length == 0)
-			return;
-		Store.UpdateDraft(id, body);
-		RebuildDrafts();
-	}
-
-	public void RemoveDraft(Guid id)
-	{
-		Store.RemoveDraft(id);
-		RebuildDrafts();
-	}
-
-	void RebuildDrafts()
-	{
-		Drafts = Store.Drafts.Select(d => new DraftComment(d, d.Anchor.Line)).ToList();
-		CommentsChanged?.Invoke();
-	}
-
-	static string[] SplitBlobLines(string text)
-	{
-		if (text.Length == 0)
-			return [];
-		text = text.ReplaceLineEndings("\n");
-		if (text.EndsWith('\n'))
-			text = text[..^1];
-		return text.Split('\n');
-	}
-
-	/// <summary>Re-attaches stored drafts against the current base/head blobs (drafts kept
-	/// across force-pushes find their new lines by content; unresolvable ones show as
-	/// outdated with CurrentLine null).</summary>
-	async Task ReattachDraftsAsync(CancellationToken ct)
-	{
-		var reattached = new List<DraftComment>();
-		foreach (var stored in Store.Drafts)
-		{
-			int? line = null;
-			bool approximate = false;
-			try
-			{
-				string rev = stored.Anchor.OldSide ? BaseSha! : HeadSha!;
-				var lines = SplitBlobLines(await Git.ShowFileAsync(rev, stored.Anchor.Path, ct));
-				line = stored.Anchor.Reattach(lines);
-				if (line is null)
-				{
-					line = stored.Anchor.Approximate(lines);
-					approximate = true;
-				}
-			}
-			catch (ToolFailedException)
-			{
-				// File gone at that revision: outdated with no location at all.
-			}
-			reattached.Add(new DraftComment(stored, line, approximate));
-		}
-		Drafts = reattached;
-		CommentsChanged?.Invoke();
-	}
-
-	/// <summary>
-	/// Re-reads the posted comments from GitHub. They are fetched when the review opens and
-	/// after submitting, so anything said meanwhile - a reply, a resolved thread, a review
-	/// from someone else - is invisible until asked for.
-	/// </summary>
-	public async Task RefreshPostedCommentsAsync()
-	{
-		if (CurrentPr is not { } pr)
-		{
-			PostStatus("No pull request: a local review has no posted comments to fetch.");
-			return;
-		}
-		using var busy = Busy.Begin("Refreshing comments");
-		await LoadPostedCommentsAsync(pr.Number, CancellationToken.None);
-	}
-
-	async Task LoadPostedCommentsAsync(int number, CancellationToken ct)
-	{
-		CommentsLoaded = false;
-		try
-		{
-			// Offline the snapshot is the answer; asking would only fail slowly. A review
-			// opened online keeps what it read, for the next time it cannot be.
-			var raw = Offline
-				? snapshot?.Comments ?? []
-				: await GitHub.GetReviewCommentsAsync(number, ct);
-			if (!Offline && snapshot is { } current)
-				KeepSnapshot(current with { Comments = raw });
-			Dictionary<long, (string ThreadId, bool Resolved)> resolutionByComment = [];
-			try
-			{
-				foreach (var thread in await GitHub.GetThreadResolutionsAsync(number, ct))
-				{
-					foreach (long id in thread.CommentIds)
-						resolutionByComment[id] = (thread.ThreadId, thread.IsResolved);
-				}
-			}
-			catch (ToolFailedException)
-			{
-				// Resolution state is an enrichment; comments still render without it.
-			}
-			var views = new List<PostedCommentView>();
-			foreach (var comment in raw)
-			{
-				bool oldSide = comment.Side == "LEFT";
-				bool approximate = false;
-				int? line = comment.Line ?? await ReanchorPostedAsync(comment, oldSide, ct);
-				if (line is null)
-				{
-					line = await ApproximatePostedAsync(comment, oldSide, ct);
-					approximate = line is not null;
-				}
-				var resolution = resolutionByComment.GetValueOrDefault(comment.Id);
-				views.Add(new PostedCommentView(
-					comment.Path, line, oldSide, comment.Body, comment.User?.Login ?? "?",
-					approximate, resolution.ThreadId, resolution.Resolved, comment.HtmlUrl, comment.Id));
-			}
-			PostedComments = views;
-		}
-		catch (ToolFailedException)
-		{
-			PostedComments = [];
-		}
-		CommentsLoaded = true;
-		CommentsChanged?.Invoke();
-	}
-
-	/// <summary>GitHub nulls `line` once the diff moved on; the comment's diff_hunk
-	/// excerpt ends at the commented line, so re-anchor it by content (line text plus up
-	/// to two same-side context lines) against the current blob, like drafts.</summary>
-	async Task<int?> ReanchorPostedAsync(PostedComment comment, bool oldSide, CancellationToken ct)
-	{
-		if (comment.DiffHunk is null || comment.OriginalLine is null)
-			return null;
-		string? rev = oldSide ? BaseSha : HeadSha;
-		if (rev is null)
-			return null;
-		var sideLines = new List<string>();
-		foreach (var hunkLine in comment.DiffHunk.ReplaceLineEndings("\n").Split('\n'))
-		{
-			if (hunkLine.StartsWith("@@", StringComparison.Ordinal))
-				continue;
-			char marker = hunkLine.Length > 0 ? hunkLine[0] : ' ';
-			if (marker == ' ' || (oldSide ? marker == '-' : marker == '+'))
-				sideLines.Add(hunkLine.Length > 0 ? hunkLine[1..] : "");
-		}
-		if (sideLines.Count == 0)
-			return null;
-		string lineText = sideLines[^1];
-		var before = sideLines.Count > 1
-			? sideLines.GetRange(Math.Max(0, sideLines.Count - 3), Math.Min(2, sideLines.Count - 1))
-			: [];
-		var anchor = new CommentAnchor(comment.Path, oldSide, comment.OriginalLine.Value, lineText, before, []);
-		try
-		{
-			var blobLines = SplitBlobLines(await Git.ShowFileAsync(rev, comment.Path, ct));
-			return anchor.Reattach(blobLines);
-		}
-		catch (ToolFailedException)
-		{
-			return null;
-		}
-	}
-
-	/// <summary>Approximate location for a posted comment whose exact spot is gone: the
-	/// synthetic hunk-tail anchor's context-based best match in the current blob.</summary>
-	async Task<int?> ApproximatePostedAsync(PostedComment comment, bool oldSide, CancellationToken ct)
-	{
-		if (comment.DiffHunk is null || comment.OriginalLine is null)
-			return null;
-		string? rev = oldSide ? BaseSha : HeadSha;
-		if (rev is null)
-			return null;
-		var sideLines = new List<string>();
-		foreach (var hunkLine in comment.DiffHunk.ReplaceLineEndings("\n").Split('\n'))
-		{
-			if (hunkLine.StartsWith("@@", StringComparison.Ordinal))
-				continue;
-			char marker = hunkLine.Length > 0 ? hunkLine[0] : ' ';
-			if (marker == ' ' || (oldSide ? marker == '-' : marker == '+'))
-				sideLines.Add(hunkLine.Length > 0 ? hunkLine[1..] : "");
-		}
-		if (sideLines.Count == 0)
-			return null;
-		var before = sideLines.Count > 1
-			? sideLines.GetRange(Math.Max(0, sideLines.Count - 3), Math.Min(2, sideLines.Count - 1))
-			: [];
-		var anchor = new CommentAnchor(comment.Path, oldSide, comment.OriginalLine.Value, sideLines[^1], before, []);
-		try
-		{
-			var blobLines = SplitBlobLines(await Git.ShowFileAsync(rev, comment.Path, ct));
-			return anchor.Approximate(blobLines);
-		}
-		catch (ToolFailedException)
-		{
-			return null;
-		}
-	}
-
-	/// <summary>Sets a review thread's resolution on GitHub, then refreshes the comments.</summary>
-	public async Task SetThreadResolvedAsync(string threadId, bool resolved)
-	{
-		if (CurrentPr is not { } pr)
-			return;
-		try
-		{
-			await GitHub.SetThreadResolvedAsync(threadId, resolved);
-			await LoadPostedCommentsAsync(pr.Number, CancellationToken.None);
-		}
-		catch (ToolFailedException ex)
-		{
-			StatusMessage?.Invoke($"Thread resolution failed: {ex.Message}");
-		}
-	}
-
-	/// <summary>Lines each side of a file that GitHub accepts review comments on (lines
-	/// that appear in the diff hunks).</summary>
-	(HashSet<int> NewLines, HashSet<int> OldLines) CommentableLines(FileDiff file)
-	{
-		var newLines = new HashSet<int>();
-		var oldLines = new HashSet<int>();
-		foreach (var hunk in file.Hunks)
-		{
-			int newLine = hunk.NewStart, oldLine = hunk.OldStart;
-			foreach (var line in hunk.Lines)
-			{
-				if (line.Kind != PatchLineKind.Removed)
-					newLines.Add(newLine++);
-				if (line.Kind != PatchLineKind.Added)
-					oldLines.Add(oldLine++);
-			}
-		}
-		return (newLines, oldLines);
-	}
-
 	string? defaultBranch;
 
 	/// <summary>
@@ -2638,71 +1995,6 @@ public sealed class ReviewWorkspace(string repoPath)
 
 	/// <summary>The ref to review and rebase against: the default branch as origin has it.</summary>
 	public async Task<string> GetDefaultBaseAsync() => "origin/" + await GetDefaultBranchAsync();
-
-	/// <summary>Whether the open review is of the user's own pull request. GitHub rejects
-	/// APPROVE and REQUEST_CHANGES on those, so only a plain comment review can be
-	/// submitted. False when nothing is open, or when gh cannot say who it is - the
-	/// submission itself is the real gate, this only keeps the UI from offering what would
-	/// certainly fail.</summary>
-	public async Task<bool> IsOwnPullRequestAsync()
-	{
-		if (CurrentPr?.Author?.Login is not { Length: > 0 } author)
-			return false;
-		try
-		{
-			return string.Equals(author, await GitHub.GetViewerLoginAsync(), StringComparison.OrdinalIgnoreCase);
-		}
-		catch (ToolFailedException)
-		{
-			return false;
-		}
-	}
-
-	/// <summary>Submits drafts that sit on commentable diff lines as a review; drafts that
-	/// don't (outdated or outside the diff) stay local. Returns (submitted, skipped).</summary>
-	/// <summary>
-	/// Submits a review after the two checks that can refuse one, and reports what happened in
-	/// a line meant for a reader. Both places that submit - the Comments pane and the review
-	/// view - go through this, so a verdict cannot be refused in one and slip through the other.
-	/// </summary>
-	public async Task<string> SubmitReviewCheckedAsync(string eventType, string body)
-	{
-		// Drafts are matched against the files in scope, so submitting from one would keep every
-		// draft written elsewhere local and report it as outdated - which is not what happened
-		// to it. This used to be answered inside the submit, with a status line and a return
-		// value that said a review had been submitted: the verdict did nothing and said it had
-		// worked.
-		if (Offline)
-		{
-			return $"Offline: this review was opened from a snapshot taken {OfflineSince:g}, and a "
-				+ $"verdict has to go to GitHub. Reload (F5) when there is a connection; your "
-				+ $"{Drafts.Count} draft(s) are kept.";
-		}
-		if (InScope)
-		{
-			return "A review covers the whole change, and this is a part of it: press 'Whole change' "
-				+ $"first, then approve or decline. Your {Drafts.Count} draft(s) are kept.";
-		}
-		if (eventType == "APPROVE" && ApprovalGate?.Invoke() is { Ok: false } gate)
-			return $"Approval blocked by the review guide - incomplete: {gate.Detail}  (override in the Guide pane)";
-		// The buttons are disabled for these on your own pull request, but the check that
-		// disables them is asynchronous, so a submission can still get here first.
-		if (eventType is "APPROVE" or "REQUEST_CHANGES" && await IsOwnPullRequestAsync())
-		{
-			return $"GitHub does not accept {(eventType == "APPROVE" ? "an approval" : "a change request")} "
-				+ "on your own pull request. Submit it as a comment instead; the drafts are kept.";
-		}
-		try
-		{
-			var (submitted, skipped) = await SubmitReviewAsync(eventType, body);
-			return $"Review submitted ({eventType}): {submitted} comment(s) posted"
-				+ (skipped > 0 ? $", {skipped} kept local (outdated/off-diff)" : "") + ".";
-		}
-		catch (ToolFailedException ex)
-		{
-			return ex.Message;
-		}
-	}
 
 	/// <summary>
 	/// Merges the current pull request after asking, and says what happened either way.
@@ -2751,65 +2043,4 @@ public sealed class ReviewWorkspace(string repoPath)
 		}
 	}
 
-	public async Task<(int Submitted, int Skipped)> SubmitReviewAsync(string eventType, string body)
-	{
-		if (CurrentPr is not { } pr)
-			return (0, 0);
-		var commentable = Files.ToDictionary(f => f, CommentableLines);
-		var payload = new List<ReviewCommentDto>();
-		var replies = new List<(long InReplyTo, string Body, Guid Id)>();
-		var submitted = new List<Guid>();
-		int skipped = 0;
-		foreach (var draft in Drafts)
-		{
-			// A reply belongs to a thread, not to a line: it goes as its own request and needs
-			// nothing from the diff, so it survives the line it hung on moving or disappearing.
-			if (draft.Stored.InReplyTo is { } inReplyTo)
-			{
-				replies.Add((inReplyTo, draft.Stored.Body, draft.Stored.Id));
-				continue;
-			}
-			var anchor = draft.Stored.Anchor;
-			var file = anchor.OldSide
-				? Files.FirstOrDefault(f => f.OldPath == anchor.Path)
-				: Files.FirstOrDefault(f => f.Path == anchor.Path);
-			// A generated file has no counterpart in the pull request, so GitHub would reject
-			// the whole review over it. Such a draft stays local, like an outdated one.
-			bool ok = draft.CurrentLine is { } line && file is { IsGenerated: false }
-				&& (anchor.OldSide
-					? commentable[file].OldLines.Contains(line)
-					: commentable[file].NewLines.Contains(line));
-			if (!ok)
-			{
-				skipped++;
-				continue;
-			}
-			payload.Add(new ReviewCommentDto(
-				anchor.OldSide ? file!.OldPath : file!.Path,
-				draft.CurrentLine!.Value,
-				anchor.OldSide ? "LEFT" : "RIGHT",
-				draft.Stored.Body));
-			submitted.Add(draft.Stored.Id);
-		}
-		// An empty review is refused by GitHub, and a pass whose whole content is replies has
-		// nothing to submit: the replies themselves are the review, and the first of them
-		// carries the mark the review body would have.
-		bool reviewSubmitted = payload.Count > 0 || body.Trim().Length > 0 || replies.Count == 0;
-		if (reviewSubmitted)
-			await GitHub.SubmitReviewAsync(pr.Number, new ReviewSubmission(body, eventType, payload));
-		for (int i = 0; i < replies.Count; i++)
-		{
-			var (inReplyTo, replyBody, id) = replies[i];
-			await GitHub.ReplyToCommentAsync(pr.Number, inReplyTo,
-				!reviewSubmitted && i == 0 ? GitHubService.AttributedReply(replyBody) : replyBody);
-			submitted.Add(id);
-		}
-		foreach (var id in submitted)
-			Store.RemoveDraft(id);
-		RebuildDrafts();
-		await LoadPostedCommentsAsync(pr.Number, CancellationToken.None);
-		return (submitted.Count, skipped);
-	}
-
-	#endregion
 }

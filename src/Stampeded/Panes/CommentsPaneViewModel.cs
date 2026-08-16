@@ -65,13 +65,13 @@ public class CommentsPaneViewModel : Tool
 	public CommentsPaneViewModel(ReviewWorkspace workspace)
 	{
 		this.workspace = workspace;
-		workspace.CommentsChanged += Rebuild;
-		workspace.CommentTargetRequested += OnTargetRequested;
+		workspace.Comments.Changed += Rebuild;
+		workspace.Comments.TargetRequested += OnTargetRequested;
 	}
 
 	void OnTargetRequested()
 	{
-		var target = workspace.PendingCommentTarget;
+		var target = workspace.Comments.PendingTarget;
 		State.Target = target is null
 			? ""
 			: $"Comment on {target.RelPath}:{target.Line}{(target.OldSide ? " (base)" : "")}  |  {target.LineText.Trim()}";
@@ -80,28 +80,28 @@ public class CommentsPaneViewModel : Tool
 	void Rebuild()
 	{
 		Items.Clear();
-		foreach (var draft in workspace.Drafts)
+		foreach (var draft in workspace.Comments.Drafts)
 		{
 			Items.Add(new CommentRow(
 				draft.Stored.Anchor.Path, draft.CurrentLine, draft.Stored.Anchor.OldSide,
 				draft.Stored.Body, draft.Stored.Id, "", null, draft.Stored.InReplyTo is not null));
 		}
-		foreach (var posted in workspace.PostedComments)
+		foreach (var posted in workspace.Comments.Posted)
 		{
 			string author = posted.IsResolved ? $"[resolved] {posted.Author}" : posted.Author;
 			Items.Add(new CommentRow(posted.RelPath, posted.Line, posted.OldSide, posted.Body, null, author, posted.Url));
 		}
-		State.CanComment = workspace.CanComment;
+		State.CanComment = workspace.Comments.CanComment;
 		// A reply posts into its thread by id, so a lost line does not put it at risk and it
 		// is not what "outdated" warns about.
-		int outdated = workspace.Drafts.Count(d => d.CurrentLine is null && d.Stored.InReplyTo is null);
+		int outdated = workspace.Comments.Drafts.Count(d => d.CurrentLine is null && d.Stored.InReplyTo is null);
 		State.Status = State.CanComment
-			? $"{workspace.Drafts.Count} draft(s){(outdated > 0 ? $" ({outdated} outdated)" : "")}, {workspace.PostedComments.Count} posted."
+			? $"{workspace.Comments.Drafts.Count} draft(s){(outdated > 0 ? $" ({outdated} outdated)" : "")}, {workspace.Comments.Posted.Count} posted."
 			: "Local review: comments need a pull request to post to.";
 		RefreshVerdictAvailabilityAsync().HandleExceptions();
 
 		async Task RefreshVerdictAvailabilityAsync()
-			=> State.CanGiveVerdict = workspace.CanComment && !await workspace.IsOwnPullRequestAsync();
+			=> State.CanGiveVerdict = workspace.Comments.CanComment && !await workspace.Comments.IsOwnPullRequestAsync();
 	}
 
 	public void AddDraft()
@@ -113,7 +113,7 @@ public class CommentsPaneViewModel : Tool
 
 		async Task CommitAsync(string text)
 		{
-			await workspace.CommitDraftAsync(text);
+			await workspace.Comments.CommitDraftAsync(text);
 			State.DraftBody = "";
 			State.Target = "";
 		}
@@ -128,7 +128,7 @@ public class CommentsPaneViewModel : Tool
 			State.Status = "Refreshing posted comments...";
 			try
 			{
-				await workspace.RefreshPostedCommentsAsync();
+				await workspace.Comments.RefreshPostedAsync();
 			}
 			catch (ToolFailedException ex)
 			{
@@ -141,7 +141,7 @@ public class CommentsPaneViewModel : Tool
 	public void RemoveSelected(CommentRow row)
 	{
 		if (row.DraftId is { } id)
-			workspace.RemoveDraft(id);
+			workspace.Comments.RemoveDraft(id);
 	}
 
 	public void OpenOnGitHub(CommentRow row)
@@ -165,7 +165,7 @@ public class CommentsPaneViewModel : Tool
 		async Task SubmitAsync()
 		{
 			string body = State.ReviewBody.Trim();
-			State.Status = await workspace.SubmitReviewCheckedAsync(eventType, body);
+			State.Status = await workspace.Comments.SubmitCheckedAsync(eventType, body);
 			if (State.Status.StartsWith("Review submitted", StringComparison.Ordinal))
 				State.ReviewBody = "";
 		}

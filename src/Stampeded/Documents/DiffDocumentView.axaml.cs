@@ -140,7 +140,7 @@ public partial class DiffDocumentView : UserControl
 		{
 			ws.SemanticsChanged += OnSemanticsChanged;
 			ws.CoverageChanged += OnCoverageChanged;
-			ws.CommentsChanged += OnCommentsChangedForThreads;
+			ws.Comments.Changed += OnCommentsChangedForThreads;
 		}
 		Themes.ThemeManager.Current.ThemeChanged += OnThemeChangedForSemantics;
 		QueueSemanticsRefresh();
@@ -156,7 +156,7 @@ public partial class DiffDocumentView : UserControl
 		{
 			ws.SemanticsChanged -= OnSemanticsChanged;
 			ws.CoverageChanged -= OnCoverageChanged;
-			ws.CommentsChanged -= OnCommentsChangedForThreads;
+			ws.Comments.Changed -= OnCommentsChangedForThreads;
 		}
 		Themes.ThemeManager.Current.ThemeChanged -= OnThemeChangedForSemantics;
 		base.OnDetachedFromVisualTree(e);
@@ -171,7 +171,7 @@ public partial class DiffDocumentView : UserControl
 
 	static readonly global::Markdown.Avalonia.Markdown ThreadMarkdownEngine = MarkdownLinks.NewEngine();
 
-	ReviewWorkspace.CommentTarget? inlineCommentTarget;
+	CommentTarget? inlineCommentTarget;
 
 	/// <summary>The draft the editor is rewriting, when it was opened on one.</summary>
 	Guid? editingDraftId;
@@ -205,7 +205,7 @@ public partial class DiffDocumentView : UserControl
 	{
 		if (viewModel is { Historical: true } || CaretBlobPosition() is not { } pos)
 			return;
-		if (App.Workspace is { CanComment: false } local)
+		if (App.Workspace is { Comments.CanComment: false } local)
 		{
 			// Say it here rather than let the popup take text that BeginComment would drop.
 			local.PostStatus("Comments need a pull request; this is a local review.");
@@ -217,7 +217,7 @@ public partial class DiffDocumentView : UserControl
 		CommentBox.Text = "";
 		var docLine = Editor.Document.GetLineByNumber(Editor.TextArea.Caret.Line);
 		string text = Editor.Document.GetText(docLine.Offset, docLine.Length);
-		inlineCommentTarget = new ReviewWorkspace.CommentTarget(
+		inlineCommentTarget = new CommentTarget(
 			pos.RelPath, pos.OldSide, pos.Line, text, inReplyTo == 0 ? null : inReplyTo);
 		CommentTargetText.Text = (inReplyTo == 0 ? "" : "Reply  |  ")
 			+ $"{pos.RelPath}:{pos.Line}{(pos.OldSide ? " (base)" : "")}  |  {text.Trim()}";
@@ -362,23 +362,23 @@ public partial class DiffDocumentView : UserControl
 				threads[key] = thread = thread with { Approximate = true, Comments = thread.Comments };
 			thread.Comments.Add(new ThreadComment(isDraft, author, body, draftId, threadId, resolved, url, commentId));
 		}
-		foreach (var posted in ws.PostedComments)
+		foreach (var posted in ws.Comments.Posted)
 			Add(posted.RelPath, posted.OldSide, posted.Line, false, posted.Author, posted.Body, null,
 				posted.IsApproximate, posted.ThreadId, posted.IsResolved, posted.Url, posted.CommentId);
-		foreach (var draft in ws.Drafts)
+		foreach (var draft in ws.Comments.Drafts)
 			Add(draft.Stored.Anchor.Path, draft.Stored.Anchor.OldSide, draft.CurrentLine, true, "you (draft)", draft.Stored.Body, draft.Stored.Id,
 				draft.IsApproximate);
 
 		// Comments whose location no longer exists are pinned at the top of the file,
 		// marked outdated and quoting the code they originally hung on.
 		int outdatedIndex = 0;
-		foreach (var posted in ws.PostedComments.Where(p => p.Line is null && !p.OldSide
+		foreach (var posted in ws.Comments.Posted.Where(p => p.Line is null && !p.OldSide
 			&& p.RelPath == viewModel.File.Path))
 		{
 			threads[$"od{outdatedIndex++}"] = new ThreadData(false, 0,
 				[new ThreadComment(false, posted.Author, posted.Body, null)]);
 		}
-		foreach (var draft in ws.Drafts.Where(d => d.CurrentLine is null
+		foreach (var draft in ws.Comments.Drafts.Where(d => d.CurrentLine is null
 			&& d.Stored.Anchor.Path == (d.Stored.Anchor.OldSide ? viewModel.File.OldPath : viewModel.File.Path)))
 		{
 			threads[$"od{outdatedIndex++}"] = new ThreadData(false, 0,
@@ -578,7 +578,7 @@ public partial class DiffDocumentView : UserControl
 					Padding = new Avalonia.Thickness(5, 1),
 					[Avalonia.Controls.DockPanel.DockProperty] = Avalonia.Controls.Dock.Right,
 				};
-				delete.Click += (_, _) => App.Workspace?.RemoveDraft(draftId);
+				delete.Click += (_, _) => App.Workspace?.Comments.RemoveDraft(draftId);
 				header.Children.Add(delete);
 				var edit = new Avalonia.Controls.Button {
 					Content = "Edit",
@@ -645,7 +645,7 @@ public partial class DiffDocumentView : UserControl
 				FontSize = 10,
 				Padding = new Avalonia.Thickness(6, 1),
 			};
-			toggle.Click += (_, _) => App.Workspace?.SetThreadResolvedAsync(gitThreadId, !resolvedThread).HandleExceptions();
+			toggle.Click += (_, _) => App.Workspace?.Comments.SetThreadResolvedAsync(gitThreadId, !resolvedThread).HandleExceptions();
 			buttons.Children.Add(toggle);
 		}
 		if (resolvedThread)
@@ -733,13 +733,13 @@ public partial class DiffDocumentView : UserControl
 			return;
 		if (editingDraftId is { } editing)
 		{
-			ws.UpdateDraft(editing, body);
+			ws.Comments.UpdateDraft(editing, body);
 			editingDraftId = null;
 		}
 		else
 		{
-			ws.BeginComment(target, activatePane: false);
-			await ws.CommitDraftAsync(body);
+			ws.Comments.BeginComment(target, activatePane: false);
+			await ws.Comments.CommitDraftAsync(body);
 		}
 		CommentBox.Text = "";
 		CommentPopup.IsOpen = false;
@@ -814,10 +814,10 @@ public partial class DiffDocumentView : UserControl
 	void OnCtxNextUncovered(object? s, RoutedEventArgs e) => JumpToNextUncovered();
 
 	void OnCtxNextCommit(object? s, RoutedEventArgs e)
-		=> App.Workspace?.StepCommitScopeAsync(1).HandleExceptions();
+		=> App.Workspace?.Scopes.StepCommitAsync(1).HandleExceptions();
 
 	void OnCtxPrevCommit(object? s, RoutedEventArgs e)
-		=> App.Workspace?.StepCommitScopeAsync(-1).HandleExceptions();
+		=> App.Workspace?.Scopes.StepCommitAsync(-1).HandleExceptions();
 
 	void OnCtxHistoryOfSelection(object? s, RoutedEventArgs e) => HistoryOfSelectionCommand();
 	void OnCtxCopy(object? s, RoutedEventArgs e) => Editor.Copy();
@@ -1130,11 +1130,11 @@ public partial class DiffDocumentView : UserControl
 				e.Handled = true;
 				break;
 			case (Key.OemCloseBrackets, KeyModifiers.Control):
-				App.Workspace?.StepCommitScopeAsync(1).HandleExceptions();
+				App.Workspace?.Scopes.StepCommitAsync(1).HandleExceptions();
 				e.Handled = true;
 				break;
 			case (Key.OemOpenBrackets, KeyModifiers.Control):
-				App.Workspace?.StepCommitScopeAsync(-1).HandleExceptions();
+				App.Workspace?.Scopes.StepCommitAsync(-1).HandleExceptions();
 				e.Handled = true;
 				break;
 			case (Key.OemCloseBrackets, KeyModifiers.None):

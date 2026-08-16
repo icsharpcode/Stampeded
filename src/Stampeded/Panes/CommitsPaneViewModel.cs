@@ -69,7 +69,7 @@ public class CommitsPaneViewModel : Tool
 	{
 		Commits.Clear();
 		CommitFiles.Clear();
-		if (workspace.CommitRange is not { } range)
+		if (workspace.Scopes.CommitRange is not { } range)
 			return;
 		State.Status = "Loading commits...";
 		try
@@ -86,7 +86,7 @@ public class CommitsPaneViewModel : Tool
 						IsUncommitted: true));
 				}
 			}
-			var commits = await workspace.GetCommitsAsync(range);
+			var commits = await workspace.Scopes.GetCommitsAsync(range);
 			foreach (var commit in commits)
 				Commits.Add(new CommitRow(commit));
 			State.Status = $"{commits.Count} commit(s) in the review range"

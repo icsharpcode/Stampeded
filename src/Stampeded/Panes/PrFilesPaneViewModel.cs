@@ -172,7 +172,7 @@ public class PrFilesPaneViewModel : Tool
 		// Every file in the since-last-pass scope changed since the last pass - that is what
 		// the list is - so marking them all says nothing, and ordering by it orders nothing.
 		// The mark belongs to the whole change, where it picks out the few that moved.
-		bool markTouched = !workspace.InSinceLastPassScope;
+		bool markTouched = !workspace.Scopes.InSinceLastPass;
 		var ordered = workspace.Files
 			// Generator output goes last whatever else is true of it: it is what the change
 			// caused, and reaching the cause should never mean scrolling past the effect.

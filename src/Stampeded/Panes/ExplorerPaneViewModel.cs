@@ -67,7 +67,7 @@ public partial class ExplorerPaneViewModel : Tool
 		this.workspace = workspace;
 		Files = new PrFilesPaneViewModel(workspace);
 		Browser = new FileBrowserPaneViewModel(workspace);
-		workspace.CommitScopeChanged += () => Dispatcher.UIThread.Post(UpdateCommitScope);
+		workspace.Scopes.Changed += () => Dispatcher.UIThread.Post(UpdateCommitScope);
 		workspace.ReviewChanged += () => Dispatcher.UIThread.Post(UpdateCommitScope);
 		UpdateCommitScope();
 	}
@@ -79,27 +79,27 @@ public partial class ExplorerPaneViewModel : Tool
 			? "CHANGED FILES"
 			: $"CHANGED FILES  ({workspace.Files.Count})";
 		HasPullRequest = workspace.CurrentPr is not null;
-		InCommitScope = workspace.CommitScope is not null;
-		InScope = workspace.InScope;
-		CanEnterSinceLastPass = workspace.CanEnterSinceLastPassScope;
-		ScopeBadge = workspace.CommitScope is not null
-			? $"COMMIT {workspace.CommitScopeIndex + 1} OF {workspace.ScopeCommits.Count}"
-			: workspace.InSinceLastPassScope ? "SINCE YOUR LAST PASS"
+		InCommitScope = workspace.Scopes.Commit is not null;
+		InScope = workspace.Scopes.InScope;
+		CanEnterSinceLastPass = workspace.Scopes.CanEnterSinceLastPass;
+		ScopeBadge = workspace.Scopes.Commit is not null
+			? $"COMMIT {workspace.Scopes.CommitIndex + 1} OF {workspace.Scopes.Series.Count}"
+			: workspace.Scopes.InSinceLastPass ? "SINCE YOUR LAST PASS"
 			: "";
-		CommitScopeLine = workspace.CommitScope is { } commit
-			? $"Commit {workspace.CommitScopeIndex + 1} of {workspace.ScopeCommits.Count}: {commit.Subject}"
-			: workspace.InSinceLastPassScope ? workspace.ScopeLine
+		CommitScopeLine = workspace.Scopes.Commit is { } commit
+			? $"Commit {workspace.Scopes.CommitIndex + 1} of {workspace.Scopes.Series.Count}: {commit.Subject}"
+			: workspace.Scopes.InSinceLastPass ? workspace.Scopes.ScopeLine
 			: "Whole change";
-		CommitMessage = workspace.CommitScope?.Message ?? "";
+		CommitMessage = workspace.Scopes.Commit?.Message ?? "";
 	}
 
-	public void EnterCommitScope() => workspace.EnterCommitScopeAsync().HandleExceptions();
+	public void EnterCommitScope() => workspace.Scopes.EnterCommitAsync().HandleExceptions();
 
-	public void EnterSinceLastPass() => workspace.EnterSinceLastPassScopeAsync().HandleExceptions();
+	public void EnterSinceLastPass() => workspace.Scopes.EnterSinceLastPassAsync().HandleExceptions();
 
-	public void StepCommit(int direction) => workspace.StepCommitScopeAsync(direction).HandleExceptions();
+	public void StepCommit(int direction) => workspace.Scopes.StepCommitAsync(direction).HandleExceptions();
 
-	public void ExitCommitScope() => workspace.ExitScopeAsync().HandleExceptions();
+	public void ExitCommitScope() => workspace.Scopes.ExitAsync().HandleExceptions();
 
 	// The verification and close-out commands from the overview page, kept where the reading
 	// happens rather than a tab away. Bouncing stays behind in the menu: it belongs to

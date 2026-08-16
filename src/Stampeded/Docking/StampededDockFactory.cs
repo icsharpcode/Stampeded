@@ -96,7 +96,7 @@ public class StampededDockFactory(ReviewWorkspace workspace) : Factory
 		var checks = new ChecksPaneViewModel(workspace) { Id = "Checks", Title = "Checks" };
 		var tests = new TestsPaneViewModel(workspace) { Id = "Tests", Title = "Tests" };
 		var comments = new CommentsPaneViewModel(workspace) { Id = "Comments", Title = "Comments" };
-		workspace.CommentsPane = comments;
+		workspace.Comments.Pane = comments;
 		var log = new LogPaneViewModel { Id = "Log", Title = "Log" };
 		var run = new RunPaneViewModel(workspace) { Id = "Run", Title = "Run" };
 		var commits = new CommitsPaneViewModel(workspace) { Id = "Commits", Title = "Commits" };

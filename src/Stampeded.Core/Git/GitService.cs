@@ -239,6 +239,29 @@ public sealed class GitService(string repoPath)
 	public Task<string> ShowFileAsync(string rev, string path, CancellationToken ct = default)
 		=> RunAsync(ct, "show", $"{rev}:{path}");
 
+	/// <summary>A whole commit as a patch - its message and its diff, the way git prints it.</summary>
+	public Task<string> ShowCommitAsync(string rev, CancellationToken ct = default)
+		=> RunAsync(ct, "show", rev);
+
+	/// <summary>The diff between two commits as a patch, for reading as text rather than as a
+	/// per-file review.</summary>
+	public Task<string> DiffPatchAsync(string baseRev, string headRev, CancellationToken ct = default)
+		=> RunAsync(ct, "diff", baseRev, headRev);
+
+	/// <summary>Lines added and removed by each commit of a range, in one pass over it rather
+	/// than a diff per commit.</summary>
+	public async Task<IReadOnlyDictionary<string, (int Added, int Removed)>> GetCommitStatsAsync(
+		string baseRev, string headRev, CancellationToken ct = default)
+		=> GitLogParser.ParseShortStat(
+			await RunAsync(ct, "log", "--format=%H", "--shortstat", $"{baseRev}..{headRev}"));
+
+	/// <summary>How many commits touched each file in the recent past - the repository's hot
+	/// spots. <paramref name="since"/> is a git date expression such as "1.year".</summary>
+	public async Task<IReadOnlyDictionary<string, int>> GetChurnAsync(
+		string since, CancellationToken ct = default)
+		=> GitLogParser.CountPathTouches(
+			await RunAsync(ct, "log", $"--since={since}", "--name-only", "--format="));
+
 	public async Task<IReadOnlyList<BlameLine>> BlameAsync(string rev, string path, CancellationToken ct = default)
 		=> GitBlameParser.Parse(await RunAsync(ct, "blame", "--porcelain", rev, "--", path));
 

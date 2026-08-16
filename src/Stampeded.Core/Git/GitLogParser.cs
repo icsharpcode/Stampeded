@@ -18,8 +18,55 @@ public sealed record BranchInfo(string Name, string Sha, string Date, string Sub
 
 /// <summary>Parses `git log` output in the tool's tab-separated format, and
 /// `git diff --name-status` output.</summary>
-public static class GitLogParser
+public static partial class GitLogParser
 {
+	[System.Text.RegularExpressions.GeneratedRegex(@"(\d+) insertion")]
+	private static partial System.Text.RegularExpressions.Regex Insertions();
+
+	[System.Text.RegularExpressions.GeneratedRegex(@"(\d+) deletion")]
+	private static partial System.Text.RegularExpressions.Regex Deletions();
+
+	/// <summary>
+	/// Lines added and removed per commit, from `git log --format=%H --shortstat`: a full SHA
+	/// on a line of its own, then git's summary of that commit. A commit that changed nothing
+	/// prints no summary and is absent from the result, which is what "no lines" means here.
+	/// </summary>
+	public static IReadOnlyDictionary<string, (int Added, int Removed)> ParseShortStat(string output)
+	{
+		var stats = new Dictionary<string, (int Added, int Removed)>(StringComparer.Ordinal);
+		string? sha = null;
+		foreach (var line in output.ReplaceLineEndings("\n").Split('\n'))
+		{
+			string trimmed = line.Trim();
+			if (trimmed.Length == 40 && trimmed.All(char.IsAsciiHexDigit))
+			{
+				sha = trimmed;
+			}
+			else if (sha is not null && trimmed.Contains("changed", StringComparison.Ordinal))
+			{
+				var insertions = Insertions().Match(trimmed);
+				var deletions = Deletions().Match(trimmed);
+				stats[sha] = (
+					insertions.Success ? int.Parse(insertions.Groups[1].Value) : 0,
+					deletions.Success ? int.Parse(deletions.Groups[1].Value) : 0);
+			}
+		}
+		return stats;
+	}
+
+	/// <summary>
+	/// How many commits touched each path, from `git log --name-only --format=` - one path per
+	/// line, once per commit that changed it. Churn correlates with defect density, so this is
+	/// the count a triage reads as "how often does this file go wrong".
+	/// </summary>
+	public static IReadOnlyDictionary<string, int> CountPathTouches(string output)
+	{
+		var counts = new Dictionary<string, int>(StringComparer.Ordinal);
+		foreach (var line in output.ReplaceLineEndings("\n").Split('\n', StringSplitOptions.RemoveEmptyEntries))
+			counts[line] = counts.GetValueOrDefault(line) + 1;
+		return counts;
+	}
+
 	/// <summary>
 	/// Parses one record per commit, NUL-terminated: a header line of six tab-separated
 	/// fields, then the body until the NUL. The body is the only multi-line field, which is
