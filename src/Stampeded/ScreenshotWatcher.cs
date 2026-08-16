@@ -286,6 +286,28 @@ static class ScreenshotWatcher
 					else
 						RaisePointer(window, point, parts[0] == "press", modifiers);
 				}
+				// wheel:<x>,<y>:<delta> - rolls the wheel over a point, positive being up. The
+				// gesture some controls read instead of a click, and the only way to reach one.
+				foreach (var command in lines.Where(l => l.StartsWith("wheel:", StringComparison.Ordinal)))
+				{
+					var parts = command.Split(':', 3);
+					var coords = parts.Length < 2 ? [] : parts[1].Split(',');
+					if (coords.Length != 2
+						|| !double.TryParse(coords[0], out double wx) || !double.TryParse(coords[1], out double wy)
+						|| !double.TryParse(parts.Length == 3 ? parts[2] : "1", out double delta))
+					{
+						CliLog.Write("action", $"wheel: cannot read '{command}'");
+						continue;
+					}
+					var at = new Avalonia.Point(wx, wy);
+					var rolled = Avalonia.Input.InputExtensions.InputHitTest(window, at) as Interactive ?? window;
+					rolled.RaiseEvent(new Avalonia.Input.PointerWheelEventArgs(
+						rolled, TestPointer, window, at, (ulong)Environment.TickCount64,
+						new Avalonia.Input.PointerPointProperties(
+							Avalonia.Input.RawInputModifiers.None, Avalonia.Input.PointerUpdateKind.Other),
+						Avalonia.Input.KeyModifiers.None, new Avalonia.Vector(0, delta)));
+					CliLog.Write("action", $"wheel {wx:0},{wy:0} by {delta} -> {rolled.GetType().Name}");
+				}
 				// tooltip:<x>,<y> - shows the tooltip of whatever is under a point, so a capture
 				// can hold it. Moving the pointer there does not: being hovered is state the
 				// platform keeps, not an event a control can be handed.
