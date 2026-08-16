@@ -59,6 +59,34 @@ from it unmodified and under the name it gives them:
 | Add draft comment                | Comment              |
 | Merge                            | Merge                |
 
+### File kinds in the explorer tree
+
+Taken from the same VS 2026 library, under their own names, and mapped to extensions in
+`Images.ForFileName`. A file whose kind is not among these keeps the plain document icon:
+guessing at an unknown extension would say something the name does not.
+
+| Shown for                              | Image (VS 2026)  |
+|----------------------------------------|------------------|
+| .cs / .vb / .fs                        | CSFileNode / VBFileNode / FSFileNode |
+| .csproj and friends / .sln, .slnx      | Project / Solution |
+| .xml, .config, .props, .targets, .resx | XmlFile          |
+| .xaml, .axaml                          | WPFFile          |
+| .json                                  | JSONScript       |
+| .md                                    | MarkdownFile     |
+| .txt, .log, .csv                       | TextFile         |
+| .yml, .yaml                            | YamlFile         |
+| .html, .cshtml, .razor                 | HTMLFile         |
+| .js, .ts and the rest of that family   | JSScript         |
+| .css, .scss, .less                     | StyleSheet       |
+| .ps1 / .sh, .bat, .cmd                 | PowershellFile / Console |
+| images (.png, .svg, .ico, ...)         | Image            |
+| .pfx, .cer, .snk                       | Certificate      |
+| .db, .sqlite                           | Database         |
+| *.lock                                 | Lock             |
+| .gitignore, .gitattributes, .gitmodules| Git              |
+| .bin, .dat, .pdb, .zip, .nupkg         | BinaryFile       |
+| .editorconfig                          | Settings         |
+
 The library is licensed, not public domain: it may be used in applications developed with the
 Visual Studio family of products, and its EULA - shipped with the download - is what governs
 that. The images are used here as icons for commands, not as content of their own.

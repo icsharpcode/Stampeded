@@ -29,7 +29,7 @@ public sealed class FsNode(string absPath, bool isDirectory) : SharpTreeNode
 	public Action<FsNode>? Activated { get; init; }
 
 	public override object Text => Title;
-	public override object Icon => IsDirectory ? Images.FolderClosed : Images.Document;
+	public override object Icon => IsDirectory ? Images.FolderClosed : Images.ForFileName(Title);
 	public override object? ExpandedIcon => IsDirectory ? Images.FolderOpen : null;
 	public override object ToolTip => AbsPath;
 	public override bool ShowExpander => IsDirectory && base.ShowExpander;

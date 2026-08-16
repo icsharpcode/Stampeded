@@ -88,6 +88,81 @@ public static class Images
 	public static readonly IImage Merge = LoadSvg(nameof(Merge));
 	public static readonly IImage Cancel = LoadSvg(nameof(Cancel));
 
+	// What a file is, for the tree that lists them. Same treatment as the icons above: a 16x16
+	// SVG drawn at whatever size the row asks for.
+	public static readonly IImage FileCSharp = LoadSvg("CSFileNode");
+	public static readonly IImage FileVisualBasic = LoadSvg("VBFileNode");
+	public static readonly IImage FileFSharp = LoadSvg("FSFileNode");
+	public static readonly IImage FileProject = LoadSvg("Project");
+	public static readonly IImage FileSolution = LoadSvg("Solution");
+	public static readonly IImage FileXml = LoadSvg("XmlFile");
+	public static readonly IImage FileXaml = LoadSvg("WPFFile");
+	public static readonly IImage FileJson = LoadSvg("JSONScript");
+	public static readonly IImage FileMarkdown = LoadSvg("MarkdownFile");
+	public static readonly IImage FileText = LoadSvg("TextFile");
+	public static readonly IImage FileYaml = LoadSvg("YamlFile");
+	public static readonly IImage FileHtml = LoadSvg("HTMLFile");
+	public static readonly IImage FileScript = LoadSvg("JSScript");
+	public static readonly IImage FileStyleSheet = LoadSvg("StyleSheet");
+	public static readonly IImage FilePowerShell = LoadSvg("PowershellFile");
+	public static readonly IImage FileShell = LoadSvg("Console");
+	public static readonly IImage FileImage = LoadSvg("Image");
+	public static readonly IImage FileCertificate = LoadSvg("Certificate");
+	public static readonly IImage FileDatabase = LoadSvg("Database");
+	public static readonly IImage FileLock = LoadSvg("Lock");
+	public static readonly IImage FileGit = LoadSvg("Git");
+	public static readonly IImage FileBinary = LoadSvg("BinaryFile");
+	public static readonly IImage FileSettings = LoadSvg("Settings");
+
+	/// <summary>
+	/// What a file is, from its name. A directory listing is a wall of identical rows without
+	/// this, and the kind of a file is the first thing a reader sorts by - so it is worth
+	/// reading off the one thing every row already carries. Anything unrecognised keeps the
+	/// plain document icon rather than being guessed at.
+	/// </summary>
+	public static IImage ForFileName(string fileName)
+	{
+		string name = fileName.ToLowerInvariant();
+		// Whole names first: a dot-file carries its kind where another file carries an
+		// extension, and asking for the extension of ".gitignore" is asking the wrong question.
+		return name switch {
+			".gitignore" or ".gitattributes" or ".gitmodules" or ".mailmap" => FileGit,
+			".editorconfig" => FileSettings,
+			"dockerfile" or "makefile" => FileText,
+			_ => ForExtension(System.IO.Path.GetExtension(name)),
+		};
+	}
+
+	static IImage ForExtension(string extension) => extension switch {
+		".cs" or ".csx" => FileCSharp,
+		".vb" => FileVisualBasic,
+		".fs" or ".fsi" or ".fsx" => FileFSharp,
+		".csproj" or ".vbproj" or ".fsproj" or ".proj" or ".shproj" or ".projitems" => FileProject,
+		".sln" or ".slnx" or ".slnf" => FileSolution,
+		".xml" or ".config" or ".props" or ".targets" or ".nuspec" or ".resx" or ".xsd"
+			or ".xslt" or ".vsixmanifest" or ".xshd" or ".ruleset" => FileXml,
+		".xaml" or ".axaml" => FileXaml,
+		".json" or ".jsonc" => FileJson,
+		".md" or ".markdown" => FileMarkdown,
+		".txt" or ".log" or ".rtf" or ".csv" => FileText,
+		".yml" or ".yaml" => FileYaml,
+		".html" or ".htm" or ".xhtml" or ".cshtml" or ".razor" => FileHtml,
+		// TypeScript has no icon of its own in the set; it is the same kind of file as its
+		// output, and a reader looking for a script finds one.
+		".js" or ".mjs" or ".cjs" or ".jsx" or ".ts" or ".tsx" => FileScript,
+		".css" or ".scss" or ".less" => FileStyleSheet,
+		".ps1" or ".psm1" or ".psd1" => FilePowerShell,
+		".sh" or ".bash" or ".bat" or ".cmd" => FileShell,
+		".png" or ".jpg" or ".jpeg" or ".gif" or ".bmp" or ".ico" or ".svg" or ".webp" => FileImage,
+		".pfx" or ".cer" or ".crt" or ".pem" or ".p12" or ".snk" => FileCertificate,
+		".db" or ".sqlite" or ".sqlite3" or ".mdf" => FileDatabase,
+		".lock" => FileLock,
+		".dll" or ".exe" or ".so" or ".dylib" => Assembly,
+		".bin" or ".dat" or ".pdb" or ".zip" or ".nupkg" => FileBinary,
+		".il" => ViewCode,
+		_ => Document,
+	};
+
 	/// <summary>Icon for a DocumentOutline node kind (lowercase syntax kinds).</summary>
 	public static IImage? ForOutlineKind(string kind) => kind switch {
 		"class" or "record" => Class,
