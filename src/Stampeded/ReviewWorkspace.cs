@@ -555,7 +555,7 @@ public sealed class ReviewWorkspace(string repoPath)
 			return null;
 		string oldText = file.Kind == FileChangeKind.Added || file.IsBinary
 			? ""
-			: await Git.ShowFileAsync(BaseSha, file.OldPath);
+			: await Blobs.ReadAsync(BaseSha, file.OldPath) ?? "";
 		string newText = file.Kind == FileChangeKind.Deleted || file.IsBinary
 			? ""
 			: await ReadHeadFileAsync(file.NewPath);
@@ -800,7 +800,7 @@ public sealed class ReviewWorkspace(string repoPath)
 		{
 			string oldText = file.Kind == FileChangeKind.Added || file.IsBinary
 				? ""
-				: await Git.ShowFileAsync(BaseSha, file.OldPath);
+				: await Blobs.ReadAsync(BaseSha, file.OldPath) ?? "";
 			string newText = file.Kind == FileChangeKind.Deleted || file.IsBinary
 				? ""
 				: await ReadHeadFileAsync(file.NewPath);
@@ -1092,11 +1092,13 @@ public sealed class ReviewWorkspace(string repoPath)
 		Store.OpenCommitScope(Path.GetFileName(RepoPath), commit.Sha);
 		await ApplyScopeOverlaysAsync();
 		ResetChangeMap();
+		var open = CaptureOpenDocuments();
 		CloseDocumentsExceptStart();
 		CliLog.Write("action", $"commit scope {index + 1}/{ScopeCommits.Count} {commit.ShortSha}");
 		ReviewChanged?.Invoke();
 		CommitScopeChanged?.Invoke();
 		OpenOverview();
+		await ReopenDocumentsAsync(open);
 		// The semantic workspaces stay on the review's head: they describe where the code
 		// ends up, which is the right frame for navigating out of a commit being read.
 		ComputeChangeMapAsync().HandleExceptions();
@@ -1194,11 +1196,13 @@ public sealed class ReviewWorkspace(string repoPath)
 			// the review's own - its viewed flags, depth marks and drafts - is orphaned.
 			Store.OpenLocal(Path.GetFileName(RepoPath), LocalRangeKey(range), range.Head, range.Base);
 		ResetChangeMap();
+		var open = CaptureOpenDocuments();
 		CloseDocumentsExceptStart();
 		CliLog.Write("action", "scope off");
 		ReviewChanged?.Invoke();
 		CommitScopeChanged?.Invoke();
 		OpenOverview();
+		await ReopenDocumentsAsync(open);
 		ComputeChangeMapAsync().HandleExceptions();
 	}
 
@@ -1311,6 +1315,7 @@ public sealed class ReviewWorkspace(string repoPath)
 			+ $"{files.Count} file(s). Whole change: {neverViewed} of {wholeChange} file(s) never viewed.";
 		await ApplyScopeOverlaysAsync();
 		ResetChangeMap();
+		var open = CaptureOpenDocuments();
 		CloseDocumentsExceptStart();
 		CliLog.Write("action", $"since-last-pass scope {previous[..9]} -> {range.Head[..9]} "
 			+ $"({(rewritten ? "rewritten" : "fast-forward")}), base tree {sinceLastPassTree[..9]}, {files.Count} file(s)");
@@ -1318,6 +1323,7 @@ public sealed class ReviewWorkspace(string repoPath)
 		ReviewChanged?.Invoke();
 		CommitScopeChanged?.Invoke();
 		OpenOverview();
+		await ReopenDocumentsAsync(open);
 		ComputeChangeMapAsync().HandleExceptions();
 	}
 
@@ -1537,6 +1543,7 @@ public sealed class ReviewWorkspace(string repoPath)
 	public async Task ReloadReviewAsync()
 	{
 		string? before = HeadSha;
+		var open = CaptureOpenDocuments();
 		if (CurrentPr is { } pr)
 			await OpenPrAsync(pr.Number);
 		else if (LocalRange is { } local)
@@ -1545,6 +1552,7 @@ public sealed class ReviewWorkspace(string repoPath)
 			return;
 		// A head that moved is reported by the carry-over, which knows what it kept; standing
 		// still is the outcome nothing else would mention.
+		await ReopenDocumentsAsync(open);
 		if (HeadSha == before)
 			PostStatus($"Reloaded: the head is still {before?[..9]}.");
 	}
@@ -1586,6 +1594,59 @@ public sealed class ReviewWorkspace(string repoPath)
 		ChecksLoaded?.Invoke();
 		CommentsChanged?.Invoke();
 		CliLog.Write("action", "review closed");
+	}
+
+	/// <summary>What was open before a scope switch or a reload rebuilt the review, so it can
+	/// be put back.</summary>
+	readonly record struct OpenDocuments(IReadOnlyList<string> Ids, string? Active);
+
+	OpenDocuments CaptureOpenDocuments()
+		=> new(
+			[.. Documents?.VisibleDockables?.Select(d => d.Id).OfType<string>() ?? []],
+			Documents?.ActiveDockable?.Id);
+
+	/// <summary>
+	/// Opens again what a rebuild closed, in the order it was open, and puts the reader back in
+	/// front of the tab they were in. Switching to commit-by-commit or reloading after a push
+	/// keeps the files, not only the review: the alternative is finding the way back to each
+	/// one through the Explorer, which is the work the mode was entered to avoid.
+	///
+	/// A file the new view does not contain stays closed - the commit being read did not touch
+	/// it, so there is no diff of it to show. Historical tabs - one commit's change, a patch, an
+	/// interdiff - are not reopened either: they are snapshots of something other than the
+	/// review, and nothing in the rebuilt review says what they held.
+	/// </summary>
+	async Task ReopenDocumentsAsync(OpenDocuments open)
+	{
+		foreach (string id in open.Ids)
+		{
+			if (id == "review")
+			{
+				OpenReviewDocument();
+				continue;
+			}
+			bool unified = id.StartsWith("diff:", StringComparison.Ordinal);
+			if (!unified && !id.StartsWith("sbs:", StringComparison.Ordinal))
+				continue;
+			if (Files.FirstOrDefault(f => f.Path == id[(id.IndexOf(':') + 1)..]) is not { } file)
+				continue;
+			if (unified)
+				await OpenFileAsync(file);
+			else
+				await OpenSideBySideAsync(file);
+		}
+		// Every reopen activates what it opened, so without this the front tab is whichever
+		// came last - an arbitrary file. The reader goes back to the tab they were in, or to
+		// the overview when the new view has no diff of it: that one says what is now being
+		// read, where an unrelated file only looks like the rebuild lost its place.
+		if (Factory is null || Documents?.VisibleDockables is not { } tabs)
+			return;
+		var front = tabs.FirstOrDefault(d => d.Id == open.Active) ?? tabs.FirstOrDefault(d => d.Id == "overview");
+		if (front is not null)
+		{
+			Factory.SetActiveDockable(front);
+			Factory.SetFocusedDockable(Documents, front);
+		}
 	}
 
 	void CloseDocumentsExceptStart()
