@@ -25,14 +25,22 @@ public static class GeneratedSources
 	/// answer the compiler already had.
 	/// </summary>
 	public static Task BuildAsync(string worktreePath, CancellationToken ct = default)
-		=> ExternalTool.RunAsync(
-			"dotnet",
-			["build", EmitProperty, "--nologo", "-v", "quiet",
-				// Nothing here needs an assembly to come out, only the generated sources on
-				// the way to one.
-				"-p:GenerateDocumentationFile=false"],
-			worktreePath, ct,
+	{
+		// Named rather than left to dotnet: a root with several solutions in it is refused
+		// outright ("Specify which project or solution file to use"), and the generated
+		// sources never arrived for exactly the repositories that ship an installer or an
+		// extension solution beside the product's own.
+		var args = new List<string> { "build" };
+		if (SolutionTarget.ForRoot(worktreePath) is { } solution)
+			args.Add(solution);
+		args.AddRange([EmitProperty, "--nologo", "-v", "quiet",
+			// Nothing here needs an assembly to come out, only the generated sources on the
+			// way to one.
+			"-p:GenerateDocumentationFile=false"]);
+		return ExternalTool.RunAsync(
+			"dotnet", args, worktreePath, ct,
 			env: new Dictionary<string, string> { ["OPENSSL_ENABLE_SHA1_SIGNATURES"] = "1" });
+	}
 
 	/// <summary>
 	/// Every generated file in a checkout, keyed by a path that identifies the same file in
