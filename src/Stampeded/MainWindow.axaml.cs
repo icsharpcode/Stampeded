@@ -12,6 +12,7 @@ public partial class MainWindow : Window
 	public MainWindow()
 	{
 		InitializeComponent();
+		WindowPlacement.Attach(this);
 		DataContext = new MainViewModel();
 		ScreenshotWatcher.Attach(this);
 		RecentMenu.AddHandler(MenuItem.ClickEvent, OnRecentRepoClick);
