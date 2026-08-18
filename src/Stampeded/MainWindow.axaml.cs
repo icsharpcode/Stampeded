@@ -300,6 +300,18 @@ public partial class MainWindow : Window
 
 	void OnToggleMultiRowTabs(object? s, RoutedEventArgs e) => TabRowsPreference.Set(!TabRowsPreference.MultiRow);
 
+	/// <summary>Switches the pointer cross-hair on every open view. A debug build only: what it
+	/// draws is a developer's answer to "where does the app think the pointer is", which is the
+	/// first question whenever a tooltip or popup opens somewhere unexpected.</summary>
+	void OnTogglePointerCrossHair(object? s, RoutedEventArgs e)
+	{
+#if DEBUG
+		Editor.PointerCrossHairRenderer.IsEnabled = !Editor.PointerCrossHairRenderer.IsEnabled;
+		Core.Infra.CliLog.Write("action",
+			$"pointer cross-hair: {(Editor.PointerCrossHairRenderer.IsEnabled ? "on" : "off")}");
+#endif
+	}
+
 	void OnKeyboardShortcuts(object? s, RoutedEventArgs e)
 		=> App.Workspace?.OpenTextDocument("keys", "Keyboard shortcuts", KeyboardShortcuts.Text);
 
@@ -342,6 +354,10 @@ public partial class MainWindow : Window
 		var view = View;
 		var file = App.Workspace?.CurrentFile;
 		MultiRowTabsItem.IsChecked = TabRowsPreference.MultiRow;
+#if DEBUG
+		PointerCrossHairItem.IsVisible = true;
+		PointerCrossHairItem.IsChecked = Editor.PointerCrossHairRenderer.IsEnabled;
+#endif
 		FillBuildSolutionMenu();
 		NextHunkItem.IsEnabled = Has(ReviewCommands.JumpToHunk);
 		PrevHunkItem.IsEnabled = Has(ReviewCommands.JumpToHunk);

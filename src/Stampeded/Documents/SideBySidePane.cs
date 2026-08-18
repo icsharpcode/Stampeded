@@ -62,6 +62,9 @@ sealed class SideBySidePane
 		// What a symbol is, without going anywhere: the same quick info the unified view shows,
 		// and simpler here - a pane holds one blob, so the line under the pointer belongs to a
 		// known side and needs no working out.
+#if DEBUG
+		_ = new PointerCrossHairRenderer(editor.TextArea.TextView);
+#endif
 		editor.TextArea.TextView.PointerMoved += OnPointerMoved;
 		editor.TextArea.TextView.PointerExited += (_, _) => CancelHover();
 		hoverTimer.Tick += (_, _) => {

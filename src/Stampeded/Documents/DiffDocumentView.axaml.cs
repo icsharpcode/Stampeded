@@ -95,6 +95,10 @@ public partial class DiffDocumentView : UserControl, IReviewDocumentView
 		Editor.TextArea.AddHandler(PointerReleasedEvent, OnTextViewPointerReleased, RoutingStrategies.Bubble, handledEventsToo: true);
 		Editor.TextArea.AddHandler(PointerPressedEvent, OnPointerPressedForContextMenu, RoutingStrategies.Tunnel);
 		AddHandler(GotFocusEvent, (_, _) => MakeActive(), RoutingStrategies.Bubble, handledEventsToo: true);
+#if DEBUG
+		// Inert until switched on from the View menu; registers for the view's lifetime.
+		_ = new Editor.PointerCrossHairRenderer(Editor.TextArea.TextView);
+#endif
 		Editor.TextArea.TextView.PointerMoved += OnPointerMovedForHover;
 		Editor.TextArea.TextView.PointerExited += (_, _) => CancelHover();
 		hoverTimer.Tick += OnHoverTimerTick;

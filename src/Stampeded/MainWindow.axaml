@@ -133,6 +133,10 @@
         <MenuItem Header="Blame Margin  ( b )" x:Name="BlameItem" Click="OnToggleBlame" ToggleType="CheckBox" />
         <MenuItem Header="Document Tabs in Several Rows" x:Name="MultiRowTabsItem"
                   Click="OnToggleMultiRowTabs" ToggleType="CheckBox" />
+        <!-- Hidden outside a debug build, where the renderer behind it does not exist. -->
+        <MenuItem Header="DEBUG - Pointer Cross-Hair" x:Name="PointerCrossHairItem" IsVisible="False"
+                  Click="OnTogglePointerCrossHair" ToggleType="CheckBox"
+                  ToolTip.Tip="Draw where the app thinks the pointer is, with the document position it resolves to" />
         <Separator />
         <MenuItem Header="Panes">
           <MenuItem Header="Explorer" Tag="Explorer" Click="OnShowPane" />
