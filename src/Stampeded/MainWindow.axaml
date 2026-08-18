@@ -121,7 +121,11 @@
         <MenuItem Header="Start Page" Click="OnOpenStart" />
         <MenuItem Header="Close Document  ( Ctrl+W )" Click="OnCloseDocument" />
         <Separator />
-        <MenuItem Header="Side-by-Side of Current File" x:Name="SideBySideItem" Click="OnSideBySide" />
+        <!-- A way of reading rather than a property of a file: what is set here is what every
+             file opens as, and each is one tab either way. -->
+        <MenuItem Header="Side-by-Side Layout" x:Name="SideBySideItem" Click="OnSideBySide"
+                  ToggleType="CheckBox"
+                  ToolTip.Tip="Read every change as two panes instead of one interleaved document" />
         <MenuItem Header="Blame Margin  ( b )" x:Name="BlameItem" Click="OnToggleBlame" ToggleType="CheckBox" />
         <MenuItem Header="Document Tabs in Several Rows" x:Name="MultiRowTabsItem"
                   Click="OnToggleMultiRowTabs" ToggleType="CheckBox" />

@@ -204,7 +204,7 @@ static class ScreenshotWatcher
 				if (lines.Contains("impacted"))
 					App.Workspace?.Factory?.Pane<Panes.TestsPaneViewModel>("Tests")?.ApplyImpactedFilter();
 				if (lines.Contains("sbs"))
-					App.Workspace?.OpenSideBySideAsync().HandleExceptions();
+					App.Workspace?.SetDiffLayoutAsync(!DiffLayoutPreference.SideBySide).HandleExceptions();
 				if (lines.Contains("vscode"))
 					App.Workspace?.OpenInVsCodeAsync(oldSide: false).HandleExceptions();
 				if (lines.Contains("ilspy-fixtures"))

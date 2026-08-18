@@ -639,18 +639,15 @@ public sealed class ReviewWorkspace(string repoPath)
 		GeneratedSourcesChanged?.Invoke();
 	}
 
-	public async Task<DiffDocumentViewModel?> OpenFileAsync(FileDiff file)
+	/// <summary>
+	/// Opens a file's change in the layout that is set, one document per file either way. The
+	/// two layouts are two views of the same thing, so a file that is already open in the other
+	/// one is rebuilt rather than joined by a second tab.
+	/// </summary>
+	public async Task<Documents.IDiffDocument?> OpenFileAsync(FileDiff file)
 	{
 		if (file.Generated is { } generated)
-		{
-			return ShowDocument("diff:" + file.Path, () => new DiffDocumentViewModel(
-				file,
-				DiffDocumentBuilder.Build(ReadOrEmpty(generated.BaseFile), ReadOrEmpty(generated.HeadFile))) {
-				Title = Path.GetFileName(file.Path),
-			});
-
-			static string ReadOrEmpty(string? path) => path is null ? "" : File.ReadAllText(path);
-		}
+			return ShowDiffDocument(file, ReadOrEmpty(generated.BaseFile), ReadOrEmpty(generated.HeadFile));
 		if (BaseSha is null || HeadSha is null)
 			return null;
 		string oldText = file.Kind == FileChangeKind.Added || file.IsBinary
@@ -659,9 +656,66 @@ public sealed class ReviewWorkspace(string repoPath)
 		string newText = file.Kind == FileChangeKind.Deleted || file.IsBinary
 			? ""
 			: await ReadHeadFileAsync(file.NewPath);
-		return ShowDocument("diff:" + file.Path, () => new DiffDocumentViewModel(file, DiffDocumentBuilder.Build(oldText, newText)) {
-			Title = Path.GetFileName(file.Path),
-		});
+		return ShowDiffDocument(file, oldText, newText);
+
+		static string ReadOrEmpty(string? path) => path is null ? "" : File.ReadAllText(path);
+	}
+
+	/// <summary>
+	/// The document for a file, built in the layout that is set. Both layouts key on the same
+	/// id: it is the same file being read, so it is one tab, one entry in history, and one
+	/// thing to reopen after a rebuild. A document left over from the other layout is closed
+	/// as this one takes its place.
+	/// </summary>
+	Documents.IDiffDocument? ShowDiffDocument(FileDiff file, string oldText, string newText)
+	{
+		if (Documents is null || Factory is null)
+			return null;
+		string id = "diff:" + file.Path;
+		string title = Path.GetFileName(file.Path);
+		bool sideBySide = DiffLayoutPreference.SideBySide;
+		var existing = Documents.VisibleDockables?.FirstOrDefault(d => d.Id == id);
+		if (existing is Documents.IDiffDocument open && open is SideBySideDocumentViewModel == sideBySide)
+		{
+			Factory.SetActiveDockable((Dock.Model.Core.IDockable)open);
+			Factory.SetFocusedDockable(Documents, (Dock.Model.Core.IDockable)open);
+			return open;
+		}
+		if (existing is not null)
+			Factory.CloseDockable(existing);
+		Dock.Model.Mvvm.Controls.Document created = sideBySide
+			? new SideBySideDocumentViewModel(file, DiffDocumentBuilder.BuildPair(oldText, newText)) { Title = title }
+			: new DiffDocumentViewModel(file, DiffDocumentBuilder.Build(oldText, newText)) { Title = title };
+		created.Id = id;
+		Factory.AddDockable(Documents, created);
+		Factory.SetActiveDockable(created);
+		Factory.SetFocusedDockable(Documents, created);
+		return (Documents.IDiffDocument)created;
+	}
+
+	/// <summary>Rebuilds every open file in the layout that is now set, keeping the reader in
+	/// front of the tab they were in.</summary>
+	public async Task ApplyDiffLayoutAsync()
+	{
+		if (Documents?.VisibleDockables is null)
+			return;
+		string? active = Documents.ActiveDockable?.Id;
+		var paths = Documents.VisibleDockables
+			.Select(d => d.Id)
+			.OfType<string>()
+			.Where(id => id.StartsWith("diff:", StringComparison.Ordinal))
+			.Select(id => id["diff:".Length..])
+			.ToList();
+		foreach (string path in paths)
+		{
+			if (Files.FirstOrDefault(f => f.Path == path) is { } file)
+				await OpenFileAsync(file);
+		}
+		if (active is not null && Documents.VisibleDockables.FirstOrDefault(d => d.Id == active) is { } front
+			&& Factory is not null)
+		{
+			Factory.SetActiveDockable(front);
+		}
 	}
 
 	T? ShowDocument<T>(string id, Func<T> create) where T : Dock.Model.Mvvm.Controls.Document
@@ -865,31 +919,16 @@ public sealed class ReviewWorkspace(string repoPath)
 	#endregion
 
 	/// <summary>Opens the side-by-side view of the active file (or a given one).</summary>
-	public async Task OpenSideBySideAsync(FileDiff? file = null)
+	/// <summary>Switches the layout every file is read in, and rebuilds what is open in it.
+	/// A file is one document either way, so this replaces the tabs rather than adding to
+	/// them.</summary>
+	public async Task SetDiffLayoutAsync(bool sideBySide)
 	{
-		file ??= CurrentFile;
-		if (file is null || BaseSha is null || HeadSha is null || Documents is null || Factory is null)
+		if (DiffLayoutPreference.SideBySide == sideBySide)
 			return;
-		string id = "sbs:" + file.Path;
-		var existing = Documents.VisibleDockables?
-			.OfType<SideBySideDocumentViewModel>()
-			.FirstOrDefault(d => d.Id == id);
-		if (existing is null)
-		{
-			string oldText = file.Kind == FileChangeKind.Added || file.IsBinary
-				? ""
-				: await Blobs.ReadAsync(BaseSha, file.OldPath) ?? "";
-			string newText = file.Kind == FileChangeKind.Deleted || file.IsBinary
-				? ""
-				: await ReadHeadFileAsync(file.NewPath);
-			existing = new SideBySideDocumentViewModel(file, DiffDocumentBuilder.BuildPair(oldText, newText)) {
-				Id = id,
-				Title = Path.GetFileName(file.Path) + " (side-by-side)",
-			};
-			Factory.AddDockable(Documents, existing);
-		}
-		Factory.SetActiveDockable(existing);
-		Factory.SetFocusedDockable(Documents, existing);
+		DiffLayoutPreference.Set(sideBySide);
+		CliLog.Write("action", $"diff layout: {(sideBySide ? "side-by-side" : "unified")}");
+		await ApplyDiffLayoutAsync();
 	}
 
 	/// <summary>Removes cached worktrees except the current review's base and head.</summary>
@@ -1380,15 +1419,13 @@ public sealed class ReviewWorkspace(string repoPath)
 				OpenReviewDocument();
 				continue;
 			}
-			bool unified = id.StartsWith("diff:", StringComparison.Ordinal);
-			if (!unified && !id.StartsWith("sbs:", StringComparison.Ordinal))
+			// "sbs:" ids were written by builds where side-by-side was a second document per
+			// file; they name the same file and reopen as the one document it now has.
+			if (!id.StartsWith("diff:", StringComparison.Ordinal) && !id.StartsWith("sbs:", StringComparison.Ordinal))
 				continue;
 			if (Files.FirstOrDefault(f => f.Path == id[(id.IndexOf(':') + 1)..]) is not { } file)
 				continue;
-			if (unified)
-				await OpenFileAsync(file);
-			else
-				await OpenSideBySideAsync(file);
+			await OpenFileAsync(file);
 		}
 		// Every reopen activates what it opened, so without this the front tab is whichever
 		// came last - an arbitrary file. The reader goes back to the tab they were in, or to
@@ -1504,9 +1541,12 @@ public sealed class ReviewWorkspace(string repoPath)
 	/// leaves them dead until the mouse is used: activating a dockable decides what is
 	/// visible, not what the keyboard talks to.
 	/// </summary>
-	static void FocusEditorOf(DiffDocumentViewModel document)
+	static void FocusEditorOf(Documents.IDiffDocument document)
 		=> Avalonia.Threading.Dispatcher.UIThread.Post(
-			() => global::Stampeded.Documents.DiffDocumentView.ViewFor(document)?.FocusEditor(),
+			() => {
+				if (document is DiffDocumentViewModel unified)
+					global::Stampeded.Documents.DiffDocumentView.ViewFor(unified)?.FocusEditor();
+			},
 			Avalonia.Threading.DispatcherPriority.Loaded);
 
 	public async Task ToggleViewedAndAdvanceAsync()
@@ -1847,15 +1887,13 @@ public sealed class ReviewWorkspace(string repoPath)
 	/// the old line, else a base source view.</summary>
 	public async Task NavigateToFileLineAsync(string relPath, int fileLine, bool oldSide, bool record)
 	{
-		DiffDocumentViewModel? vm;
-		int docLine;
+		Documents.IDiffDocument? vm;
 		var fileDiff = oldSide
 			? Files.FirstOrDefault(f => f.OldPath == relPath)
 			: Files.FirstOrDefault(f => f.Path == relPath);
 		if (fileDiff is not null)
 		{
 			vm = await OpenFileAsync(fileDiff);
-			docLine = (oldSide ? vm?.Model.DocLineFromOldLine(fileLine) : vm?.Model.DocLineFromNewLine(fileLine)) ?? fileLine;
 		}
 		else
 		{
@@ -1876,12 +1914,11 @@ public sealed class ReviewWorkspace(string repoPath)
 					source.Title = source.Title + " @ base";
 				return source;
 			});
-			docLine = fileLine;
 		}
 		if (vm is null)
 			return;
-		if (record)
-			history.Record(new NavEntry(vm.Id, fileLine, oldSide));
+		if (record && vm.Id is { Length: > 0 } dockableId)
+			history.Record(new NavEntry(dockableId, fileLine, oldSide));
 		vm.RequestCaret(fileLine, oldSide);
 	}
 

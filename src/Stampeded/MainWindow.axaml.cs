@@ -196,7 +196,8 @@ public partial class MainWindow : Window
 	void OnGoToDefinition(object? s, RoutedEventArgs e) => View?.GoToDefinitionCommand();
 	void OnFindReferences(object? s, RoutedEventArgs e) => View?.FindReferencesCommand();
 	void OnHighlightOccurrences(object? s, RoutedEventArgs e) => View?.HighlightOccurrencesCommand();
-	void OnSideBySide(object? s, RoutedEventArgs e) => App.Workspace?.OpenSideBySideAsync().HandleExceptions();
+	void OnSideBySide(object? s, RoutedEventArgs e)
+		=> App.Workspace?.SetDiffLayoutAsync(!DiffLayoutPreference.SideBySide).HandleExceptions();
 	void OnCloseDocument(object? s, RoutedEventArgs e) => App.Workspace?.CloseActiveDocument();
 
 	void OnShowPane(object? s, RoutedEventArgs e)
@@ -305,7 +306,7 @@ public partial class MainWindow : Window
 		NextHunkItem.IsEnabled = Has(ReviewCommands.JumpToHunk);
 		PrevHunkItem.IsEnabled = Has(ReviewCommands.JumpToHunk);
 		NextUncoveredItem.IsEnabled = Has(ReviewCommands.JumpToUncovered);
-		SideBySideItem.IsEnabled = file is not null;
+		SideBySideItem.IsChecked = DiffLayoutPreference.SideBySide;
 		BlameItem.IsEnabled = Has(ReviewCommands.ToggleBlame);
 		BlameItem.IsChecked = view?.BlameVisible ?? false;
 		DebugHereItem.IsEnabled = Has(ReviewCommands.DebugHere);

@@ -4,7 +4,7 @@ using Stampeded.Core.Diff;
 
 namespace Stampeded.Documents;
 
-public class DiffDocumentViewModel(FileDiff file, DiffDocumentModel model) : Document
+public class DiffDocumentViewModel(FileDiff file, DiffDocumentModel model) : Document, IDiffDocument
 {
 	public FileDiff File { get; } = file;
 

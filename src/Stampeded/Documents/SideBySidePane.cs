@@ -75,6 +75,19 @@ sealed class SideBySidePane
 		RemoveColorizer();
 	}
 
+	/// <summary>Puts the caret on a line of this pane's blob, and says whether that line is
+	/// shown here at all - the other side's rows are filler in this one.</summary>
+	public bool MoveCaretToBlobLine(int blobLine)
+	{
+		if (!blobToDocLine.TryGetValue(blobLine, out int docLine) || docLine > editor.Document.LineCount)
+			return false;
+		editor.TextArea.Caret.Line = docLine;
+		editor.TextArea.Caret.Column = 1;
+		editor.ScrollToLine(docLine);
+		editor.TextArea.Focus();
+		return true;
+	}
+
 	/// <summary>Caret as a blob position, or null on a filler row.</summary>
 	public (string RelPath, int Line, int Column, bool OldSide)? CaretBlobPosition()
 	{

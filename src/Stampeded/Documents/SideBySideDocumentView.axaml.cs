@@ -92,6 +92,7 @@ public partial class SideBySideDocumentView : UserControl, IReviewDocumentView
 	readonly DiffLineNumberMargin rightMargin = new();
 	SideBySidePane? leftPane;
 	SideBySidePane? rightPane;
+	SideBySideDocumentViewModel? viewModel;
 	IReadOnlyList<DiffLineTag>? leftTags;
 	IReadOnlyList<DiffLineTag>? rightTags;
 	FoldingManager? leftFolding;
@@ -185,8 +186,12 @@ public partial class SideBySideDocumentView : UserControl, IReviewDocumentView
 	protected override void OnDataContextChanged(EventArgs e)
 	{
 		base.OnDataContextChanged(e);
+		if (viewModel is not null)
+			viewModel.CaretRequested -= OnCaretRequested;
 		if (DataContext is not SideBySideDocumentViewModel vm)
 			return;
+		viewModel = vm;
+		vm.CaretRequested += OnCaretRequested;
 		ReviewViews.Register(this);
 		// The side the file still has: a pane's own text carries the filler rows that keep the
 		// two in step, and those are not part of any format.
@@ -207,7 +212,26 @@ public partial class SideBySideDocumentView : UserControl, IReviewDocumentView
 		leftPane?.SetDocument(vm);
 		rightPane?.SetDocument(vm);
 		RefreshSemantics();
+		// A caret asked for before this view had the document: navigation opens a document and
+		// then says where to land, and the two need not happen in that order.
+		if (vm.TakePendingCaret() is { } pending)
+			OnCaretRequested(pending.Line, pending.OldSide);
 	}
+
+	/// <summary>
+	/// Lands on a line of one blob. The side asked for gets the caret; when that side has no
+	/// such line - a line added on the right has none on the left - the other pane takes it, so
+	/// the answer is a row on screen rather than nothing at all. Queued behind layout: the
+	/// panes may still be building their text when navigation arrives.
+	/// </summary>
+	void OnCaretRequested(int blobLine, bool oldSide)
+		=> Dispatcher.UIThread.Post(
+			() => {
+				var (first, second) = oldSide ? (leftPane, rightPane) : (rightPane, leftPane);
+				if (first?.MoveCaretToBlobLine(blobLine) != true)
+					second?.MoveCaretToBlobLine(blobLine);
+			},
+			DispatcherPriority.Loaded);
 
 	/// <summary>
 	/// Both panes fold over the same document lines. They have to: the panes are kept in
