@@ -607,14 +607,15 @@ public sealed class ReviewWorkspace(string repoPath)
 				await Task.Delay(1000, ct);
 			}
 			SetGeneratedStatus("building head...", done: false);
-			await GeneratedSources.BuildAsync(head, ct);
+			string? solution = BuildSolutionPreference.For(RepoPath);
+			await GeneratedSources.BuildAsync(head, solution, ct);
 			if (GeneratedSources.Collect(head).Count == 0)
 			{
 				SetGeneratedStatus("no generators", done: true);
 				return;
 			}
 			SetGeneratedStatus("building base...", done: false);
-			await GeneratedSources.BuildAsync(baseTree, ct);
+			await GeneratedSources.BuildAsync(baseTree, solution, ct);
 			var generated = await GeneratedSources.DiffAsync(baseTree, head, ct);
 			SetGeneratedFiles(generated);
 			SetGeneratedStatus(generated.Count == 0 ? "unchanged" : $"{generated.Count} file(s)", done: true);

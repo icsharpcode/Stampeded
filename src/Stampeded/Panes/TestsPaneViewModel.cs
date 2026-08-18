@@ -96,12 +96,13 @@ public class TestsPaneViewModel : Tool
 		}
 	}
 
-	static string DefaultArgs(string root)
+	string DefaultArgs(string root)
 	{
 		// Which solution to run is the same question the generated-sources build asks, and one
 		// answer keeps the two in step: a cross-platform filter off Windows, else the
 		// repository's own solution.
-		string name = Core.Testing.SolutionTarget.ForRoot(root) ?? "";
+		string chosen = BuildSolutionPreference.For(workspace.RepoPath) ?? "";
+		string name = Core.Testing.SolutionTarget.ForRoot(root, chosen) ?? "";
 		// The --solution/--report-trx form targets the Microsoft.Testing.Platform runner;
 		// repos on classic VSTest still accept an explicit path argument instead.
 		return $"test --solution {name} --report-trx";

@@ -16,10 +16,16 @@ public static class SolutionTarget
 	/// projects that cannot build there - net472 add-ins, Windows-only test hosts - and the
 	/// filter is the repository's own statement of what does.
 	/// </summary>
-	public static string? ForRoot(string root)
+	/// <param name="chosen">A solution named by the reader, which wins whenever the checkout
+	/// still has it. The guess below is only a default: which solution a repository is worth
+	/// building is a fact about the repository that nobody can derive from its file names.
+	/// </param>
+	public static string? ForRoot(string root, string? chosen = null)
 	{
 		if (!Directory.Exists(root))
 			return null;
+		if (chosen is { Length: > 0 } && Candidates(root).Contains(chosen, StringComparer.Ordinal))
+			return chosen;
 		if (!OperatingSystem.IsWindows()
 			&& Files(root, "*.slnf").FirstOrDefault(f => f.Contains("xplat", StringComparison.OrdinalIgnoreCase))
 				is { } crossPlatform)
@@ -30,6 +36,12 @@ public static class SolutionTarget
 		// or two, where the one worth building holds the repository.
 		return Largest(root, "*.sln") ?? Largest(root, "*.slnx");
 	}
+
+	/// <summary>Every solution of a checkout root, for a reader choosing between them.</summary>
+	public static IReadOnlyList<string> Candidates(string root)
+		=> Directory.Exists(root)
+			? [.. Files(root, "*.sln").Concat(Files(root, "*.slnx")).Concat(Files(root, "*.slnf"))]
+			: [];
 
 	static IEnumerable<string> Files(string root, string pattern)
 		=> Directory.EnumerateFiles(root, pattern, SearchOption.TopDirectoryOnly)

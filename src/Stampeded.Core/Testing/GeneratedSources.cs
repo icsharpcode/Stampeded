@@ -24,15 +24,20 @@ public static class GeneratedSources
 	/// test run: running the tests to find out what a generator emitted costs minutes for an
 	/// answer the compiler already had.
 	/// </summary>
-	public static Task BuildAsync(string worktreePath, CancellationToken ct = default)
+	public static Task BuildAsync(string worktreePath, string? chosenSolution = null, CancellationToken ct = default)
 	{
 		// Named rather than left to dotnet: a root with several solutions in it is refused
 		// outright ("Specify which project or solution file to use"), and the generated
 		// sources never arrived for exactly the repositories that ship an installer or an
 		// extension solution beside the product's own.
 		var args = new List<string> { "build" };
-		if (SolutionTarget.ForRoot(worktreePath) is { } solution)
+		string? solution = SolutionTarget.ForRoot(worktreePath, chosenSolution);
+		if (solution is not null)
 			args.Add(solution);
+		// Said before the build rather than after it: a command is logged when it finishes, and
+		// this one runs for minutes, so the log was silent for exactly as long as a reader would
+		// be wondering whether anything was happening.
+		CliLog.Write("dotnet", $"building {solution ?? worktreePath} for generated sources...");
 		args.AddRange([EmitProperty, "--nologo", "-v", "quiet",
 			// Nothing here needs an assembly to come out, only the generated sources on the
 			// way to one.

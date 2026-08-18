@@ -207,6 +207,40 @@ public partial class MainWindow : Window
 	}
 	void OnPruneWorktrees(object? s, RoutedEventArgs e) => App.Workspace?.PruneWorktreeCacheAsync().HandleExceptions();
 
+	/// <summary>
+	/// Lists the checkout's solutions so one can be named for builds, with what the automatic
+	/// choice would pick written beside it. Built when the menu opens: which solutions a
+	/// repository has is a fact about the repository in front, and the window outlives several.
+	/// </summary>
+	void FillBuildSolutionMenu()
+	{
+		BuildSolutionMenu.Items.Clear();
+		if (App.Workspace is not { } workspace)
+			return;
+		string root = workspace.RepoPath;
+		string? chosen = BuildSolutionPreference.For(root);
+		string automatic = Core.Testing.SolutionTarget.ForRoot(root) ?? "nothing to build";
+		BuildSolutionMenu.Items.Add(Option($"Automatic  ({automatic})", null, chosen is null));
+		foreach (string solution in Core.Testing.SolutionTarget.Candidates(root))
+			BuildSolutionMenu.Items.Add(Option(solution, solution, solution == chosen));
+
+		MenuItem Option(string header, string? solution, bool current)
+		{
+			var item = new MenuItem {
+				Header = header,
+				ToggleType = MenuItemToggleType.Radio,
+				GroupName = "build-solution",
+				IsChecked = current,
+			};
+			item.Click += (_, _) => {
+				BuildSolutionPreference.Set(root, solution);
+				Core.Infra.CliLog.Write("action",
+					$"solution to build: {solution ?? "automatic"} ({Path.GetFileName(root)})");
+			};
+			return item;
+		}
+	}
+
 	void OnRebasePr(object? s, RoutedEventArgs e) => App.Workspace?.RebaseCurrentPrOnTargetAsync().HandleExceptions();
 
 	// The overview page's commands, so they are reachable without going back to that tab.
@@ -303,6 +337,7 @@ public partial class MainWindow : Window
 		var view = View;
 		var file = App.Workspace?.CurrentFile;
 		MultiRowTabsItem.IsChecked = TabRowsPreference.MultiRow;
+		FillBuildSolutionMenu();
 		NextHunkItem.IsEnabled = Has(ReviewCommands.JumpToHunk);
 		PrevHunkItem.IsEnabled = Has(ReviewCommands.JumpToHunk);
 		NextUncoveredItem.IsEnabled = Has(ReviewCommands.JumpToUncovered);

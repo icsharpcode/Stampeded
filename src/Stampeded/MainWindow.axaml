@@ -108,6 +108,10 @@
         <MenuItem Header="Run A/B (base vs head)" Click="OnRunTestsAB" IsEnabled="{Binding HasReview}" />
         <MenuItem Header="Impacted Test Filter" Click="OnImpactedTestFilter" IsEnabled="{Binding HasReview}" />
         <Separator />
+        <!-- Filled when the menu opens, from the solutions the checkout actually has. -->
+        <MenuItem Header="Solution to Build" x:Name="BuildSolutionMenu" IsEnabled="{Binding HasReview}"
+                  ToolTip.Tip="Which solution the test runs and the generated-sources build are for. Automatic prefers a cross-platform filter off Windows, else the repository's largest solution." />
+        <Separator />
         <MenuItem Header="Run Application" Click="OnRunApplication" />
         <MenuItem Header="Refresh Checks" Click="OnRefreshChecks" IsEnabled="{Binding HasPullRequest}" />
         <Separator />
