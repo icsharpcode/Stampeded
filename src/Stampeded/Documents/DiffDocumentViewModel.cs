@@ -8,6 +8,11 @@ public class DiffDocumentViewModel(FileDiff file, DiffDocumentModel model) : Doc
 {
 	public FileDiff File { get; } = file;
 
+	/// <summary>The tab shows a file name, which is all that fits and not always enough to tell
+	/// two apart - a repository has many a Program.cs. Its path is the answer, on hovering the
+	/// tab rather than in it.</summary>
+	public string TabTooltip => File.Path;
+
 	/// <summary>The diff as built from the blobs, without synthetic thread lines; the
 	/// base every comment-thread re-splice starts from.</summary>
 	public DiffDocumentModel PristineModel { get; } = model;

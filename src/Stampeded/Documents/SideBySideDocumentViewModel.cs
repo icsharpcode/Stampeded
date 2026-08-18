@@ -9,6 +9,9 @@ public class SideBySideDocumentViewModel(FileDiff file, SideBySideModel pair) : 
 	public FileDiff File { get; } = file;
 	public SideBySideModel Pair { get; } = pair;
 
+	/// <inheritdoc cref="DiffDocumentViewModel.TabTooltip" />
+	public string TabTooltip => File.Path;
+
 	(int Line, bool OldSide)? pendingCaret;
 
 	public event Action<int, bool>? CaretRequested;

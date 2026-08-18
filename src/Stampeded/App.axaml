@@ -82,6 +82,12 @@
     <Style Selector="dockControls|DocumentTabStrip">
       <Setter Property="controls:MultiRowTabStrip.Enable" Value="True" />
     </Style>
+    <!-- A tab shows a file name; which file that is, in full, is what the pointer asks for.
+         Bound by reflection because the strip's item is typed as a dockable and only the
+         documents that stand for a file carry this - the rest answer null and show nothing. -->
+    <Style Selector="dockControls|DocumentTabStripItem">
+      <Setter Property="ToolTip.Tip" Value="{ReflectionBinding TabTooltip}" />
+    </Style>
     <Style Selector="dockControls|DocumentTabStripItem:selected">
       <Setter Property="Background" Value="{x:Static local:ScopePalette.Accent}" />
     </Style>
