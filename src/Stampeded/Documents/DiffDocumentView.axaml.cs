@@ -67,6 +67,9 @@ public partial class DiffDocumentView : UserControl
 		FoldViewportAnchor.Install(Editor);
 		contextGaps = new ContextGapView(Editor);
 		contextGaps.Changed += RefreshFoldings;
+		margin.IsContextGapRow = contextGaps.HasBar;
+		coverageMargin.IsContextGapRow = contextGaps.HasBar;
+		blameMargin.IsContextGapRow = contextGaps.HasBar;
 		Editor.TextArea.AddHandler(KeyDownEvent, OnEditorKeyDown, RoutingStrategies.Tunnel);
 		// handledEventsToo, because a TextBox that accepts returns handles Enter itself -
 		// modifiers and all - before any handler declared on it runs. So Ctrl+Enter reached
@@ -1080,6 +1083,8 @@ public partial class DiffDocumentView : UserControl
 	void InstallFoldsAndGaps(DiffDocumentModel m)
 	{
 		foldingManager ??= FoldingManager.Install(Editor.TextArea);
+		if (contextGaps is not null)
+			ContextGapFoldingMargin.Install(Editor.TextArea, foldingManager, contextGaps.HasBar);
 		structuralRanges = [];
 		if (viewModel is { } vm && vm.File.Path.EndsWith(".cs", StringComparison.OrdinalIgnoreCase))
 		{

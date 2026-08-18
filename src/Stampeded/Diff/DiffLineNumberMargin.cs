@@ -43,6 +43,11 @@ public sealed class DiffLineNumberMargin : AbstractMargin
 
 	public DiffLineNumberColumns Columns { get; set; } = DiffLineNumberColumns.Both;
 
+	/// <summary>Whether a line carries a context gap's control, which is drawn over the text
+	/// but reads as a band across the whole pane - so the gutter paints its share of the row.
+	/// </summary>
+	public Func<int, bool>? IsContextGapRow { get; set; }
+
 	bool ShowsOld => Columns is DiffLineNumberColumns.Both or DiffLineNumberColumns.Old;
 	bool ShowsNew => Columns is DiffLineNumberColumns.Both or DiffLineNumberColumns.New;
 	int ColumnCount => Columns == DiffLineNumberColumns.Both ? 2 : 1;
@@ -75,7 +80,10 @@ public sealed class DiffLineNumberMargin : AbstractMargin
 		if (textView is null || !textView.VisualLinesValid || tags is null)
 			return;
 
+		ContextGapChrome.DrawRows(context, textView, Bounds.Width, IsContextGapRow);
+
 		var numberBrush = ThemeManager.Current.IsDarkTheme ? Brushes.DimGray : Brushes.Gray;
+		double numberHeight = Measure("9").Height;
 		double col1Right = digits * digitWidth + ColumnGap;
 		double col2Right = col1Right + digits * digitWidth + ColumnGap;
 		double stripX = Bounds.Width - StripWidth - RightPadding + StripWidth;
@@ -87,19 +95,37 @@ public sealed class DiffLineNumberMargin : AbstractMargin
 				continue;
 			var tag = tags[lineNumber - 1];
 			double top = visualLine.VisualTop - textView.VerticalOffset;
+			// Centered in the row rather than sitting at its top: a row carrying a context
+			// gap's control is taller than a line of text, and a number pinned to the top of
+			// it reads as belonging to the row above.
+			double textTop = top + (visualLine.Height - numberHeight) / 2;
 
-			// With one column shown it occupies the first slot, so a side-by-side pane
-			// gutters only its own blob's numbers.
-			if (ShowsOld && tag.OldLine > 0)
+			double newRight = Columns == DiffLineNumberColumns.Both ? col2Right : col1Right;
+			// A row standing for a run of hidden lines has no one number to show, so each
+			// column says "there is more here" instead. Drawn rather than written: the gutter's
+			// mono font is not guaranteed to carry a vertical ellipsis.
+			if (IsContextGapRow?.Invoke(lineNumber) == true)
 			{
-				var ft = Format(tag.OldLine.ToString(CultureInfo.InvariantCulture), numberBrush);
-				context.DrawText(ft, new Point(col1Right - ft.Width, top));
+				double middle = top + visualLine.Height / 2;
+				if (ShowsOld)
+					DrawEllipsis(context, col1Right - digitWidth / 2, middle, numberBrush);
+				if (ShowsNew)
+					DrawEllipsis(context, newRight - digitWidth / 2, middle, numberBrush);
 			}
-			if (ShowsNew && tag.NewLine > 0)
+			else
 			{
-				var ft = Format(tag.NewLine.ToString(CultureInfo.InvariantCulture), numberBrush);
-				double right = Columns == DiffLineNumberColumns.Both ? col2Right : col1Right;
-				context.DrawText(ft, new Point(right - ft.Width, top));
+				// With one column shown it occupies the first slot, so a side-by-side pane
+				// gutters only its own blob's numbers.
+				if (ShowsOld && tag.OldLine > 0)
+				{
+					var ft = Format(tag.OldLine.ToString(CultureInfo.InvariantCulture), numberBrush);
+					context.DrawText(ft, new Point(col1Right - ft.Width, textTop));
+				}
+				if (ShowsNew && tag.NewLine > 0)
+				{
+					var ft = Format(tag.NewLine.ToString(CultureInfo.InvariantCulture), numberBrush);
+					context.DrawText(ft, new Point(newRight - ft.Width, textTop));
+				}
 			}
 			var strip = tag.Kind switch {
 				DiffLineKind.Added => AddedStrip,
@@ -109,6 +135,15 @@ public sealed class DiffLineNumberMargin : AbstractMargin
 			if (strip is not null)
 				context.FillRectangle(strip, new Rect(stripX - StripWidth, top, StripWidth, visualLine.Height));
 		}
+	}
+
+	/// <summary>Three dots stacked where a line number would be.</summary>
+	static void DrawEllipsis(DrawingContext context, double centerX, double centerY, IBrush brush)
+	{
+		const double Radius = 1.1;
+		const double Spacing = 4.5;
+		for (int i = -1; i <= 1; i++)
+			context.DrawEllipse(brush, null, new Point(centerX, centerY + i * Spacing), Radius, Radius);
 	}
 
 	protected override void OnTextViewChanged(TextView? oldTextView, TextView? newTextView)

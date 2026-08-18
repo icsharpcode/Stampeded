@@ -149,6 +149,10 @@ public partial class SideBySideDocumentView : UserControl
 		{
 			contextGaps = new ContextGapView(Left, Right);
 			contextGaps.Changed += RefreshFoldings;
+			leftMargin.IsContextGapRow = contextGaps.HasBar;
+			rightMargin.IsContextGapRow = contextGaps.HasBar;
+			ContextGapFoldingMargin.Install(Left.TextArea, leftFolding, contextGaps.HasBar);
+			ContextGapFoldingMargin.Install(Right.TextArea, rightFolding, contextGaps.HasBar);
 		}
 		var tags = vm.Pair.LeftTags;
 		bool hasChanges = tags.Any(t => t.Kind != DiffLineKind.Context);

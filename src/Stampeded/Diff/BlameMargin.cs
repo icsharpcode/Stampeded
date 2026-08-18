@@ -51,9 +51,15 @@ public sealed class BlameMargin : AbstractMargin
 	FormattedText Format(string text, IBrush brush)
 		=> new(text, CultureInfo.InvariantCulture, FlowDirection.LeftToRight, typeface, EmSize, brush);
 
+
+	/// <summary>Whether a line carries a context gap's control, whose band runs across every
+	/// gutter as well as the text - see <see cref="ContextGapChrome"/>.</summary>
+	public Func<int, bool>? IsContextGapRow { get; set; }
+
 	public override void Render(DrawingContext context)
 	{
 		var textView = TextView;
+		ContextGapChrome.DrawRows(context, textView, Bounds.Width, IsContextGapRow);
 		if (textView is null || !textView.VisualLinesValid || lines is null)
 			return;
 		bool dark = ThemeManager.Current.IsDarkTheme;
