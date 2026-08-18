@@ -31,6 +31,16 @@ public partial class CommentsPaneView : UserControl
 			vm.OpenOnGitHub(row);
 	}
 
+	/// <summary>Offers only what the selected comment can be: a draft is deletable and has no
+	/// page on GitHub, a posted one is the other way round.</summary>
+	void OnCommentMenuOpening(object? sender, System.ComponentModel.CancelEventArgs e)
+	{
+		var row = CommentList.SelectedItem as CommentRow;
+		GoToItem.IsEnabled = row is not null;
+		DeleteDraftItem.IsEnabled = row?.IsDraft == true;
+		OpenOnGitHubItem.IsEnabled = row?.Url is { Length: > 0 };
+	}
+
 	void OnDelete(object? s, RoutedEventArgs e)
 	{
 		if (Vm is { } vm && CommentList.SelectedItem is CommentRow row)

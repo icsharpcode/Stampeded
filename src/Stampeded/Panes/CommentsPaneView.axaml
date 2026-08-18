@@ -29,10 +29,13 @@
     </StackPanel>
     <ListBox Grid.Row="2" x:Name="CommentList" ItemsSource="{Binding Items}" SelectionChanged="OnSelectionChanged">
       <ListBox.ContextMenu>
-        <ContextMenu>
-          <MenuItem Header="Go to Line (click)" Click="OnGoTo" />
-          <MenuItem Header="Delete Draft" Click="OnDelete" />
-          <MenuItem Header="Open on GitHub" Click="OnOpenOnGitHub" />
+        <!-- What each entry can act on depends on the row selected: a posted comment has no
+             draft to delete, and a draft has nothing on GitHub to open yet. Settled as the
+             menu opens, which is the only moment it can be right. -->
+        <ContextMenu Opening="OnCommentMenuOpening">
+          <MenuItem Header="Go to Line (click)" x:Name="GoToItem" Click="OnGoTo" />
+          <MenuItem Header="Delete Draft" x:Name="DeleteDraftItem" Click="OnDelete" />
+          <MenuItem Header="Open on GitHub" x:Name="OpenOnGitHubItem" Click="OnOpenOnGitHub" />
         </ContextMenu>
       </ListBox.ContextMenu>
       <ListBox.ItemTemplate>
