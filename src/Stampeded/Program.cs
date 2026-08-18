@@ -28,8 +28,9 @@ internal static class Program
 		// The value of --pr is not the repository, which is what taking the first argument that
 		// does not start with a dash made of "--pr 4013 /path/to/repo": the number became the
 		// path, and the window opened on a repository that does not exist.
+		int prValueIndex = prIndex >= 0 ? prIndex + 1 : -1;
 		var repoArg = args
-			.Where((a, i) => !a.StartsWith('-') && i != prIndex + 1)
+			.Where((a, i) => !a.StartsWith('-') && i != prValueIndex)
 			.FirstOrDefault();
 		if (repoArg is not null)
 			RepoPath = Path.GetFullPath(repoArg);
