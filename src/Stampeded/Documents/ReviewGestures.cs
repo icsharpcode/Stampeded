@@ -96,7 +96,17 @@ static class ReviewGestures
 		// way "v" would mark it. Only going forwards: backing up through a change is not the
 		// same statement about the file behind you.
 		if (direction > 0 && workspace.CurrentFile is { } finished)
+		{
 			workspace.SetViewed(finished.Path, viewed: true);
+			// Off the end of the last file there is no next one, and what follows reading a
+			// change is saying something about it: the review page, rather than a key that
+			// stops answering at the moment the pass is over.
+			if (workspace.Files.Count > 0 && workspace.Files[^1].Path == finished.Path)
+			{
+				workspace.OpenReviewDocument();
+				return;
+			}
+		}
 		await workspace.OpenAdjacentFileAsync(direction);
 		// Whatever is in front now, which is the file just opened - and the edge it is entered
 		// at follows the direction of travel. Queued behind the layout the open triggers: until
