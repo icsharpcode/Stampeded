@@ -1144,77 +1144,14 @@ public partial class DiffDocumentView : UserControl, IReviewDocumentView
 		// leave every keystroke aimed at a text box alone.
 		if (e.Source is Avalonia.Visual source && source.FindAncestorOfType<TextBox>(includeSelf: true) is not null)
 			return;
-		switch (e.Key, e.KeyModifiers)
+		// Escape is this layout's own: it clears the markers only it draws, and it is not a
+		// review gesture - anything else listening for it should still hear it.
+		if (e is { Key: Key.Escape, KeyModifiers: KeyModifiers.None })
 		{
-			// n/p are the review's own keys; Ctrl+Down/Up are the ones a hand arrives with.
-			// They cost AvaloniaEdit's scroll-by-line, which a diff nobody types into has
-			// little use for - and this handler tunnels, so the editor never sees them.
-			case (Key.N, KeyModifiers.None):
-			case (Key.Down, KeyModifiers.Control):
-				JumpToHunk(1);
-				e.Handled = true;
-				break;
-			case (Key.P, KeyModifiers.None):
-			case (Key.Up, KeyModifiers.Control):
-				JumpToHunk(-1);
-				e.Handled = true;
-				break;
-			case (Key.OemCloseBrackets, KeyModifiers.Control):
-				App.Workspace?.Scopes.StepCommitAsync(1).HandleExceptions();
-				e.Handled = true;
-				break;
-			case (Key.OemOpenBrackets, KeyModifiers.Control):
-				App.Workspace?.Scopes.StepCommitAsync(-1).HandleExceptions();
-				e.Handled = true;
-				break;
-			case (Key.OemCloseBrackets, KeyModifiers.None):
-				App.Workspace?.OpenAdjacentFileAsync(1).HandleExceptions();
-				e.Handled = true;
-				break;
-			case (Key.OemOpenBrackets, KeyModifiers.None):
-				App.Workspace?.OpenAdjacentFileAsync(-1).HandleExceptions();
-				e.Handled = true;
-				break;
-			case (Key.V, KeyModifiers.None):
-				App.Workspace?.ToggleViewedAndAdvanceAsync().HandleExceptions();
-				e.Handled = true;
-				break;
-			case (Key.O, KeyModifiers.None):
-				App.Workspace?.ToggleOverviewAsync().HandleExceptions();
-				e.Handled = true;
-				break;
-			case (Key.F12, KeyModifiers.None):
-				NavigateToDefinitionAtCaret();
-				e.Handled = true;
-				break;
-			case (Key.F12, KeyModifiers.Shift):
-				ShowReferencesAtCaret();
-				e.Handled = true;
-				break;
-			case (Key.U, KeyModifiers.None):
-				JumpToNextUncovered();
-				e.Handled = true;
-				break;
-			case (Key.B, KeyModifiers.None):
-				ToggleBlameAsync().HandleExceptions();
-				e.Handled = true;
-				break;
-			case (Key.C, KeyModifiers.None):
-				CommentAtCaretCommand();
-				e.Handled = true;
-				break;
-			case (Key.Escape, KeyModifiers.None):
-				markers.RemoveAll(_ => true);
-				break;
-			case (Key.Left, KeyModifiers.Alt):
-				App.Workspace?.GoBackAsync().HandleExceptions();
-				e.Handled = true;
-				break;
-			case (Key.Right, KeyModifiers.Alt):
-				App.Workspace?.GoForwardAsync().HandleExceptions();
-				e.Handled = true;
-				break;
+			markers.RemoveAll(_ => true);
+			return;
 		}
+		e.Handled = ReviewGestures.Handle(e, this);
 	}
 
 	// Where the last left-button press happened and which modifiers were held for it; null

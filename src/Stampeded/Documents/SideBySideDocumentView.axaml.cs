@@ -1,4 +1,6 @@
 using Avalonia.Controls;
+using Avalonia.Input;
+using Avalonia.Interactivity;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 
@@ -119,6 +121,11 @@ public partial class SideBySideDocumentView : UserControl, IReviewDocumentView
 		Right.TextArea.TextView.VisualLinesChanged += (_, _) => MirrorFolds(rightFolding, leftFolding);
 		leftPane = new SideBySidePane(Left, oldSide: true);
 		rightPane = new SideBySidePane(Right, oldSide: false);
+		// On the way down to the editors, for the same reason the unified layout does it: some
+		// of these keys are bindings of AvaloniaEdit's own, and a key it has acted on never
+		// reaches the window that would otherwise answer for them.
+		Left.TextArea.AddHandler(KeyDownEvent, OnPaneKeyDown, RoutingStrategies.Tunnel);
+		Right.TextArea.AddHandler(KeyDownEvent, OnPaneKeyDown, RoutingStrategies.Tunnel);
 		FoldViewportAnchor.Install(Left);
 		FoldViewportAnchor.Install(Right);
 	}
@@ -139,6 +146,15 @@ public partial class SideBySideDocumentView : UserControl, IReviewDocumentView
 		if (App.Workspace is { } ws)
 			ws.SemanticsChanged -= OnSemanticsChanged;
 		base.OnDetachedFromVisualTree(e);
+	}
+
+	void OnPaneKeyDown(object? sender, KeyEventArgs e)
+	{
+		// The search panel lives inside the text area, so what is typed into it tunnels through
+		// here: a review gesture is a letter to anyone typing one.
+		if (e.Source is Avalonia.Visual source && source.FindAncestorOfType<TextBox>(includeSelf: true) is not null)
+			return;
+		e.Handled = ReviewGestures.Handle(e, this);
 	}
 
 	void OnSemanticsChanged() => Dispatcher.UIThread.Post(RefreshSemantics);

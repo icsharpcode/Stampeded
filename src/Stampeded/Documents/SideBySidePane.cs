@@ -50,7 +50,6 @@ sealed class SideBySidePane
 				modifiers.HasFlag(KeyModifiers.Control) && segment.Kind == ReferenceMode.Link
 					? StandardCursorType.Hand
 					: StandardCursorType.Ibeam);
-		editor.TextArea.AddHandler(InputElement.KeyDownEvent, OnKeyDown, RoutingStrategies.Tunnel);
 		// Press records the position and release compares against it, so dragging a
 		// selection across a link does not navigate away when the button comes up. The
 		// release must be handled on the TextArea: AvaloniaEdit captures the pointer, and
@@ -252,21 +251,6 @@ sealed class SideBySidePane
 		if (colorizer is not null)
 			editor.TextArea.TextView.LineTransformers.Remove(colorizer);
 		colorizer = null;
-	}
-
-	void OnKeyDown(object? sender, KeyEventArgs e)
-	{
-		switch (e.Key, e.KeyModifiers)
-		{
-			case (Key.F12, KeyModifiers.None):
-				NavigateToDefinition();
-				e.Handled = true;
-				break;
-			case (Key.F12, KeyModifiers.Shift):
-				ShowReferences();
-				e.Handled = true;
-				break;
-		}
 	}
 
 	void OnPointerPressed(object? sender, PointerPressedEventArgs e)
