@@ -29,17 +29,35 @@
     </TreeView.ContextMenu>
     <TreeView.ItemTemplate>
       <TreeDataTemplate x:DataType="panes:FileNode" ItemsSource="{Binding Children}">
+        <!-- The marks are small and fixed, the name takes what is left of the row and trims to
+             fit, and the full path is in the row's tooltip either way. A mark that has nothing
+             to say takes no width at all: five empty badges with margins of their own had left
+             the names with none in a narrow pane. -->
         <DockPanel Margin="2,0" ToolTip.Tip="{Binding ToolTip}">
+          <TextBlock DockPanel.Dock="Left" Width="14" FontWeight="Bold" Text="{Binding Entry.Marker}" />
           <CheckBox DockPanel.Dock="Right" IsChecked="{Binding Entry.IsViewed}" Padding="0"
                     IsVisible="{Binding IsFile}"
                     ToolTip.Tip="Viewed (v toggles and advances)" />
-          <TextBlock DockPanel.Dock="Right" Margin="4,0" FontSize="10" VerticalAlignment="Center"
-                     Foreground="#F85149" Text="{Binding Entry.CoverageBadge}"
-                     ToolTip.Tip="Uncovered added lines from the last coverage run" />
-          <TextBlock DockPanel.Dock="Right" Margin="4,0" FontSize="10" VerticalAlignment="Center"
-                     Foreground="#3794FF" Text="{Binding Entry.SinceBadge}"
-                     ToolTip.Tip="Touched since your last pass (viewed flag was invalidated)" />
-          <TextBlock DockPanel.Dock="Left" Width="14" FontWeight="Bold" Text="{Binding Entry.Marker}" />
+          <!-- What was said about the file, and how much of it changed: the two things a
+               reader picks the next file by, in the list they pick it from. -->
+          <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="3"
+                      VerticalAlignment="Center" Margin="4,0">
+            <TextBlock FontSize="10" Foreground="#2EA043" Text="{Binding Entry.AddedText}"
+                       IsVisible="{Binding Entry.AddedText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                       ToolTip.Tip="Lines added" />
+            <TextBlock FontSize="10" Foreground="#F85149" Text="{Binding Entry.RemovedText}"
+                       IsVisible="{Binding Entry.RemovedText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                       ToolTip.Tip="Lines removed" />
+            <TextBlock FontSize="10" Foreground="#D29922" Text="{Binding Entry.CommentBadge}"
+                       IsVisible="{Binding Entry.CommentBadge, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                       ToolTip.Tip="Comments on this file - drafts of this pass and comments already posted" />
+            <TextBlock FontSize="10" Foreground="#3794FF" Text="{Binding Entry.SinceBadge}"
+                       IsVisible="{Binding Entry.SinceBadge, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                       ToolTip.Tip="Touched since your last pass (viewed flag was invalidated)" />
+            <TextBlock FontSize="10" Foreground="#F85149" Text="{Binding Entry.CoverageBadge}"
+                       IsVisible="{Binding Entry.CoverageBadge, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                       ToolTip.Tip="Uncovered added lines from the last coverage run" />
+          </StackPanel>
           <TextBlock Text="{Binding Name}" TextTrimming="PrefixCharacterEllipsis" />
         </DockPanel>
       </TreeDataTemplate>

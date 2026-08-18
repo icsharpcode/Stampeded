@@ -47,6 +47,21 @@ public sealed class FileEntry(FileDiff file, bool viewed) : ObservableObject
 	/// <summary>"new!" when the latest push touched this file after it was last reviewed.</summary>
 	public string SinceBadge { get; init; } = "";
 
+	/// <summary>How much of the file changed, the way the diff counts it. The size of a file's
+	/// change is what a reader picks the next one by, and the list was the one place that said
+	/// only which files, not how much of them.</summary>
+	public string AddedText { get; init; } = "";
+
+	public string RemovedText { get; init; } = "";
+
+	string comments = "";
+	/// <summary>How many remarks stand on this file - drafts of this pass and comments already
+	/// posted. A file that has been written about reads differently from one that has not, and
+	/// finding out meant opening it.</summary>
+	public string CommentBadge {
+		get => comments;
+		set => SetProperty(ref comments, value);
+	}
 }
 
 /// <summary>
@@ -131,6 +146,8 @@ public class PrFilesPaneViewModel : Tool
 		workspace.ReviewChanged += Rebuild;
 		workspace.ViewedChanged += OnViewedChanged;
 		workspace.CoverageChanged += RefreshCoverageBadges;
+		// Drafts come and go during a pass without the file list being rebuilt.
+		workspace.Comments.Changed += RefreshCommentBadges;
 	}
 
 	void Rebuild()
@@ -149,7 +166,12 @@ public class PrFilesPaneViewModel : Tool
 			.ThenBy(f => f.Path, StringComparer.Ordinal);
 		foreach (var file in ordered)
 		{
+			int added = file.Hunks.Sum(h => h.Lines.Count(l => l.Kind == Core.Diff.PatchLineKind.Added));
+			int removed = file.Hunks.Sum(h => h.Lines.Count(l => l.Kind == Core.Diff.PatchLineKind.Removed));
 			var entry = new FileEntry(file, workspace.Store.IsViewed(file.Path)) {
+				AddedText = added > 0 ? $"+{added}" : "",
+				RemovedText = removed > 0 ? $"-{removed}" : "",
+				CommentBadge = CommentBadgeFor(file.Path),
 				SinceBadge = markTouched && workspace.IsTouchedSinceLastPass(file.Path) ? "new!" : "",
 			};
 			entry.PropertyChanged += OnEntryChanged;
@@ -175,6 +197,22 @@ public class PrFilesPaneViewModel : Tool
 		suppressViewedPersist = true;
 		entry.IsViewed = viewed;
 		suppressViewedPersist = false;
+	}
+
+	/// <summary>The remarks standing on a file: drafts written in this pass and comments
+	/// already posted, counted together - both are things said about it that a reader is about
+	/// to meet.</summary>
+	string CommentBadgeFor(string path)
+	{
+		int count = workspace.Comments.Drafts.Count(d => d.Stored.Anchor.Path == path)
+			+ workspace.Comments.Posted.Count(p => p.RelPath == path);
+		return count > 0 ? $"{count} \u25cf" : "";
+	}
+
+	void RefreshCommentBadges()
+	{
+		foreach (var entry in Files)
+			entry.CommentBadge = CommentBadgeFor(entry.File.Path);
 	}
 
 	void RefreshCoverageBadges()
