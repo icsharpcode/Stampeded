@@ -1,4 +1,5 @@
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using Avalonia.Input;
 using Avalonia.Input.Platform;
 using Avalonia.Interactivity;
@@ -59,6 +60,86 @@ public partial class StartDocumentView : UserControl
 	}
 
 	void OnFetch(object? sender, RoutedEventArgs e) => Vm?.Fetch();
+
+	/// <summary>The filter box and its button, for the list, box or button given.</summary>
+	(ToggleButton Toggle, TextBox Box)? FilterOf(object? sender)
+	{
+		if (ReferenceEquals(sender, RecentList) || ReferenceEquals(sender, RecentFilterBox)
+			|| ReferenceEquals(sender, RecentFilterToggle))
+		{
+			return (RecentFilterToggle, RecentFilterBox);
+		}
+		if (ReferenceEquals(sender, PrListBox) || ReferenceEquals(sender, PrFilterBox)
+			|| ReferenceEquals(sender, PrFilterToggle))
+		{
+			return (PrFilterToggle, PrFilterBox);
+		}
+		if (ReferenceEquals(sender, BranchList) || ReferenceEquals(sender, BranchFilterBox)
+			|| ReferenceEquals(sender, BranchFilterToggle))
+		{
+			return (BranchFilterToggle, BranchFilterBox);
+		}
+		return null;
+	}
+
+	/// <summary>Opens or closes a column's filter box, which sits over that column's title.
+	/// Closing it clears the text: a filter that is still narrowing a list it no longer shows
+	/// is a list quietly missing rows.</summary>
+	void OnFilterToggled(object? sender, RoutedEventArgs e)
+	{
+		if (FilterOf(sender) is not ({ } toggle, { } box))
+			return;
+		if (toggle.IsChecked == true)
+		{
+			// After the click, not during it: the button takes focus itself as it finishes
+			// handling the press, which would take it straight back off the box.
+			Avalonia.Threading.Dispatcher.UIThread.Post(() => box.Focus());
+		}
+		else
+		{
+			box.Text = "";
+		}
+	}
+
+	/// <summary>Typing into one of the lists filters it, which is how the filter is found
+	/// without knowing the button is there. The character typed starts the filter rather than
+	/// being swallowed by the box opening.</summary>
+	void OnListTextInput(object? sender, TextInputEventArgs e)
+	{
+		if (e.Text is not { Length: > 0 } text || char.IsControl(text[0]))
+			return;
+		if (FilterOf(sender) is not ({ } toggle, { } box))
+			return;
+		toggle.IsChecked = true;
+		box.Text += text;
+		Avalonia.Threading.Dispatcher.UIThread.Post(() => {
+			box.Focus();
+			box.CaretIndex = box.Text?.Length ?? 0;
+		});
+		e.Handled = true;
+	}
+
+	/// <summary>Ctrl+F opens the filter of the list that has focus, for the reader who reaches
+	/// for it before typing.</summary>
+	void OnListKeyDown(object? sender, KeyEventArgs e)
+	{
+		if (e.Key != Key.F || e.KeyModifiers != KeyModifiers.Control)
+			return;
+		if (FilterOf(sender) is not ({ } toggle, { } box))
+			return;
+		toggle.IsChecked = true;
+		Avalonia.Threading.Dispatcher.UIThread.Post(() => box.Focus());
+		e.Handled = true;
+	}
+
+	/// <summary>Escape closes a filter box, which clears it and puts the whole list back.</summary>
+	void OnFilterKeyDown(object? sender, KeyEventArgs e)
+	{
+		if (e.Key != Key.Escape || FilterOf(sender) is not ({ } toggle, _))
+			return;
+		toggle.IsChecked = false;
+		e.Handled = true;
+	}
 
 	void OnPullBranch(object? sender, RoutedEventArgs e)
 	{

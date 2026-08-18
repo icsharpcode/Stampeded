@@ -118,6 +118,14 @@ public sealed partial class StartState : ObservableObject
 	[ObservableProperty]
 	bool isPreparing;
 
+	[ObservableProperty]
+	string recentFilter = "";
+
+	[ObservableProperty]
+	string prFilter = "";
+
+	[ObservableProperty]
+	string branchFilter = "";
 }
 
 /// <summary>
@@ -131,10 +139,13 @@ public class StartDocumentViewModel : Document
 	bool openOverviewWhenReady;
 
 	public StartState State { get; } = new();
-	public ObservableCollection<string> Recents { get; } = new(RecentRepos.Load());
+	public ObservableCollection<string> Recents { get; } = [];
+	public ObservableCollection<PrSummary> Prs { get; } = [];
 	public ObservableCollection<BranchRow> Branches { get; } = [];
 	public ObservableCollection<PrepareItem> PrepareItems { get; } = [];
 	public PrListPaneViewModel PrList { get; }
+
+	readonly IReadOnlyList<string> rawRecents = RecentRepos.Load();
 
 	IReadOnlyList<BranchInfo> rawBranches = [];
 	IReadOnlyList<BranchInfo> rawStashes = [];
@@ -175,8 +186,10 @@ public class StartDocumentViewModel : Document
 		}
 		PrList.Items.CollectionChanged += (_, _) => {
 			State.PrColumnHeader = $"Pull Requests ({PrList.Items.Count})";
+			FilterPrs();
 			AnnotateBranches();
 		};
+		FilterRecents();
 		workspace.ReviewChanged += () => Dispatcher.UIThread.Post(UpdatePreparation);
 		workspace.SemanticsChanged += () => Dispatcher.UIThread.Post(UpdatePreparation);
 		workspace.ChangeMapChanged += () => Dispatcher.UIThread.Post(UpdatePreparation);
@@ -186,8 +199,19 @@ public class StartDocumentViewModel : Document
 		workspace.GeneratedSourcesChanged += () => Dispatcher.UIThread.Post(UpdatePreparation);
 		workspace.StatusMessage += message => Dispatcher.UIThread.Post(() => State.Status = message);
 		State.PropertyChanged += (_, e) => {
-			if (e.PropertyName == nameof(StartState.ShowStashes))
-				AnnotateBranches();
+			switch (e.PropertyName)
+			{
+				case nameof(StartState.ShowStashes):
+				case nameof(StartState.BranchFilter):
+					AnnotateBranches();
+					break;
+				case nameof(StartState.RecentFilter):
+					FilterRecents();
+					break;
+				case nameof(StartState.PrFilter):
+					FilterPrs();
+					break;
+			}
 		};
 		LoadStartPageAsync().HandleExceptions();
 	}
@@ -254,6 +278,35 @@ public class StartDocumentViewModel : Document
 		AnnotateBranches();
 	}
 
+	/// <summary>Whether a row survives a filter box: every whitespace-separated word has to
+	/// appear somewhere in the row, so "fix pr" narrows rather than widens.</summary>
+	static bool Matches(string filter, params string?[] fields)
+	{
+		var words = filter.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+		return words.All(word => fields.Any(f => f is not null
+			&& f.Contains(word, StringComparison.OrdinalIgnoreCase)));
+	}
+
+	void FilterRecents()
+	{
+		Recents.Clear();
+		foreach (var path in rawRecents)
+		{
+			if (Matches(State.RecentFilter, path))
+				Recents.Add(path);
+		}
+	}
+
+	void FilterPrs()
+	{
+		Prs.Clear();
+		foreach (var pr in PrList.Items)
+		{
+			if (Matches(State.PrFilter, pr.NumberDisplay, pr.Title, pr.Author?.Login, pr.HeadRefName, pr.BaseRefName))
+				Prs.Add(pr);
+		}
+	}
+
 	void AnnotateBranches()
 	{
 		// Both counts stay visible whichever list is showing: the pair of options is the
@@ -264,7 +317,10 @@ public class StartDocumentViewModel : Document
 		{
 			Branches.Clear();
 			foreach (var stash in rawStashes)
-				Branches.Add(new BranchRow(stash, "", null, IsStash: true));
+			{
+				if (Matches(State.BranchFilter, stash.Name, stash.Subject))
+					Branches.Add(new BranchRow(stash, "", null, IsStash: true));
+			}
 			return;
 		}
 		var prsByBranch = PrList.Items
@@ -295,7 +351,10 @@ public class StartDocumentViewModel : Document
 				WorktreePath: worktreeByBranch.GetValueOrDefault(branch.Name)));
 		}
 		foreach (var row in rows.OrderBy(r => r.HasPrTag ? 0 : 1))
-			Branches.Add(row);
+		{
+			if (Matches(State.BranchFilter, row.Info.Name, row.Info.Subject, row.PrTag))
+				Branches.Add(row);
+		}
 		RefreshSyncStatesAsync(prsByBranch).HandleExceptions();
 		RefreshRebaseMergedAsync().HandleExceptions();
 	}

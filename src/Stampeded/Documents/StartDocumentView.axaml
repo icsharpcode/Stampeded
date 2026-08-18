@@ -13,6 +13,7 @@
       <Setter Property="Margin" Value="0,0,0,4" />
       <Setter Property="MinHeight" Value="20" />
       <Setter Property="VerticalAlignment" Value="Center" />
+      <Setter Property="TextTrimming" Value="CharacterEllipsis" />
     </Style>
     <!-- The branch/stash options double as that column's header, so they carry the
          header's weight and keep its row height: the three lists must stay aligned. -->
@@ -34,6 +35,28 @@
     </Style>
     <Style Selector="ListBoxItem:selected StackPanel.rowactions">
       <Setter Property="IsVisible" Value="True" />
+    </Style>
+    <!-- One height for all three column headers, whatever each one holds: they are what the
+         three lists start below, so a header that sizes itself to its own content puts its
+         list out of line with the other two. -->
+    <Style Selector="Grid.header">
+      <Setter Property="Height" Value="24" />
+      <Setter Property="Margin" Value="0,0,0,4" />
+    </Style>
+    <!-- The title side of a header is held to what is left over: a title, or a pair of them,
+         that outgrows a narrow column is cut off rather than drawn across the buttons. -->
+    <Style Selector="Panel.headtitle">
+      <Setter Property="ClipToBounds" Value="True" />
+      <Setter Property="Grid.Column" Value="0" />
+    </Style>
+    <!-- A filter box takes over its column's header while it is open, rather than sitting on a
+         row of its own or squeezing in beside the title: three columns this narrow have room
+         for one or the other, and a row of three empty boxes costs list space for nothing. -->
+    <Style Selector="TextBox.filter">
+      <Setter Property="FontSize" Value="12" />
+      <Setter Property="MinHeight" Value="0" />
+      <Setter Property="Padding" Value="4,0" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
     </Style>
     <Style Selector="Button.headbutton">
       <Setter Property="FontSize" Value="11" />
@@ -58,7 +81,19 @@
   </UserControl.Styles>
   <Grid ColumnDefinitions="1*,8,2*,8,2*" Margin="8">
     <DockPanel Grid.Column="0">
-      <TextBlock DockPanel.Dock="Top" Classes="colhead" Text="Repositories" />
+      <Grid DockPanel.Dock="Top" Classes="header" ColumnDefinitions="*,Auto">
+        <Panel Classes="headtitle">
+          <TextBlock Classes="colhead" Margin="0" Text="Repositories" />
+          <TextBox x:Name="RecentFilterBox" Classes="filter" KeyDown="OnFilterKeyDown" PlaceholderText="Filter repositories"
+                   Text="{Binding State.RecentFilter}"
+                   IsVisible="{Binding #RecentFilterToggle.IsChecked}" />
+        </Panel>
+        <ToggleButton Grid.Column="1" x:Name="RecentFilterToggle" Classes="tool"
+                      IsCheckedChanged="OnFilterToggled"
+                      ToolTip.Tip="Filter (Ctrl+F, or just start typing in the list) - show only the repositories whose path contains every word typed">
+          <Image Source="{x:Static app:Images.Filter}" />
+        </ToggleButton>
+      </Grid>
       <StackPanel DockPanel.Dock="Bottom" Spacing="4" Margin="0,4,0,0">
         <Button HorizontalAlignment="Stretch" Click="OnOpenRepository">
           <StackPanel Orientation="Horizontal" Spacing="6">
@@ -74,26 +109,38 @@
         </Button>
       </StackPanel>
       <ListBox x:Name="RecentList" ItemsSource="{Binding Recents}" DoubleTapped="OnRecentDoubleTapped"
+               TextInput="OnListTextInput" KeyDown="OnListKeyDown"
                FontSize="13" ScrollViewer.HorizontalScrollBarVisibility="Disabled" />
     </DockPanel>
     <DockPanel Grid.Column="2">
-      <DockPanel DockPanel.Dock="Top" Margin="0,0,0,4">
-        <Button DockPanel.Dock="Right" Classes="tool" Click="OnPrRefresh"
-                ToolTip.Tip="Refresh - re-read the open pull requests from GitHub">
-          <Image Source="{x:Static app:Images.Refresh}" />
-        </Button>
-        <TextBlock DockPanel.Dock="Left" Classes="colhead" Margin="0"
-                   Text="{Binding State.PrColumnHeader}" />
-        <controls:WaveSpinner SquareSize="4" Width="60" Margin="8,0,0,0"
-                              HorizontalAlignment="Left" VerticalAlignment="Center"
-                              IsVisible="{Binding PrList.State.Loading}" />
-      </DockPanel>
+      <Grid DockPanel.Dock="Top" Classes="header" ColumnDefinitions="*,Auto">
+        <Panel Classes="headtitle">
+          <TextBlock Classes="colhead" Margin="0" Text="{Binding State.PrColumnHeader}" />
+          <TextBox x:Name="PrFilterBox" Classes="filter" KeyDown="OnFilterKeyDown" PlaceholderText="Filter pull requests"
+                   Text="{Binding State.PrFilter}"
+                   IsVisible="{Binding #PrFilterToggle.IsChecked}" />
+        </Panel>
+        <StackPanel Grid.Column="1" Orientation="Horizontal">
+          <controls:WaveSpinner SquareSize="4" Width="60" Margin="8,0,0,0"
+                                VerticalAlignment="Center"
+                                IsVisible="{Binding PrList.State.Loading}" />
+          <ToggleButton x:Name="PrFilterToggle" Classes="tool" IsCheckedChanged="OnFilterToggled"
+                        ToolTip.Tip="Filter (Ctrl+F, or just start typing in the list) - show only the pull requests matching every word typed, by number, title, author, head branch or target branch">
+            <Image Source="{x:Static app:Images.Filter}" />
+          </ToggleButton>
+          <Button Classes="tool" Click="OnPrRefresh"
+                  ToolTip.Tip="Refresh - re-read the open pull requests from GitHub">
+            <Image Source="{x:Static app:Images.Refresh}" />
+          </Button>
+        </StackPanel>
+      </Grid>
       <!-- An empty list is an answer only when it says which one: no pull requests, or no
            GitHub to ask. -->
       <TextBlock DockPanel.Dock="Bottom" Margin="2,4,0,0" FontSize="12" Opacity="0.75"
                  TextWrapping="Wrap" Text="{Binding PrList.State.Status}"
                  IsVisible="{Binding !PrList.Items.Count}" />
-      <ListBox x:Name="PrListBox" ItemsSource="{Binding PrList.Items}" DoubleTapped="OnPrDoubleTapped"
+      <ListBox x:Name="PrListBox" ItemsSource="{Binding Prs}" DoubleTapped="OnPrDoubleTapped"
+               TextInput="OnListTextInput" KeyDown="OnListKeyDown"
                ScrollViewer.HorizontalScrollBarVisibility="Disabled">
         <ListBox.ContextMenu>
           <ContextMenu>
@@ -154,31 +201,43 @@
       <TextBlock DockPanel.Dock="Bottom" Margin="2,4,0,0" FontSize="12" Opacity="0.75"
                  TextWrapping="Wrap" Text="{Binding State.RefsStatus}"
                  IsVisible="{Binding State.RefsStatus, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
-      <DockPanel DockPanel.Dock="Top" Margin="0,0,0,4">
-        <Button DockPanel.Dock="Right" Classes="tool" Click="OnRefsRefresh"
-                ToolTip.Tip="Refresh - re-read branches and stashes from the repository">
-          <Image Source="{x:Static app:Images.Refresh}" />
-        </Button>
-        <Button DockPanel.Dock="Right" Classes="tool" Click="OnFetch"
-                ToolTip.Tip="Fetch - git fetch origin: update the remote-tracking refs, then re-read both lists. Branches whose sync state reads 'differs' need this before it can be measured.">
-          <Image Source="{x:Static app:Images.Fetch}" />
-        </Button>
-        <controls:WaveSpinner DockPanel.Dock="Right" SquareSize="4" Width="60" Margin="0,0,8,0"
-                              VerticalAlignment="Center" IsVisible="{Binding State.RefsLoading}" />
-        <StackPanel Orientation="Horizontal" Spacing="12">
-          <RadioButton x:Name="BranchesMode" Classes="colhead" GroupName="RefKind"
-                       Content="{Binding State.BranchesLabel}"
-                       IsChecked="True" IsCheckedChanged="OnRefKindChanged" />
-          <RadioButton x:Name="StashesMode" Classes="colhead" GroupName="RefKind"
-                       Content="{Binding State.StashesLabel}"
-                       IsCheckedChanged="OnRefKindChanged"
-                       ToolTip.Tip="Review a stash as the diff between the commit it was taken on and the stashed state" />
+      <Grid DockPanel.Dock="Top" Classes="header" ColumnDefinitions="*,Auto">
+        <Panel Classes="headtitle">
+          <StackPanel Orientation="Horizontal" Spacing="8">
+            <RadioButton x:Name="BranchesMode" Classes="colhead" GroupName="RefKind"
+                         Content="{Binding State.BranchesLabel}"
+                         IsChecked="True" IsCheckedChanged="OnRefKindChanged" />
+            <RadioButton x:Name="StashesMode" Classes="colhead" GroupName="RefKind"
+                         Content="{Binding State.StashesLabel}"
+                         IsCheckedChanged="OnRefKindChanged"
+                         ToolTip.Tip="Review a stash as the diff between the commit it was taken on and the stashed state" />
+          </StackPanel>
+          <TextBox x:Name="BranchFilterBox" Classes="filter" KeyDown="OnFilterKeyDown" PlaceholderText="Filter branches"
+                   Text="{Binding State.BranchFilter}"
+                   IsVisible="{Binding #BranchFilterToggle.IsChecked}" />
+        </Panel>
+        <StackPanel Grid.Column="1" Orientation="Horizontal">
+          <controls:WaveSpinner SquareSize="4" Width="60" Margin="0,0,8,0"
+                                VerticalAlignment="Center" IsVisible="{Binding State.RefsLoading}" />
+          <ToggleButton x:Name="BranchFilterToggle" Classes="tool" IsCheckedChanged="OnFilterToggled"
+                        ToolTip.Tip="Filter (Ctrl+F, or just start typing in the list) - show only the branches or stashes matching every word typed, by name, commit subject or pull request number">
+            <Image Source="{x:Static app:Images.Filter}" />
+          </ToggleButton>
+          <Button Classes="tool" Click="OnFetch"
+                  ToolTip.Tip="Fetch - git fetch origin: update the remote-tracking refs, then re-read both lists. Branches whose sync state reads 'differs' need this before it can be measured.">
+            <Image Source="{x:Static app:Images.Fetch}" />
+          </Button>
+          <Button Classes="tool" Click="OnRefsRefresh"
+                  ToolTip.Tip="Refresh - re-read branches and stashes from the repository">
+            <Image Source="{x:Static app:Images.Refresh}" />
+          </Button>
         </StackPanel>
-      </DockPanel>
+      </Grid>
       <TextBlock DockPanel.Dock="Bottom" Margin="0,4,0,0" FontSize="12" Opacity="0.85" TextWrapping="Wrap"
                  Text="{Binding State.Status}"
                  IsVisible="{Binding State.Status, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
       <ListBox x:Name="BranchList" ItemsSource="{Binding Branches}" DoubleTapped="OnBranchDoubleTapped"
+               TextInput="OnListTextInput" KeyDown="OnListKeyDown"
                ScrollViewer.HorizontalScrollBarVisibility="Disabled">
         <ListBox.ContextMenu>
           <ContextMenu>
