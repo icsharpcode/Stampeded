@@ -107,10 +107,13 @@ public sealed class DiffLineNumberMargin : AbstractMargin
 			if (IsContextGapRow?.Invoke(lineNumber) == true)
 			{
 				double middle = top + visualLine.Height / 2;
+				// Under the number the row would have carried, which is the first of the lines
+				// it hides: right-aligned numbers vary in width, so centering on the column's
+				// field would leave the dots beside the digits rather than under them.
 				if (ShowsOld)
-					DrawEllipsis(context, col1Right - digitWidth / 2, middle, numberBrush);
+					DrawEllipsis(context, col1Right - HalfNumber(tag.OldLine), middle, numberBrush);
 				if (ShowsNew)
-					DrawEllipsis(context, newRight - digitWidth / 2, middle, numberBrush);
+					DrawEllipsis(context, newRight - HalfNumber(tag.NewLine), middle, numberBrush);
 			}
 			else
 			{
@@ -136,6 +139,11 @@ public sealed class DiffLineNumberMargin : AbstractMargin
 				context.FillRectangle(strip, new Rect(stripX - StripWidth, top, StripWidth, visualLine.Height));
 		}
 	}
+
+	/// <summary>Half the width of a line number as it would be drawn, or of the column's field
+	/// when the line has no number on that side.</summary>
+	double HalfNumber(int line)
+		=> (line > 0 ? Measure(line.ToString(CultureInfo.InvariantCulture)).Width : digits * digitWidth) / 2;
 
 	/// <summary>Three dots stacked where a line number would be.</summary>
 	static void DrawEllipsis(DrawingContext context, double centerX, double centerY, IBrush brush)
