@@ -153,14 +153,16 @@ public partial class MainWindow : Window
 	{
 		if (App.Workspace is not { } workspace)
 			return;
-		var target = await new GoToWindow(workspace.Files, workspace.CurrentFile?.Path).ShowDialog<GoToTarget?>(this);
+		var target = await new GoToWindow(workspace, workspace.CurrentFile?.Path).ShowDialog<GoToTarget?>(this);
 		if (target is null)
 			return;
-		string? path = target.File?.Path ?? workspace.CurrentFile?.Path;
-		if (target.Line is { } line && path is not null)
-			await workspace.NavigateToFileLineAsync(path, line, oldSide: false, record: true);
-		else if (target.File is { } file)
-			await workspace.OpenFileAsync(file);
+		string? path = target.Path ?? workspace.CurrentFile?.Path;
+		if (path is null)
+			return;
+		// Everything goes through the one navigation: it opens a file of the change as its
+		// diff, anything else as a source view read from the head revision, reveals a line
+		// hidden in a context gap, and records the jump for Alt+Left.
+		await workspace.NavigateToFileLineAsync(path, target.Line ?? 1, oldSide: false, record: true);
 	}
 
 	void OnOpenFromUrl(object? s, RoutedEventArgs e) => PromptUrlAsync().HandleExceptions();

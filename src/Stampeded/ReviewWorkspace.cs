@@ -1804,6 +1804,44 @@ public sealed class ReviewWorkspace(string repoPath)
 		return await sem!.FindOccurrencesInFileAsync(symbol, relPath, CancellationToken.None);
 	}
 
+	/// <summary>
+	/// Every file the head revision has, repository-relative, read once per head. The list is
+	/// the revision's rather than a checkout's, so it holds before a worktree exists and never
+	/// offers a file that only some working tree has.
+	/// </summary>
+	public async Task<IReadOnlyList<string>> ListHeadFilesAsync(CancellationToken ct = default)
+	{
+		if (HeadSha is not { } head)
+			return [];
+		if (headFiles is { } cached && headFilesFor == head)
+			return cached;
+		try
+		{
+			var files = await Git.ListFilesAsync(head, ct);
+			headFiles = files;
+			headFilesFor = head;
+			return files;
+		}
+		catch (ToolFailedException)
+		{
+			// A revision the object database cannot list is one nothing else could read
+			// either; the caller shows what it has.
+			return [];
+		}
+	}
+
+	/// <summary>Source declarations matching a name pattern, for going to one. Answers empty
+	/// while semantics are still loading rather than waiting for them: this runs against every
+	/// keystroke, and a box that stops responding is worse than one that fills in late.</summary>
+	public Task<IReadOnlyList<Core.Roslyn.DeclarationHit>> FindDeclarationsAsync(
+		string pattern, int max, CancellationToken ct)
+		=> IsReady(Semantics)
+			? Semantics!.FindDeclarationsAsync(pattern, max, ct)
+			: Task.FromResult<IReadOnlyList<Core.Roslyn.DeclarationHit>>([]);
+
+	IReadOnlyList<string>? headFiles;
+	string? headFilesFor;
+
 	/// <summary>Opens (or activates) a file at a blob line. Head side: the review diff when
 	/// the file is in the PR, else a head source view. Base side: the review diff mapped via
 	/// the old line, else a base source view.</summary>

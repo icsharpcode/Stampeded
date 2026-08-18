@@ -213,6 +213,17 @@ public sealed class GitService(string repoPath)
 		=> (await ExternalTool.RunAsync("git", ["status", "--porcelain"], worktreePath, ct)).Trim().Length > 0;
 
 	/// <summary>
+	/// Every file a revision has, repository-relative. Read from the object database rather
+	/// than from a checkout, so it is the revision's list and not whatever a working tree
+	/// happens to hold - and so it costs nothing when no checkout exists yet.
+	/// </summary>
+	public async Task<IReadOnlyList<string>> ListFilesAsync(string revision, CancellationToken ct = default)
+	{
+		string output = await RunAsync(ct, "ls-tree", "-r", "--name-only", "-z", revision);
+		return output.Split('\0', StringSplitOptions.RemoveEmptyEntries);
+	}
+
+	/// <summary>
 	/// A checkout's current contents against a commit: everything `git diff &lt;base&gt;` reports
 	/// (staged and unstaged alike, since the comparison is with the working tree), plus the
 	/// untracked files, which that diff omits and which are read individually so the index

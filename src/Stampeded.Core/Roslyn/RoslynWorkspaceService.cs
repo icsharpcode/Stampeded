@@ -28,6 +28,9 @@ public sealed record SemanticToken(int Line, int Column, int Length, string Clas
 
 public sealed record ChangedMember(string Display, string Kind, int FirstLine);
 
+/// <summary>A declaration found by name: where it is, and what it is called in.</summary>
+public sealed record DeclarationHit(string Name, string Container, string Kind, string RelPath, int Line);
+
 /// <summary>
 /// Source semantics over one checked-out worktree: an MSBuildWorkspace when the solution
 /// loads (NuGet restore is run first so the design-time build sees its references), an
@@ -711,6 +714,49 @@ public sealed class RoslynWorkspaceService : IDisposable
 			return null;
 		int indent = content.Length - content.TrimStart().Length;
 		return MemberAtPosition(semanticModel, await document.GetSyntaxRootAsync(ct), textLine.Start + indent, ct);
+	}
+
+	/// <summary>
+	/// Declarations of the loaded solution whose name matches a pattern, for going to one by
+	/// name. Roslyn's own pattern matcher does the matching, so it is the one a reader knows
+	/// from an IDE: a prefix, a substring, or the capitals of a camel-cased name ("RWS" finds
+	/// RoslynWorkspaceService).
+	///
+	/// Source declarations only. Everything in metadata would drown the answer in framework
+	/// members that no file in front of the reader declares.
+	/// </summary>
+	public async Task<IReadOnlyList<DeclarationHit>> FindDeclarationsAsync(string pattern, int max, CancellationToken ct)
+	{
+		if (solution is null || pattern.Length == 0)
+			return [];
+		var found = await SymbolFinder.FindSourceDeclarationsWithPatternAsync(
+			solution, pattern, SymbolFilter.TypeAndMember, ct);
+		var hits = new List<DeclarationHit>();
+		foreach (var symbol in found)
+		{
+			if (ct.IsCancellationRequested)
+				break;
+			// Implicitly declared symbols - a record's copy constructor, a field's backing
+			// store - have a location, but not one anybody typed.
+			if (symbol.IsImplicitlyDeclared)
+				continue;
+			var location = symbol.Locations.FirstOrDefault(l => l.IsInSource);
+			if (location?.SourceTree?.FilePath is not { Length: > 0 } path)
+				continue;
+			if (ToRelativePath(path) is not { } relPath)
+				continue;
+			hits.Add(new DeclarationHit(
+				symbol.Name,
+				symbol.ContainingSymbol is { } container && container.Kind != SymbolKind.Namespace
+					? container.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat)
+					: symbol.ContainingNamespace?.ToDisplayString() ?? "",
+				MemberKindOf(symbol),
+				relPath,
+				location.GetLineSpan().StartLinePosition.Line + 1));
+			if (hits.Count >= max)
+				break;
+		}
+		return hits;
 	}
 
 	/// <summary>Icon-grade member kind: named types report their TypeKind (Class, Struct,

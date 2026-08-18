@@ -5,105 +5,223 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Media;
+using Avalonia.Threading;
 
 using Stampeded.Core.Diff;
+using Stampeded.Core.Roslyn;
 
 namespace Stampeded;
 
-/// <summary>Where a "Go to" ended: a file of the review, a line, or both.</summary>
-public sealed record GoToTarget(FileDiff? File, int? Line);
+/// <summary>Where a "Go to" ended: a path of the repository, and a line in it. Either can
+/// stand alone - a path without a line opens the file, a line without a path moves within the
+/// document in front.</summary>
+public sealed record GoToTarget(string? Path, int? Line);
 
-/// <summary>A changed file as the dialog lists it.</summary>
-public sealed class GoToRow(FileDiff file, int? line)
+/// <summary>What a row of the dialog offers, and where it came from.</summary>
+public enum GoToKind
 {
-	public FileDiff File { get; } = file;
+	ChangedFile,
+	Symbol,
+	RepositoryFile,
+}
 
-	public string Path => File.Path;
+/// <summary>A row of the Go to list.</summary>
+public sealed class GoToRow(GoToKind kind, string path, int? line, string title, string detail, string badge)
+{
+	public GoToKind Kind { get; } = kind;
 
-	public string Kind => File.Kind switch {
+	public string Path { get; } = path;
+
+	public int? Line { get; } = line;
+
+	/// <summary>What the row is called: a file's path, or a symbol's name.</summary>
+	public string Title { get; } = title;
+
+	/// <summary>Where it lives: the containing type for a symbol, nothing for a file.</summary>
+	public string Detail { get; } = detail;
+
+	/// <summary>The letter or word in front: the change kind of a file, the kind of a symbol.</summary>
+	public string Badge { get; } = badge;
+
+	public string LineTag => Line is { } l ? $":{l.ToString(CultureInfo.InvariantCulture)}" : "";
+
+	public IBrush BadgeBrush => Kind switch {
+		GoToKind.ChangedFile => Changed,
+		GoToKind.Symbol => SymbolColor,
+		_ => Muted,
+	};
+
+	static readonly IBrush Changed = new SolidColorBrush(Color.Parse("#2EA043"));
+	static readonly IBrush SymbolColor = new SolidColorBrush(Color.Parse("#3794FF"));
+	static readonly IBrush Muted = new SolidColorBrush(Color.Parse("#8B949E"));
+}
+
+/// <summary>
+/// One box for everything "go to" can mean: a file of the change, a file of the repository, a
+/// declaration by name, and a line in any of them.
+///
+/// What is typed before a colon searches, what follows it is the line, and a bare number is a
+/// line in the document in front - no path is spelled with digits alone. The three kinds of
+/// answer are ranked rather than separated: the change being read comes first, then the
+/// symbols matching, then the rest of the repository, because that is the order in which a
+/// reader means them.
+///
+/// Symbols come from Roslyn's own pattern matcher, so "RWS" finds RoslynWorkspaceService the
+/// way an IDE would. They arrive behind the files: the solution is large, the query runs
+/// against every keystroke, and a box that waits for it is a box that stutters.
+/// </summary>
+public partial class GoToWindow : Window
+{
+	readonly ReviewWorkspace? workspace;
+	readonly string? currentPath;
+	readonly HashSet<string> changedPaths = new(StringComparer.Ordinal);
+	readonly DispatcherTimer symbolDebounce = new() { Interval = TimeSpan.FromMilliseconds(150) };
+	IReadOnlyList<string> repositoryFiles = [];
+	CancellationTokenSource? symbolSearch;
+	string symbolsFor = "";
+	IReadOnlyList<DeclarationHit> symbols = [];
+
+	/// <summary>How many rows of each kind are worth showing. A list nobody scrolls to the end
+	/// of is a list that only costs time to build.</summary>
+	const int PerKindLimit = 40;
+
+	public ObservableCollection<GoToRow> Rows { get; } = [];
+
+	public GoToWindow()
+	{
+		InitializeComponent();
+		DataContext = this;
+	}
+
+	public GoToWindow(ReviewWorkspace workspace, string? currentPath) : this()
+	{
+		this.workspace = workspace;
+		this.currentPath = currentPath;
+		foreach (var file in workspace.Files)
+			changedPaths.Add(file.Path);
+		symbolDebounce.Tick += (_, _) => {
+			symbolDebounce.Stop();
+			SearchSymbolsAsync().HandleExceptions();
+		};
+		InputBox.TextChanged += (_, _) => {
+			Refresh();
+			symbolDebounce.Stop();
+			symbolDebounce.Start();
+		};
+		Opened += (_, _) => {
+			InputBox.Focus();
+			Refresh();
+			LoadRepositoryFilesAsync().HandleExceptions();
+		};
+		Closed += (_, _) => symbolSearch?.Cancel();
+	}
+
+	async Task LoadRepositoryFilesAsync()
+	{
+		if (workspace is null)
+			return;
+		repositoryFiles = await workspace.ListHeadFilesAsync();
+		Refresh();
+	}
+
+	/// <summary>Runs the symbol query for what is typed now, cancelling whatever the previous
+	/// keystroke started.</summary>
+	async Task SearchSymbolsAsync()
+	{
+		if (workspace is null)
+			return;
+		var (filter, _) = Split(InputBox.Text ?? "");
+		if (filter.Length < 2)
+		{
+			symbols = [];
+			symbolsFor = filter;
+			Refresh();
+			return;
+		}
+		symbolSearch?.Cancel();
+		var cts = new CancellationTokenSource();
+		symbolSearch = cts;
+		try
+		{
+			var hits = await workspace.FindDeclarationsAsync(filter, PerKindLimit, cts.Token);
+			if (cts.IsCancellationRequested)
+				return;
+			symbols = hits;
+			symbolsFor = filter;
+			Refresh();
+		}
+		catch (OperationCanceledException)
+		{
+		}
+	}
+
+	void Refresh()
+	{
+		var (filter, line) = Split(InputBox.Text ?? "");
+		int selected = Math.Max(0, Rows.Count > 0 ? Matches.SelectedIndex : 0);
+		Rows.Clear();
+
+		// The change first, and within it the file in front: a bare line number is a move
+		// inside what is being read, which is the common case.
+		foreach (var file in Changed(filter).Take(PerKindLimit))
+			Rows.Add(new GoToRow(GoToKind.ChangedFile, file.Path, line, file.Path, "", Marker(file)));
+
+		// Symbols only carry their own line: the number typed is about a file.
+		if (symbolsFor == filter)
+		{
+			foreach (var hit in symbols)
+				Rows.Add(new GoToRow(GoToKind.Symbol, hit.RelPath, hit.Line, hit.Name, Where(hit), hit.Kind.ToLowerInvariant()));
+		}
+
+		foreach (var path in repositoryFiles.Where(p => !changedPaths.Contains(p)))
+		{
+			if (Rows.Count >= PerKindLimit * 3)
+				break;
+			if (WordFilter.Matches(filter, path))
+				Rows.Add(new GoToRow(GoToKind.RepositoryFile, path, line, path, "", ""));
+		}
+
+		if (Rows.Count > 0)
+			Matches.SelectedIndex = Math.Min(selected, Rows.Count - 1);
+		HintText.Text = Hint(filter, line);
+	}
+
+	IEnumerable<FileDiff> Changed(string filter)
+	{
+		if (workspace is null)
+			return [];
+		return workspace.Files
+			.Where(f => WordFilter.Matches(filter, f.Path))
+			.OrderBy(f => f.Path == currentPath ? 0 : 1);
+	}
+
+	static string Where(DeclarationHit hit)
+		=> hit.Container.Length > 0 ? $"{hit.Container}  -  {hit.RelPath}" : hit.RelPath;
+
+	static string Marker(FileDiff file) => file.Kind switch {
 		FileChangeKind.Added => "A",
 		FileChangeKind.Deleted => "D",
 		FileChangeKind.Renamed => "R",
 		_ => "M",
 	};
 
-	public IBrush KindBrush => File.Kind switch {
-		FileChangeKind.Added => Added,
-		FileChangeKind.Deleted => Removed,
-		_ => Other,
-	};
-
-	/// <summary>The line the dialog would land on, shown on every row so the number typed is
-	/// visibly part of the choice rather than something that happens afterwards.</summary>
-	public string LineTag => line is { } l ? $":{l.ToString(CultureInfo.InvariantCulture)}" : "";
-
-	static readonly IBrush Added = new SolidColorBrush(Color.Parse("#2EA043"));
-	static readonly IBrush Removed = new SolidColorBrush(Color.Parse("#F85149"));
-	static readonly IBrush Other = new SolidColorBrush(Color.Parse("#8B949E"));
-}
-
-/// <summary>
-/// One box for the two things a reader means by "go to": a file of the review, and a line in
-/// it. What is typed before a colon filters the changed files by word, what follows it is the
-/// line - so "thememan:120" and "120" and "thememan" are all sentences this understands, the
-/// bare number meaning the file already in front.
-///
-/// Closes with the choice, or null when nothing was picked.
-/// </summary>
-public partial class GoToWindow : Window
-{
-	readonly IReadOnlyList<FileDiff> allFiles;
-	readonly string? currentPath;
-
-	public ObservableCollection<GoToRow> Files { get; } = [];
-
-	public GoToWindow()
-	{
-		InitializeComponent();
-		allFiles = [];
-		DataContext = this;
-	}
-
-	public GoToWindow(IReadOnlyList<FileDiff> files, string? currentPath) : this()
-	{
-		allFiles = files;
-		this.currentPath = currentPath;
-		InputBox.TextChanged += (_, _) => Refresh();
-		Opened += (_, _) => {
-			InputBox.Focus();
-			Refresh();
-		};
-	}
-
-	void Refresh()
-	{
-		var (filter, line) = Split(InputBox.Text ?? "");
-		Files.Clear();
-		// With nothing typed for the file, the file in front leads: a bare line number is a
-		// move inside what is being read, and that is the common case.
-		foreach (var file in allFiles.OrderBy(f => f.Path == currentPath ? 0 : 1))
-		{
-			if (WordFilter.Matches(filter, file.Path))
-				Files.Add(new GoToRow(file, line));
-		}
-		if (Matches.SelectedIndex < 0 && Files.Count > 0)
-			Matches.SelectedIndex = 0;
-		HintText.Text = Hint(filter, line);
-	}
-
 	string Hint(string filter, int? line)
 	{
-		if (allFiles.Count == 0)
-			return "No review is open, so there are no files to go to. A line number moves within the document in front.";
-		if (Files.Count == 0)
-			return filter.Length > 0 ? $"No changed file matches '{filter}'." : "";
-		return line is { } l && filter.Length == 0 && currentPath is not null
-			? $"Enter goes to line {l} of {currentPath}; pick another file to go to line {l} there."
-			: "Enter opens the selected file. Add ':' and a number to land on a line.";
+		if (Rows.Count == 0)
+		{
+			return filter.Length > 0
+				? $"Nothing matches '{filter}'."
+				: "Type a file, a symbol, or a line number.";
+		}
+		if (line is { } l && filter.Length == 0 && currentPath is not null)
+			return $"Enter goes to line {l} of {currentPath}; pick another file to go to line {l} there.";
+		return workspace is { SemanticsReady: false }
+			? "Enter opens what is selected. Symbols appear once semantics have loaded."
+			: "Enter opens what is selected. Add ':' and a number to land on a line.";
 	}
 
-	/// <summary>The file words and the line, split at the last colon so a path holding one -
-	/// which a Windows-style path can - still filters.</summary>
+	/// <summary>The words to search for and the line, split at the last colon so a path
+	/// holding one still searches.</summary>
 	static (string Filter, int? Line) Split(string text)
 	{
 		string trimmed = text.Trim();
@@ -113,7 +231,6 @@ public partial class GoToWindow : Window
 		{
 			return (trimmed[..colon].Trim(), after > 0 ? after : null);
 		}
-		// A bare number is a line, not a file to look for: no path is spelled with digits alone.
 		return int.TryParse(trimmed, NumberStyles.None, CultureInfo.InvariantCulture, out int only)
 			? ("", only > 0 ? only : null)
 			: (trimmed, null);
@@ -124,12 +241,18 @@ public partial class GoToWindow : Window
 		switch (e.Key)
 		{
 			// The list is driven from the box, which never loses focus: a reader typing a name
-			// and stepping to the second match should not have to reach for the mouse or Tab.
+			// and stepping to the second match should not have to reach for the mouse.
 			case Key.Down:
 				Step(1);
 				break;
 			case Key.Up:
 				Step(-1);
+				break;
+			case Key.PageDown:
+				Step(10);
+				break;
+			case Key.PageUp:
+				Step(-10);
 				break;
 			case Key.Enter:
 				Accept();
@@ -142,9 +265,9 @@ public partial class GoToWindow : Window
 
 	void Step(int delta)
 	{
-		if (Files.Count == 0)
+		if (Rows.Count == 0)
 			return;
-		int index = Math.Clamp(Matches.SelectedIndex + delta, 0, Files.Count - 1);
+		int index = Math.Clamp(Matches.SelectedIndex + delta, 0, Rows.Count - 1);
 		Matches.SelectedIndex = index;
 		Matches.ScrollIntoView(index);
 	}
@@ -155,12 +278,15 @@ public partial class GoToWindow : Window
 	{
 		var (filter, line) = Split(InputBox.Text ?? "");
 		// A line on its own belongs to the document in front, which is not in the list at all
-		// when no review is open - a decompiled tab, a source view, the keyboard-shortcut page.
-		var file = filter.Length == 0 && line is not null
-			? null
-			: (Matches.SelectedItem as GoToRow)?.File;
-		if (file is null && line is null)
+		// when it is a decompiled tab or a source view rather than a file of the change.
+		if (filter.Length == 0 && line is not null)
+		{
+			Close(new GoToTarget(null, line));
 			return;
-		Close(new GoToTarget(file, line));
+		}
+		if (Matches.SelectedItem is not GoToRow row)
+			return;
+		// A symbol knows where it is; the number typed alongside a file is the reader's.
+		Close(new GoToTarget(row.Path, row.Kind == GoToKind.Symbol ? row.Line : line));
 	}
 }
