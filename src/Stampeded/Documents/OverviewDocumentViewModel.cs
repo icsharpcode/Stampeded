@@ -299,7 +299,12 @@ public class OverviewDocumentViewModel : Document
 		}
 		if (totals.Rows.Count > 20)
 			FileCosts.Add(new FileCostRow("", "", "", "", "", $"... and {totals.Rows.Count - 20} more file(s)"));
-		State.FilesHeader = totals.Rows.Count == 0 ? "" : $"{totals.Rows.Count} file(s); high churn deserves extra caution";
+		// The commit count is repeated here from the Commits section, which is folded: how many
+		// commits a change is spread over belongs with how many files it touches.
+		string commits = workspace.Scopes.CommitCount is { } count ? $" in {count} commit(s)" : "";
+		State.FilesHeader = totals.Rows.Count == 0
+			? ""
+			: $"{totals.Rows.Count} file(s){commits}; high churn deserves extra caution";
 	}
 
 	async Task LoadCommitsAsync()

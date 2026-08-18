@@ -163,6 +163,11 @@ public sealed class ReviewScopes(ReviewWorkspace workspace)
 	/// first reader of the series rather than pay for a log of its own.</summary>
 	int? knownCommitCount;
 
+	/// <summary>How many commits the review range holds, once something has asked for them.
+	/// Null until then - saying nothing beats saying zero about a question not yet put to
+	/// git.</summary>
+	public int? CommitCount => knownCommitCount;
+
 	/// <summary>
 	/// The commits of the review, newest first, fetched once per range. Everything that shows
 	/// the series - the overview, the commits pane, the per-commit reader - was asking git for

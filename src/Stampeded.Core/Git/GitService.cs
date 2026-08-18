@@ -331,6 +331,34 @@ public sealed class GitService(string repoPath)
 	}
 
 	/// <summary>
+	/// How many commits each local branch has that a base does not, keyed by branch name -
+	/// which is how many commits reviewing it would mean reading.
+	///
+	/// One call for every branch, because git can answer it for all of them at once
+	/// (%(ahead-behind:...), git 2.41 and later). Asked branch by branch it was one process
+	/// each, and a repository has as many branches as it has.
+	/// </summary>
+	public async Task<IReadOnlyDictionary<string, int>> GetAheadCountsAsync(
+		string baseRef, CancellationToken ct = default)
+	{
+		string output = await RunAsync(ct,
+			"for-each-ref", "refs/heads", $"--format=%(refname:short)%09%(ahead-behind:{baseRef})");
+		var counts = new Dictionary<string, int>(StringComparer.Ordinal);
+		foreach (string line in output.ReplaceLineEndings("\n").Split('\n', StringSplitOptions.RemoveEmptyEntries))
+		{
+			// "<branch>\t<ahead> <behind>", and an empty field for a branch git could not
+			// compare - an older git, or a base that is not there.
+			var parts = line.Split('\t');
+			if (parts.Length != 2)
+				continue;
+			var counted = parts[1].Split(' ', StringSplitOptions.RemoveEmptyEntries);
+			if (counted.Length == 2 && int.TryParse(counted[0], out int ahead))
+				counts[parts[0]] = ahead;
+		}
+		return counts;
+	}
+
+	/// <summary>
 	/// Whether every commit on <paramref name="branch"/> already exists in
 	/// <paramref name="intoRef"/> as an equivalent patch, which is how a rebase-merged branch
 	/// looks: same changes, different commits, so ancestry says no and this says yes.

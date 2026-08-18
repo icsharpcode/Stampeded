@@ -306,6 +306,9 @@
                            Margin="0,0,6,0" Foreground="#3794FF" Text="{Binding PrTag}"
                            IsVisible="{Binding HasPrTag}"
                            ToolTip.Tip="This branch has an open pull request" />
+                <TextBlock DockPanel.Dock="Right" FontSize="11" Opacity="0.6" VerticalAlignment="Center"
+                           Margin="0,0,6,0" Text="{Binding CommitsText}" IsVisible="{Binding HasCommits}"
+                           ToolTip.Tip="Commits this branch has that the default base does not - what reviewing it would mean reading" />
                 <!-- Integration state: whether the branch is already in the default branch,
                      and which branch the default one is. -->
                 <TextBlock DockPanel.Dock="Right" FontSize="11" Opacity="0.9" VerticalAlignment="Center"

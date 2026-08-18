@@ -105,12 +105,16 @@ public partial class ExplorerPaneViewModel : Tool
 			? badged.IsWorkingTree ? $"UNCOMMITTED, {position}" : $"COMMIT {position}"
 			: workspace.Scopes.InSinceLastPass ? "SINCE YOUR LAST PASS"
 			: "";
+		// How many commits the whole change is spread over: twenty files in one commit and
+		// twenty files in twenty are different things to read, and this is the line with room
+		// to say so - the section header below it is cut off by this pane's width.
+		string spread = workspace.Scopes.CommitCount is { } count and > 0 ? $", {count} commit(s)" : "";
 		CommitScopeLine = workspace.Scopes.Commit is { } commit
 			? commit.IsWorkingTree
 				? $"Uncommitted work, {position.ToLowerInvariant()}: {commit.Subject}"
 				: $"Commit {position.ToLowerInvariant()}: {commit.Subject}"
 			: workspace.Scopes.InSinceLastPass ? workspace.Scopes.ScopeLine
-			: "Whole change";
+			: $"Whole change{spread}";
 		CommitMessage = workspace.Scopes.Commit?.Message ?? "";
 	}
 

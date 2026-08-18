@@ -42,8 +42,15 @@ public enum MergeState
 /// what the PR is showing.</summary>
 public sealed record BranchRow(BranchInfo Info, string PrTag, int? PrNumber = null, bool IsStash = false,
 	BranchSync? Sync = null, MergeState Merge = MergeState.Unknown, bool IsDefault = false,
-	string? WorktreePath = null)
+	string? WorktreePath = null, int? Commits = null)
 {
+	/// <summary>How many commits this branch has that the default base does not - the size of
+	/// the read it is offering. Blank for a stash, which is one change by construction, and for
+	/// the default branch, which is what everything else is counted against.</summary>
+	public string CommitsText => Commits is { } count && count > 0 ? $"{count} commit(s)" : "";
+
+	public bool HasCommits => CommitsText.Length > 0;
+
 	public bool HasPrTag => PrTag.Length > 0;
 
 	public bool IsBranch => !IsStash;
@@ -163,6 +170,8 @@ public class StartDocumentViewModel : Document
 	// Which checkout has each branch, so a row can offer to open it - and so the reader can
 	// see at a glance which branches are laid out on disk somewhere.
 	IReadOnlyDictionary<string, string> worktreeByBranch = new Dictionary<string, string>();
+	// How many commits each branch is ahead of the default base, read for all of them at once.
+	IReadOnlyDictionary<string, int> aheadByBranch = new Dictionary<string, int>();
 	string defaultBase = "origin/master";
 	string defaultBranch = "master";
 
@@ -226,6 +235,7 @@ public class StartDocumentViewModel : Document
 			rawBranches = await workspace.Git.ListBranchesAsync();
 			rawStashes = await workspace.Git.ListStashesAsync();
 			mergedBranches = await workspace.Git.ListMergedBranchesAsync(defaultBase);
+			aheadByBranch = await workspace.Git.GetAheadCountsAsync(defaultBase);
 			worktreeByBranch = (await workspace.Git.ListWorktreesAsync())
 				.Where(w => w.Branch is not null)
 				.ToDictionary(w => w.Branch!, w => w.Path, StringComparer.Ordinal);
@@ -266,6 +276,7 @@ public class StartDocumentViewModel : Document
 		try
 		{
 			mergedBranches = await workspace.Git.ListMergedBranchesAsync(defaultBase);
+			aheadByBranch = await workspace.Git.GetAheadCountsAsync(defaultBase);
 			worktreeByBranch = (await workspace.Git.ListWorktreesAsync())
 				.Where(w => w.Branch is not null)
 				.ToDictionary(w => w.Branch!, w => w.Path, StringComparer.Ordinal);
@@ -337,9 +348,11 @@ public class StartDocumentViewModel : Document
 			var merge = mergedBranches.Contains(branch.Name)
 				? MergeState.Merged
 				: mergeByBranchSha.GetValueOrDefault(branch.Sha, MergeState.Unknown);
+			bool isDefault = string.Equals(branch.Name, defaultBranch, StringComparison.Ordinal);
 			rows.Add(new BranchRow(branch, tag, prNumber, IsStash: false, sync, merge,
-				IsDefault: string.Equals(branch.Name, defaultBranch, StringComparison.Ordinal),
-				WorktreePath: worktreeByBranch.GetValueOrDefault(branch.Name)));
+				IsDefault: isDefault,
+				WorktreePath: worktreeByBranch.GetValueOrDefault(branch.Name),
+				Commits: isDefault ? null : aheadByBranch.GetValueOrDefault(branch.Name)));
 		}
 		foreach (var row in rows.OrderBy(r => r.HasPrTag ? 0 : 1))
 		{
