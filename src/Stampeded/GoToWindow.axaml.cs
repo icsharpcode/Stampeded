@@ -220,20 +220,31 @@ public partial class GoToWindow : Window
 			: "Enter opens what is selected. Add ':' and a number to land on a line.";
 	}
 
-	/// <summary>The words to search for and the line, split at the last colon so a path
-	/// holding one still searches.</summary>
+	/// <summary>
+	/// The words to search for and the line to land on. Numbers are peeled off the end, so a
+	/// completed entry that already carries one and then gets another - which is what typing a
+	/// line after Tab does - means the number just typed, not a path nobody has.
+	/// </summary>
 	static (string Filter, int? Line) Split(string text)
 	{
-		string trimmed = text.Trim();
-		int colon = trimmed.LastIndexOf(':');
-		if (colon >= 0
-			&& int.TryParse(trimmed[(colon + 1)..].Trim(), NumberStyles.None, CultureInfo.InvariantCulture, out int after))
+		string rest = text.Trim();
+		int? line = null;
+		while (true)
 		{
-			return (trimmed[..colon].Trim(), after > 0 ? after : null);
+			int colon = rest.LastIndexOf(':');
+			if (colon < 0
+				|| !int.TryParse(rest[(colon + 1)..].Trim(), NumberStyles.None, CultureInfo.InvariantCulture, out int number))
+			{
+				break;
+			}
+			line ??= number > 0 ? number : null;
+			rest = rest[..colon].TrimEnd();
 		}
-		return int.TryParse(trimmed, NumberStyles.None, CultureInfo.InvariantCulture, out int only)
+		// A bare number is a line, not something to look for: no path is spelled with digits
+		// alone.
+		return line is null && int.TryParse(rest, NumberStyles.None, CultureInfo.InvariantCulture, out int only)
 			? ("", only > 0 ? only : null)
-			: (trimmed, null);
+			: (rest, line);
 	}
 
 	/// <summary>Escape closes with nothing, wherever focus sits - the box, the list, or a row
@@ -277,15 +288,17 @@ public partial class GoToWindow : Window
 		e.Handled = true;
 	}
 
-	/// <summary>Writes what is selected into the box as its path, so what follows can be typed
-	/// against it - a line number, most of the time. A symbol completes to the file that
-	/// declares it: that is what a line belongs to. Any line already typed is kept.</summary>
+	/// <summary>Writes what is selected into the box as the place it stands for, so what
+	/// follows can be typed against it. A member expands to the file and the line it is
+	/// declared on, which is both what the row was offering and a number the reader can now
+	/// edit; a file keeps whatever line was already typed after it.</summary>
 	void Complete()
 	{
 		if (Matches.SelectedItem is not GoToRow row)
 			return;
-		var (_, line) = Split(InputBox.Text ?? "");
-		InputBox.Text = line is { } l ? $"{row.Path}:{l.ToString(CultureInfo.InvariantCulture)}" : row.Path;
+		InputBox.Text = row.Line is { } line
+			? $"{row.Path}:{line.ToString(CultureInfo.InvariantCulture)}"
+			: row.Path;
 		InputBox.CaretIndex = InputBox.Text.Length;
 	}
 
