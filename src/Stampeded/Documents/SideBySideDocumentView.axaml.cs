@@ -15,8 +15,79 @@ namespace Stampeded.Documents;
 /// Two synchronized editors fed from one alignment; equal line counts (Filler rows on
 /// the shorter side) make scroll sync a plain offset copy with a re-entrancy guard.
 /// </summary>
-public partial class SideBySideDocumentView : UserControl
+public partial class SideBySideDocumentView : UserControl, IReviewDocumentView
 {
+	/// <summary>What this layout carries out today. The rest are declared by the interface and
+	/// answered here with a status line rather than silence, so the difference between the two
+	/// layouts is written down in one place instead of being discovered by pressing a key.
+	/// </summary>
+	public ReviewCommands Supported => ReviewCommands.JumpToHunk | ReviewCommands.GoToDefinition
+		| ReviewCommands.FindReferences;
+
+	public string DocumentId => (DataContext as SideBySideDocumentViewModel)?.Id ?? "";
+
+	/// <summary>The pane the caret is in, which is the one a command means; the left one until
+	/// the reader has been in either.</summary>
+	SideBySidePane? FocusedPane
+		=> Right.TextArea.IsFocused || Right.TextArea.IsKeyboardFocusWithin ? rightPane : leftPane;
+
+	ReviewTextEditor FocusedEditor
+		=> Right.TextArea.IsFocused || Right.TextArea.IsKeyboardFocusWithin ? Right : Left;
+
+	public bool BlameVisible => false;
+
+	/// <summary>Moves the caret to the next row that is part of the change, in the pane the
+	/// reader is in. The tags say which rows those are, and a run of them is one hunk.</summary>
+	public void JumpToHunkCommand(int direction)
+	{
+		var tags = FocusedEditor == Right ? rightTags : leftTags;
+		if (tags is null || tags.Count == 0)
+			return;
+		var editor = FocusedEditor;
+		int line = editor.TextArea.Caret.Line;
+		bool InHunk(int docLine) => docLine >= 1 && docLine <= tags.Count
+			&& tags[docLine - 1].Kind is not (DiffLineKind.Context or DiffLineKind.Filler);
+		// Off the current run first, so stepping does not stop on the row it started in.
+		int next = line;
+		while (InHunk(next) && next + direction >= 1 && next + direction <= tags.Count)
+			next += direction;
+		while (next + direction >= 1 && next + direction <= tags.Count && !InHunk(next))
+			next += direction;
+		if (!InHunk(next))
+			return;
+		editor.TextArea.Caret.Line = next;
+		editor.TextArea.Caret.Column = 1;
+		editor.ScrollToLine(next);
+	}
+
+	public void GoToDefinitionCommand() => FocusedPane?.NavigateToDefinition();
+
+	public void FindReferencesCommand() => FocusedPane?.ShowReferences();
+
+	public void JumpToUncoveredCommand() => NotHere("Coverage");
+
+	public void ToggleBlameCommand() => NotHere("Blame");
+
+	public void CommentAtCaretCommand() => NotHere("Commenting");
+
+	public void HighlightOccurrencesCommand() => NotHere("Highlighting occurrences");
+
+	public void ShowCallGraphCommand() => NotHere("The call graph");
+
+	public void HistoryOfSelectionCommand() => NotHere("History of a selection");
+
+	public void DebugHereCommand() => NotHere("Debug here");
+
+	/// <summary>Records which command the side-by-side layout has not got yet. The menu greys
+	/// these out, so this is for the key presses that reach them anyway: the Log pane is where
+	/// it lands, since a diff in front has no status line of its own.</summary>
+	static void NotHere(string what)
+	{
+		string message = $"{what} is not available in the side-by-side layout yet; the unified one has it.";
+		Core.Infra.CliLog.Write("action", message);
+		App.Workspace?.PostStatus(message);
+	}
+
 	readonly DiffLineNumberMargin leftMargin = new();
 	readonly DiffLineNumberMargin rightMargin = new();
 	SideBySidePane? leftPane;
@@ -54,6 +125,7 @@ public partial class SideBySideDocumentView : UserControl
 	protected override void OnAttachedToVisualTree(Avalonia.VisualTreeAttachmentEventArgs e)
 	{
 		base.OnAttachedToVisualTree(e);
+		ReviewViews.Register(this);
 		Dispatcher.UIThread.Post(WireScrollSync, DispatcherPriority.Loaded);
 		if (App.Workspace is { } ws)
 			ws.SemanticsChanged += OnSemanticsChanged;
@@ -62,6 +134,7 @@ public partial class SideBySideDocumentView : UserControl
 
 	protected override void OnDetachedFromVisualTree(Avalonia.VisualTreeAttachmentEventArgs e)
 	{
+		ReviewViews.Unregister(this);
 		if (App.Workspace is { } ws)
 			ws.SemanticsChanged -= OnSemanticsChanged;
 		base.OnDetachedFromVisualTree(e);
@@ -114,6 +187,7 @@ public partial class SideBySideDocumentView : UserControl
 		base.OnDataContextChanged(e);
 		if (DataContext is not SideBySideDocumentViewModel vm)
 			return;
+		ReviewViews.Register(this);
 		// The side the file still has: a pane's own text carries the filler rows that keep the
 		// two in step, and those are not part of any format.
 		var highlighting = HighlightingService.GetForFile(

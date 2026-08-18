@@ -21,8 +21,17 @@ namespace Stampeded.Documents;
 /// <summary>Payload of a clickable reference span: which side and blob position it names.</summary>
 sealed record TokenRef(bool OldSide, int Line, int Column);
 
-public partial class DiffDocumentView : UserControl
+public partial class DiffDocumentView : UserControl, IReviewDocumentView
 {
+	/// <summary>Every command there is: the unified layout is where they were written, and it
+	/// is what the side-by-side one is measured against.</summary>
+	public ReviewCommands Supported => ReviewCommands.JumpToHunk | ReviewCommands.JumpToUncovered
+		| ReviewCommands.ToggleBlame | ReviewCommands.CommentAtCaret | ReviewCommands.GoToDefinition
+		| ReviewCommands.FindReferences | ReviewCommands.HighlightOccurrences | ReviewCommands.ShowCallGraph
+		| ReviewCommands.HistoryOfSelection | ReviewCommands.DebugHere;
+
+	public string DocumentId => viewModel?.Id ?? "";
+
 	static readonly Color OccurrenceColor = Color.Parse("#5A86C691");
 	static readonly Color DefinitionOccurrenceColor = Color.Parse("#7A86C691");
 
@@ -138,6 +147,7 @@ public partial class DiffDocumentView : UserControl
 	protected override void OnAttachedToVisualTree(Avalonia.VisualTreeAttachmentEventArgs e)
 	{
 		base.OnAttachedToVisualTree(e);
+		ReviewViews.Register(this);
 		MakeActive();
 		if (App.Workspace is { } ws)
 		{
@@ -153,6 +163,7 @@ public partial class DiffDocumentView : UserControl
 
 	protected override void OnDetachedFromVisualTree(Avalonia.VisualTreeAttachmentEventArgs e)
 	{
+		ReviewViews.Unregister(this);
 		if (ActiveView == this)
 			ActiveView = null;
 		if (App.Workspace is { } ws)
@@ -886,6 +897,7 @@ public partial class DiffDocumentView : UserControl
 		if (DataContext is not DiffDocumentViewModel vm)
 			return;
 		viewModel = vm;
+		ReviewViews.Register(this);
 		viewsByDocument.AddOrUpdate(vm, this);
 		vm.CaretRequested += OnCaretRequested;
 		model = vm.Model;

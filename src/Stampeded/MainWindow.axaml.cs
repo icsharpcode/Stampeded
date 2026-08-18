@@ -176,7 +176,14 @@ public partial class MainWindow : Window
 			await App.OpenFromUrlAsync(url);
 	}
 
-	static DiffDocumentView? View => DiffDocumentView.ActiveView;
+	/// <summary>The view of the document in front. Commands go there rather than to whichever
+	/// diff was focused last: with a side-by-side tab in front, that used to be a unified
+	/// document behind it, and pressing a key acted on what the reader could not see.</summary>
+	static IReviewDocumentView? View => ReviewViews.Active;
+
+	/// <summary>Whether the document in front carries out a command, for the menu to grey out
+	/// what this layout has not got.</summary>
+	static bool Has(ReviewCommands command) => View?.Supported.HasFlag(command) == true;
 
 	void OnNextHunk(object? s, RoutedEventArgs e) => View?.JumpToHunkCommand(1);
 	void OnPrevHunk(object? s, RoutedEventArgs e) => View?.JumpToHunkCommand(-1);
@@ -295,13 +302,13 @@ public partial class MainWindow : Window
 		var view = View;
 		var file = App.Workspace?.CurrentFile;
 		MultiRowTabsItem.IsChecked = TabRowsPreference.MultiRow;
-		NextHunkItem.IsEnabled = view is not null;
-		PrevHunkItem.IsEnabled = view is not null;
-		NextUncoveredItem.IsEnabled = view is not null;
+		NextHunkItem.IsEnabled = Has(ReviewCommands.JumpToHunk);
+		PrevHunkItem.IsEnabled = Has(ReviewCommands.JumpToHunk);
+		NextUncoveredItem.IsEnabled = Has(ReviewCommands.JumpToUncovered);
 		SideBySideItem.IsEnabled = file is not null;
-		BlameItem.IsEnabled = view is not null;
+		BlameItem.IsEnabled = Has(ReviewCommands.ToggleBlame);
 		BlameItem.IsChecked = view?.BlameVisible ?? false;
-		DebugHereItem.IsEnabled = view is not null;
-		HistoryOfSelectionItem.IsEnabled = view is not null;
+		DebugHereItem.IsEnabled = Has(ReviewCommands.DebugHere);
+		HistoryOfSelectionItem.IsEnabled = Has(ReviewCommands.HistoryOfSelection);
 	}
 }
