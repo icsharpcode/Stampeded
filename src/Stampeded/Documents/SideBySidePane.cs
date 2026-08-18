@@ -28,6 +28,9 @@ sealed class SideBySidePane
 	readonly ReferenceElementGenerator referenceGenerator = new(_ => true);
 	readonly Dictionary<int, int> blobToDocLine = [];
 
+	readonly Avalonia.Threading.DispatcherTimer hoverTimer = new() { Interval = TimeSpan.FromMilliseconds(400) };
+	Point lastPointerPosition;
+
 	RichTextColorizer? colorizer;
 	IReadOnlyList<DiffLineTag> tags = [];
 	string pairText = "";
@@ -56,6 +59,56 @@ sealed class SideBySidePane
 			RoutingStrategies.Tunnel, handledEventsToo: true);
 		editor.TextArea.AddHandler(InputElement.PointerReleasedEvent, OnPointerReleased,
 			RoutingStrategies.Bubble, handledEventsToo: true);
+		// What a symbol is, without going anywhere: the same quick info the unified view shows,
+		// and simpler here - a pane holds one blob, so the line under the pointer belongs to a
+		// known side and needs no working out.
+		editor.TextArea.TextView.PointerMoved += OnPointerMoved;
+		editor.TextArea.TextView.PointerExited += (_, _) => CancelHover();
+		hoverTimer.Tick += (_, _) => {
+			hoverTimer.Stop();
+			ShowHoverAsync().HandleExceptions();
+		};
+	}
+
+	void OnPointerMoved(object? sender, PointerEventArgs e)
+	{
+		lastPointerPosition = e.GetPosition(editor);
+		Avalonia.Controls.ToolTip.SetIsOpen(editor, false);
+		hoverTimer.Stop();
+		hoverTimer.Start();
+	}
+
+	void CancelHover()
+	{
+		hoverTimer.Stop();
+		Avalonia.Controls.ToolTip.SetIsOpen(editor, false);
+	}
+
+	/// <summary>Quick info for whatever the pointer came to rest on, or nothing at all: a
+	/// tooltip that says "no symbol here" is a tooltip in the way.</summary>
+	async Task ShowHoverAsync()
+	{
+		if (App.Workspace is not { } ws || relPath.Length == 0)
+			return;
+		if (editor.GetPositionFromPoint(lastPointerPosition) is not { } position)
+			return;
+		int docLine = position.Line;
+		if (docLine < 1 || docLine > tags.Count)
+			return;
+		int blobLine = oldSide ? tags[docLine - 1].OldLine : tags[docLine - 1].NewLine;
+		// A filler row belongs to neither blob, so there is nothing under the pointer to ask
+		// about.
+		if (blobLine <= 0)
+			return;
+		var semantics = ws.SemanticsFor(oldSide);
+		if (semantics is not { State: SemanticState.Ready or SemanticState.SyntaxOnly })
+			return;
+		if (await semantics.GetPositionAsync(relPath, blobLine, position.Column, CancellationToken.None) is not { } offset)
+			return;
+		if (await semantics.GetQuickInfoAsync(relPath, offset, CancellationToken.None) is not { Length: > 0 } text)
+			return;
+		Avalonia.Controls.ToolTip.SetTip(editor, text);
+		Avalonia.Controls.ToolTip.SetIsOpen(editor, true);
 	}
 
 	public void SetDocument(SideBySideDocumentViewModel vm)
