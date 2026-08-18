@@ -1,0 +1,30 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:app="using:Stampeded"
+        x:Class="Stampeded.GoToWindow"
+        x:DataType="app:GoToWindow"
+        Title="Go to" Width="620" Height="360"
+        WindowStartupLocation="CenterOwner" CanResize="True"
+        ShowInTaskbar="False">
+  <DockPanel Margin="10">
+    <TextBox x:Name="InputBox" DockPanel.Dock="Top" Margin="0,0,0,6"
+             KeyDown="OnInputKeyDown"
+             PlaceholderText="File, line, or file:line - e.g. thememan:120, or just 120" />
+    <TextBlock x:Name="HintText" DockPanel.Dock="Bottom" Margin="2,6,0,0" FontSize="11" Opacity="0.7"
+               TextWrapping="Wrap" />
+    <ListBox x:Name="Matches" ItemsSource="{Binding Files}" DoubleTapped="OnMatchDoubleTapped"
+             ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+      <ListBox.ItemTemplate>
+        <DataTemplate x:DataType="app:GoToRow">
+          <DockPanel>
+            <TextBlock DockPanel.Dock="Left" Width="16" FontWeight="SemiBold"
+                       Foreground="{Binding KindBrush}" Text="{Binding Kind}" />
+            <TextBlock DockPanel.Dock="Right" Margin="8,0,0,0" Opacity="0.6" FontSize="12"
+                       VerticalAlignment="Center" Text="{Binding LineTag}" />
+            <TextBlock Text="{Binding Path}" TextTrimming="CharacterEllipsis" />
+          </DockPanel>
+        </DataTemplate>
+      </ListBox.ItemTemplate>
+    </ListBox>
+  </DockPanel>
+</Window>

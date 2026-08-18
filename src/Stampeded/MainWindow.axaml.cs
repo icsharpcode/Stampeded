@@ -117,6 +117,9 @@ public partial class MainWindow : Window
 			case (Key.D0 or Key.NumPad0, KeyModifiers.Control):
 				Vm?.ZoomReset();
 				break;
+			case (Key.G, KeyModifiers.Control):
+				GoToAsync().HandleExceptions();
+				break;
 			default:
 				return;
 		}
@@ -139,6 +142,25 @@ public partial class MainWindow : Window
 		});
 		if (picks.Count == 1)
 			await App.OpenRepositoryAsync(picks[0].Path.LocalPath);
+	}
+
+	void OnGoTo(object? s, RoutedEventArgs e) => GoToAsync().HandleExceptions();
+
+	/// <summary>The one dialog for both halves of "go to": which file, and where in it. A file
+	/// without a line opens it where it was left; a line without a file moves within the
+	/// document in front, which is the only thing a bare number can mean.</summary>
+	async Task GoToAsync()
+	{
+		if (App.Workspace is not { } workspace)
+			return;
+		var target = await new GoToWindow(workspace.Files, workspace.CurrentFile?.Path).ShowDialog<GoToTarget?>(this);
+		if (target is null)
+			return;
+		string? path = target.File?.Path ?? workspace.CurrentFile?.Path;
+		if (target.Line is { } line && path is not null)
+			await workspace.NavigateToFileLineAsync(path, line, oldSide: false, record: true);
+		else if (target.File is { } file)
+			await workspace.OpenFileAsync(file);
 	}
 
 	void OnOpenFromUrl(object? s, RoutedEventArgs e) => PromptUrlAsync().HandleExceptions();

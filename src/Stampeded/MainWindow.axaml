@@ -86,6 +86,7 @@
         <MenuItem Header="Next File  ( ] )" Click="OnNextFile" IsEnabled="{Binding HasReview}" />
         <MenuItem Header="Previous File  ( [ )" Click="OnPrevFile" IsEnabled="{Binding HasReview}" />
         <MenuItem Header="Next Uncovered Added Line  ( u )" x:Name="NextUncoveredItem" Click="OnNextUncovered" />
+        <MenuItem Header="Go to...  ( Ctrl+G )" Click="OnGoTo" />
         <Separator />
         <MenuItem Header="Next Commit  ( Ctrl+] )" Click="OnNextCommit" IsEnabled="{Binding InCommitScope}" />
         <MenuItem Header="Previous Commit  ( Ctrl+[ )" Click="OnPreviousCommit"

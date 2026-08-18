@@ -278,21 +278,12 @@ public class StartDocumentViewModel : Document
 		AnnotateBranches();
 	}
 
-	/// <summary>Whether a row survives a filter box: every whitespace-separated word has to
-	/// appear somewhere in the row, so "fix pr" narrows rather than widens.</summary>
-	static bool Matches(string filter, params string?[] fields)
-	{
-		var words = filter.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-		return words.All(word => fields.Any(f => f is not null
-			&& f.Contains(word, StringComparison.OrdinalIgnoreCase)));
-	}
-
 	void FilterRecents()
 	{
 		Recents.Clear();
 		foreach (var path in rawRecents)
 		{
-			if (Matches(State.RecentFilter, path))
+			if (WordFilter.Matches(State.RecentFilter, path))
 				Recents.Add(path);
 		}
 	}
@@ -302,7 +293,7 @@ public class StartDocumentViewModel : Document
 		Prs.Clear();
 		foreach (var pr in PrList.Items)
 		{
-			if (Matches(State.PrFilter, pr.NumberDisplay, pr.Title, pr.Author?.Login, pr.HeadRefName, pr.BaseRefName))
+			if (WordFilter.Matches(State.PrFilter, pr.NumberDisplay, pr.Title, pr.Author?.Login, pr.HeadRefName, pr.BaseRefName))
 				Prs.Add(pr);
 		}
 	}
@@ -318,7 +309,7 @@ public class StartDocumentViewModel : Document
 			Branches.Clear();
 			foreach (var stash in rawStashes)
 			{
-				if (Matches(State.BranchFilter, stash.Name, stash.Subject))
+				if (WordFilter.Matches(State.BranchFilter, stash.Name, stash.Subject))
 					Branches.Add(new BranchRow(stash, "", null, IsStash: true));
 			}
 			return;
@@ -352,7 +343,7 @@ public class StartDocumentViewModel : Document
 		}
 		foreach (var row in rows.OrderBy(r => r.HasPrTag ? 0 : 1))
 		{
-			if (Matches(State.BranchFilter, row.Info.Name, row.Info.Subject, row.PrTag))
+			if (WordFilter.Matches(State.BranchFilter, row.Info.Name, row.Info.Subject, row.PrTag))
 				Branches.Add(row);
 		}
 		RefreshSyncStatesAsync(prsByBranch).HandleExceptions();
