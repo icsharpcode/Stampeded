@@ -40,7 +40,7 @@ public class EnclosingMemberTests
 				""");
 
 			var service = new RoslynWorkspaceService();
-			await service.LoadAsync(dir, CancellationToken.None);
+			await service.LoadAsync(dir, null, CancellationToken.None);
 			Assert.That(service.State, Is.EqualTo(SemanticState.SyntaxOnly), service.LoadLog);
 
 			var member = await service.GetEnclosingMemberAsync(
@@ -80,7 +80,7 @@ public class EnclosingMemberTests
 				}
 				""");
 			var service = new RoslynWorkspaceService();
-			await service.LoadAsync(dir, CancellationToken.None);
+			await service.LoadAsync(dir, null, CancellationToken.None);
 
 			// The type's own declaration line: outside every member, and not inside the type
 			// either as far as the enclosing scope is concerned.

@@ -219,9 +219,9 @@ public partial class MainWindow : Window
 			return;
 		string root = workspace.RepoPath;
 		string? chosen = BuildSolutionPreference.For(root);
-		string automatic = Core.Testing.SolutionTarget.ForRoot(root) ?? "nothing to build";
+		string automatic = Core.Infra.SolutionTarget.ForRoot(root) ?? "nothing to build";
 		BuildSolutionMenu.Items.Add(Option($"Automatic  ({automatic})", null, chosen is null));
-		foreach (string solution in Core.Testing.SolutionTarget.Candidates(root))
+		foreach (string solution in Core.Infra.SolutionTarget.Candidates(root))
 			BuildSolutionMenu.Items.Add(Option(solution, solution, solution == chosen));
 
 		MenuItem Option(string header, string? solution, bool current)
@@ -233,9 +233,14 @@ public partial class MainWindow : Window
 				IsChecked = current,
 			};
 			item.Click += (_, _) => {
+				if (BuildSolutionPreference.For(root) == solution)
+					return;
 				BuildSolutionPreference.Set(root, solution);
 				Core.Infra.CliLog.Write("action",
 					$"solution to build: {solution ?? "automatic"} ({Path.GetFileName(root)})");
+				// The compilation behind every semantic answer came from the solution that was
+				// set before, so the choice is only made when it is loaded again.
+				workspace.ReloadSemantics();
 			};
 			return item;
 		}

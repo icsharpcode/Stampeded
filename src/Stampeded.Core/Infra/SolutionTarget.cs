@@ -1,4 +1,4 @@
-namespace Stampeded.Core.Testing;
+namespace Stampeded.Core.Infra;
 
 /// <summary>
 /// Which solution of a checkout a dotnet command should be pointed at.
@@ -42,6 +42,49 @@ public static class SolutionTarget
 		=> Directory.Exists(root)
 			? [.. Files(root, "*.sln").Concat(Files(root, "*.slnx")).Concat(Files(root, "*.slnf"))]
 			: [];
+
+	/// <summary>
+	/// The solution to load semantics from, which is not always the one to build: Roslyn opens
+	/// a solution, not a filter, so a checkout whose builds are filtered still has to compile
+	/// through the solution the filter names. A filter says which that is, in its own file.
+	/// </summary>
+	public static string? ForSemantics(string root, string? chosen = null)
+	{
+		string? target = ForRoot(root, chosen);
+		if (target is null || !target.EndsWith(".slnf", StringComparison.OrdinalIgnoreCase))
+			return target;
+		if (SolutionOfFilter(Path.Combine(root, target)) is { } named
+			&& File.Exists(Path.Combine(root, named)))
+		{
+			return named;
+		}
+		// A filter naming a solution nobody can find is no worse than having no filter: fall
+		// back to the guess, which never answers with one.
+		return ForRoot(root);
+	}
+
+	/// <summary>The solution a filter is a filter of, read from its "solution": { "path": ... }.
+	/// Answers null for anything that does not parse, which is what an unreadable filter is.
+	/// </summary>
+	static string? SolutionOfFilter(string filterPath)
+	{
+		try
+		{
+			using var document = System.Text.Json.JsonDocument.Parse(File.ReadAllText(filterPath));
+			if (!document.RootElement.TryGetProperty("solution", out var solution)
+				|| !solution.TryGetProperty("path", out var path)
+				|| path.GetString() is not { Length: > 0 } value)
+			{
+				return null;
+			}
+			// Written with Windows separators even on repositories that never see Windows.
+			return value.Replace('\\', Path.DirectorySeparatorChar);
+		}
+		catch (Exception e) when (e is IOException or System.Text.Json.JsonException or UnauthorizedAccessException)
+		{
+			return null;
+		}
+	}
 
 	static IEnumerable<string> Files(string root, string pattern)
 		=> Directory.EnumerateFiles(root, pattern, SearchOption.TopDirectoryOnly)

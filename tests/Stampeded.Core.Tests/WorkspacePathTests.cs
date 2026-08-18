@@ -20,7 +20,7 @@ public class WorkspacePathTests
 		{
 			File.WriteAllText(Path.Combine(dir, "src", "Lib", "C.cs"), "class C { }");
 			var service = new RoslynWorkspaceService();
-			await service.LoadAsync(dir, CancellationToken.None);
+			await service.LoadAsync(dir, null, CancellationToken.None);
 
 			// Forward slashes, as they arrive from git diff on every platform.
 			string absolute = service.ToAbsolutePath("src/Lib/C.cs");
@@ -45,7 +45,7 @@ public class WorkspacePathTests
 		try
 		{
 			var service = new RoslynWorkspaceService();
-			await service.LoadAsync(root, CancellationToken.None);
+			await service.LoadAsync(root, null, CancellationToken.None);
 
 			Assert.That(service.ToRelativePath(Path.Combine(sibling, "C.cs")), Is.Null,
 				"a sibling whose name starts with the worktree's is not inside it");

@@ -133,17 +133,18 @@ public sealed class RoslynWorkspaceService : IDisposable
 		SetState(head.State, head.StateDetail);
 	}
 
-	public async Task LoadAsync(string worktree, CancellationToken ct)
+	/// <param name="chosenSolution">The solution the reader named for this repository, if any.
+	/// Semantics compile what the builds compile, or the reader is reading one solution and
+	/// being answered about another.</param>
+	public async Task LoadAsync(string worktree, string? chosenSolution, CancellationToken ct)
 	{
 		worktreePath = worktree;
 		try
 		{
 			// Both solution formats: a repository that has moved to XML solutions has no
 			// *.sln at all, and taking it for "no solution here" costs it every semantic.
-			string? sln = Directory.EnumerateFiles(worktree, "*.sln", SearchOption.TopDirectoryOnly)
-				.Concat(Directory.EnumerateFiles(worktree, "*.slnx", SearchOption.TopDirectoryOnly))
-				.OrderByDescending(f => new FileInfo(f).Length)
-				.FirstOrDefault();
+			string? name = Infra.SolutionTarget.ForSemantics(worktree, chosenSolution);
+			string? sln = name is null ? null : Path.Combine(worktree, name);
 			if (sln is not null)
 			{
 				SetState(SemanticState.Restoring, Path.GetFileName(sln));

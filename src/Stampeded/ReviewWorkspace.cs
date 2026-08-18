@@ -471,7 +471,8 @@ public sealed class ReviewWorkspace(string repoPath)
 		using (Busy.Begin("Loading semantics (head)"))
 		{
 			WorktreePath = await Worktrees.GetOrCreateAsync(headSha, ct);
-			await Task.Run(() => semantics.LoadAsync(WorktreePath, ct), ct);
+			string? chosen = BuildSolutionPreference.For(RepoPath);
+			await Task.Run(() => semantics.LoadAsync(WorktreePath, chosen, ct), ct);
 		}
 		// The base-side workspace powers navigation FROM removed lines. It is the head's own
 		// compilation with the review's files reading as they did before, taken from the
@@ -698,6 +699,20 @@ public sealed class ReviewWorkspace(string repoPath)
 		Factory.SetActiveDockable(created);
 		Factory.SetFocusedDockable(Documents, created);
 		return (Documents.IDiffDocument)created;
+	}
+
+	/// <summary>
+	/// Loads the semantics and the generated sources again, for when what they were built from
+	/// has changed. The compilation is what every semantic answer comes from, so a solution
+	/// named after one was loaded is a choice that means nothing until this runs.
+	/// </summary>
+	public void ReloadSemantics()
+	{
+		if (HeadSha is not { } headSha || BaseSha is not { } baseSha || sessionCts is not { } cts)
+			return;
+		PostStatus("Reloading semantics for the solution that was chosen...");
+		LoadSemanticsAsync(headSha, baseSha, cts.Token).HandleExceptions();
+		LoadGeneratedSourcesAsync(cts.Token).HandleExceptions();
 	}
 
 	/// <summary>Rebuilds every open file in the layout that is now set, keeping the reader in
