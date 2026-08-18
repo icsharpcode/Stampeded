@@ -19,7 +19,10 @@ public sealed record PrSummary(
 	DateTimeOffset UpdatedAt,
 	System.Text.Json.JsonElement? StatusCheckRollup = null,
 	string? HeadRefOid = null,
-	string? ReviewDecision = null)
+	string? ReviewDecision = null,
+	int Additions = 0,
+	int Deletions = 0,
+	int ChangedFiles = 0)
 {
 	/// <summary>"fail" / "pending" / "green" / "none", folded from the check rollup.</summary>
 	public string ChecksBucket => CheckRollup.Bucket(StatusCheckRollup);
@@ -32,6 +35,18 @@ public sealed record PrSummary(
 	public bool ChangesRequested => ReviewDecision == "CHANGES_REQUESTED";
 
 	public string NumberDisplay => $"#{Number}";
+
+	/// <summary>The size of the change, as GitHub counts it. Kept to the line totals: this
+	/// shares a line with the branches, and the file count is in the tooltip.</summary>
+	public string AddedDisplay => $"+{Additions}";
+
+	public string RemovedDisplay => $"-{Deletions}";
+
+	/// <summary>The whole of the branch line, for when the column is too narrow to show it.</summary>
+	public string BranchesTip => $"{HeadRefName} -> {BaseRefName}, by {Author?.Login ?? "unknown"}";
+
+	public string StatsTip => $"{ChangedFiles} changed file(s), {Additions} line(s) added, "
+		+ $"{Deletions} removed, as GitHub counts them";
 }
 
 public sealed record PrDetail(
@@ -293,7 +308,7 @@ public sealed class GitHubService(string repoPath)
 	public Task<IReadOnlyList<PrSummary>> ListOpenPrsAsync(CancellationToken ct = default)
 		=> JsonAsync<IReadOnlyList<PrSummary>>(ct,
 			"pr", "list",
-			"--json", "number,title,author,headRefName,baseRefName,isDraft,updatedAt,statusCheckRollup,headRefOid,reviewDecision",
+			"--json", "number,title,author,headRefName,baseRefName,isDraft,updatedAt,statusCheckRollup,headRefOid,reviewDecision,additions,deletions,changedFiles",
 			"--limit", "50");
 
 	public Task<PrDetail> GetPrAsync(int number, CancellationToken ct = default)

@@ -189,9 +189,30 @@
                   <Run Text="{Binding NumberDisplay}" /> <Run Text="{Binding Title}" />
                 </TextBlock>
               </DockPanel>
-              <TextBlock Opacity="0.6" FontSize="12" Margin="14,0,0,0">
-                <Run Text="{Binding Author.Login}" /> · <Run Text="{Binding HeadRefName}" />
-              </TextBlock>
+              <DockPanel Margin="14,0,0,0">
+                <!-- Added and removed lines, right-aligned in a fixed slot so the columns line
+                     up down the list rather than shifting with the size of the numbers. -->
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="4"
+                            Margin="8,0,0,0" ToolTip.Tip="{Binding StatsTip}">
+                  <TextBlock FontSize="12" Foreground="#2EA043" MinWidth="40" TextAlignment="Right"
+                             Text="{Binding AddedDisplay}" />
+                  <TextBlock FontSize="12" Foreground="#F85149" MinWidth="34" TextAlignment="Right"
+                             Text="{Binding RemovedDisplay}" />
+                </StackPanel>
+                <!-- Head and target read as one "source -> target", so they sit in a single
+                     run with nothing between them. The author trails them rather than leading:
+                     trimming takes the tail, and of the three it is the one a reader scanning
+                     this column can most afford to lose. -->
+                <TextBlock Opacity="0.6" FontSize="12" TextTrimming="CharacterEllipsis"
+                           ToolTip.Tip="{Binding BranchesTip}">
+                  <Run Text="{Binding HeadRefName}" /><InlineUIContainer BaselineAlignment="Center">
+                    <!-- Drawn rather than written: the UI font has no arrow, and the one the
+                         fallback font supplies renders small and sits off the line. -->
+                    <Path Data="M1,5 H12 M8.5,1.5 L12,5 L8.5,8.5" Stroke="{Binding $parent[TextBlock].Foreground}"
+                          StrokeThickness="1.2" Width="13" Height="10" Margin="5,0" />
+                  </InlineUIContainer><Run Text="{Binding BaseRefName}" /> · <Run Text="{Binding Author.Login}" />
+                </TextBlock>
+              </DockPanel>
             </StackPanel>
           </DataTemplate>
         </ListBox.ItemTemplate>
