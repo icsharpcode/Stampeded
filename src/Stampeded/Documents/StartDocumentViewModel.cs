@@ -581,6 +581,11 @@ public class StartDocumentViewModel : Document
 				var result = await workspace.Git.PushBranchAsync(branch);
 				syncByBranch.Remove(branch);
 				await ReloadRefsAsync();
+				// What a row says about a branch and its pull request is measured against the
+				// head GitHub reported when the list was read. A push is what moves that head,
+				// so the row would go on reporting the drift it just resolved until something
+				// else happened to re-read the list.
+				await PrList.LoadAsync();
 				State.Status = result.Outcome switch {
 					PushOutcome.Created => $"Pushed {branch} to origin, which did not have it before.",
 					PushOutcome.Pushed => $"Pushed {branch} to origin ({result.Sha[..9]}).",
