@@ -22,12 +22,17 @@ internal static class Program
 		// Must run before any Roslyn workspace assembly loads, so MSBuild resolves from
 		// the installed SDK.
 		Microsoft.Build.Locator.MSBuildLocator.RegisterDefaults();
-		var repoArg = args.FirstOrDefault(a => !a.StartsWith('-'));
-		if (repoArg is not null)
-			RepoPath = Path.GetFullPath(repoArg);
 		int prIndex = Array.IndexOf(args, "--pr");
 		if (prIndex >= 0 && prIndex + 1 < args.Length && int.TryParse(args[prIndex + 1], out int pr))
 			AutoOpenPr = pr;
+		// The value of --pr is not the repository, which is what taking the first argument that
+		// does not start with a dash made of "--pr 4013 /path/to/repo": the number became the
+		// path, and the window opened on a repository that does not exist.
+		var repoArg = args
+			.Where((a, i) => !a.StartsWith('-') && i != prIndex + 1)
+			.FirstOrDefault();
+		if (repoArg is not null)
+			RepoPath = Path.GetFullPath(repoArg);
 		BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
 	}
 
