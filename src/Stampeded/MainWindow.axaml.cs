@@ -254,14 +254,6 @@ public partial class MainWindow : Window
 	void OnKeyboardShortcuts(object? s, RoutedEventArgs e)
 		=> App.Workspace?.OpenTextDocument("keys", "Keyboard shortcuts", KeyboardShortcuts.Text);
 
-	/// <summary>How closely the file in front is meant to be read. The mark belongs to the
-	/// file, so there is nothing to set while no diff is open.</summary>
-	void OnSetDepth(object? s, RoutedEventArgs e)
-	{
-		if (s is MenuItem { Tag: string depth } && App.Workspace is { CurrentFile: { } file } workspace)
-			workspace.SetDepth(file.Path, depth);
-	}
-
 	// The pane commands: the pane comes forward first, because a run whose output lands behind
 	// whichever pane happens to be in front is a run nobody sees.
 	void OnRunTests(object? s, RoutedEventArgs e) => Pane<Panes.TestsPaneViewModel>("Tests")?.Run();
@@ -309,10 +301,5 @@ public partial class MainWindow : Window
 		BlameItem.IsChecked = view?.BlameVisible ?? false;
 		DebugHereItem.IsEnabled = view is not null;
 		HistoryOfSelectionItem.IsEnabled = view is not null;
-		PlanMenu.IsEnabled = file is not null;
-		string depth = file is not null ? App.Workspace?.GetDepth(file.Path) ?? "" : "";
-		PlanDeep.IsChecked = depth == "deep";
-		PlanSkim.IsChecked = depth == "skim";
-		PlanTrust.IsChecked = depth == "trust";
 	}
 }

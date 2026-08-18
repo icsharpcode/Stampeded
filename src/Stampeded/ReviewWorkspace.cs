@@ -838,16 +838,6 @@ public sealed class ReviewWorkspace(string repoPath)
 		}
 	}
 
-	public string GetDepth(string path) => Store.GetDepth(path);
-
-	public void SetDepth(string path, string depth)
-	{
-		Store.SetDepth(path, depth);
-		DepthChanged?.Invoke();
-	}
-
-	public event Action? DepthChanged;
-
 	static string MemberSimpleName(string display)
 	{
 		int paren = display.IndexOf('(');

@@ -25,9 +25,6 @@
         <MenuItem Header="Open Diff (click)" Click="OnOpenClicked" />
         <MenuItem Header="Toggle Viewed" Click="OnToggleViewedClicked" />
         <Separator />
-        <MenuItem Header="Plan: Verify Deeply" Click="OnDepthDeep" />
-        <MenuItem Header="Plan: Skim" Click="OnDepthSkim" />
-        <MenuItem Header="Plan: Trust" Click="OnDepthTrust" />
       </ContextMenu>
     </TreeView.ContextMenu>
     <TreeView.ItemTemplate>
@@ -39,9 +36,6 @@
           <TextBlock DockPanel.Dock="Right" Margin="4,0" FontSize="10" VerticalAlignment="Center"
                      Foreground="#F85149" Text="{Binding Entry.CoverageBadge}"
                      ToolTip.Tip="Uncovered added lines from the last coverage run" />
-          <TextBlock DockPanel.Dock="Right" Margin="4,0" FontSize="10" VerticalAlignment="Center"
-                     Opacity="0.75" Text="{Binding Entry.DepthBadge}"
-                     ToolTip.Tip="Planned review depth (right-click to set)" />
           <TextBlock DockPanel.Dock="Right" Margin="4,0" FontSize="10" VerticalAlignment="Center"
                      Foreground="#3794FF" Text="{Binding Entry.SinceBadge}"
                      ToolTip.Tip="Touched since your last pass (viewed flag was invalidated)" />

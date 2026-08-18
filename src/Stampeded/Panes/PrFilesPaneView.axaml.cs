@@ -53,15 +53,6 @@ public partial class PrFilesPaneView : UserControl
 			entry.IsViewed = !entry.IsViewed;
 	}
 
-	void SetDepth(string depth)
-	{
-		if (DataContext is PrFilesPaneViewModel vm && Selected is { } entry)
-		{
-			vm.SetDepth(entry, depth);
-			entry.Depth = depth;
-		}
-	}
-
 	/// <summary>Selects and reveals the row for a repo-relative path, if listed.</summary>
 	public void RevealFile(string relPath)
 	{
@@ -103,10 +94,4 @@ public partial class PrFilesPaneView : UserControl
 		}
 		return null;
 	}
-
-	void OnDepthDeep(object? sender, RoutedEventArgs e) => SetDepth("deep");
-
-	void OnDepthSkim(object? sender, RoutedEventArgs e) => SetDepth("skim");
-
-	void OnDepthTrust(object? sender, RoutedEventArgs e) => SetDepth("trust");
 }

@@ -54,15 +54,6 @@
                   ToolTip.ShowOnDisabled="True" ToolTip.Tip="{Binding SinceLastPassTip}" />
         <Separator />
         <MenuItem Header="Mark Viewed + Advance  ( v )" Click="OnToggleViewed" IsEnabled="{Binding HasReview}" />
-        <!-- How closely this file is meant to be read; the marks live with the review. -->
-        <MenuItem Header="Plan for This File" x:Name="PlanMenu">
-          <MenuItem Header="Verify Deeply" x:Name="PlanDeep" Tag="deep" Click="OnSetDepth"
-                    ToggleType="Radio" GroupName="depth" />
-          <MenuItem Header="Skim" x:Name="PlanSkim" Tag="skim" Click="OnSetDepth"
-                    ToggleType="Radio" GroupName="depth" />
-          <MenuItem Header="Trust" x:Name="PlanTrust" Tag="trust" Click="OnSetDepth"
-                    ToggleType="Radio" GroupName="depth" />
-        </MenuItem>
         <MenuItem Header="Comment Here  ( c )" Click="OnCommentAtCaret" IsEnabled="{Binding CanComment}" />
         <Separator />
         <!-- Both of these open the Review tab rather than acting: a verdict needs a body and a

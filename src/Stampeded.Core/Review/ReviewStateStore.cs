@@ -9,6 +9,8 @@ namespace Stampeded.Core.Review;
 public sealed record StoredComment(Guid Id, CommentAnchor Anchor, string Body, DateTimeOffset CreatedAt,
 	long? InReplyTo = null);
 
+// Depth carried a per-file review plan that no longer exists. The field stays so state files
+// written by an older build still parse; nothing reads or writes it.
 sealed record ReviewStateFile(string HeadSha, Dictionary<string, bool> Viewed, List<StoredComment>? Drafts, Dictionary<string, bool>? GuideChecks, Dictionary<string, string>? Depth = null, string? BaseSha = null, string? PreviousHead = null, string? PreviousBase = null);
 
 [JsonSourceGenerationOptions(WriteIndented = true)]
@@ -146,21 +148,6 @@ public sealed class ReviewStateStore
 		if (current.GuideChecks is null)
 			current = current with { GuideChecks = [] };
 		current.GuideChecks![stageId] = value;
-		Save();
-	}
-
-	/// <summary>Planned review depth for a file: "deep", "skim", "trust" or "" (unset).
-	/// Depth marks survive force-pushes - the plan outlives the head, unlike viewed flags.</summary>
-	public string GetDepth(string path)
-		=> current?.Depth?.GetValueOrDefault(path) ?? "";
-
-	public void SetDepth(string path, string depth)
-	{
-		if (current is null)
-			return;
-		if (current.Depth is null)
-			current = current with { Depth = [] };
-		current.Depth![path] = depth;
 		Save();
 	}
 
