@@ -758,7 +758,11 @@ public sealed class ReviewWorkspace(string repoPath)
 		return existing;
 	}
 
-	public FileDiff? CurrentFile => (Documents?.ActiveDockable as DiffDocumentViewModel)?.File;
+	/// <summary>The file being read, in whichever layout it is being read in. Asked of the
+	/// document interface rather than of the unified type: everything that acts on "the file in
+	/// front" - marking it viewed, commenting, stepping to the next one - went dead in the
+	/// side-by-side layout while this answered null there.</summary>
+	public FileDiff? CurrentFile => (Documents?.ActiveDockable as Documents.IDiffDocument)?.File;
 
 	public event Action<string>? StatusMessage;
 
