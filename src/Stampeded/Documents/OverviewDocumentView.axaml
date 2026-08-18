@@ -74,10 +74,6 @@
           <Image Source="{x:Static app:Images.GitHub}" />
         </Button>
         <Border Classes="toolsep" />
-        <Button Classes="tool" Click="OnBounce"
-                ToolTip.Tip="Bounce - draft a decline-with-reason review comment">
-          <Image Source="{x:Static app:Images.Undo}" />
-        </Button>
         <Button Classes="tool" Click="OnReloadReview"
                 ToolTip.Tip="Reload - read the review again at the head it has now, picking up commits pushed since it was opened  ( F5 )">
           <Image Source="{x:Static app:Images.Refresh}" />

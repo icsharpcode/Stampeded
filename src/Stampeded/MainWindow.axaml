@@ -61,7 +61,6 @@
              because they are the two names a reviewer looks for. -->
         <MenuItem Header="Approve / Request Changes..." Click="OnOpenReviewDocument"
                   IsEnabled="{Binding HasReview}" />
-        <MenuItem Header="Bounce..." Click="OnBounce" IsEnabled="{Binding CanComment}" />
         <MenuItem Header="Merge Pull Request..." Click="OnOpenReviewDocument"
                   IsEnabled="{Binding HasPullRequest}" />
         <MenuItem Header="Rebase PR onto Target Branch" Click="OnRebasePr"

@@ -66,7 +66,6 @@ public static class Images
 	public static readonly IImage VisualStudioCode = LoadSvg(nameof(VisualStudioCode));
 	public static readonly IImage GitHub = LoadSvg(nameof(GitHub));
 	public static readonly IImage Checkmark = LoadSvg(nameof(Checkmark));
-	public static readonly IImage Undo = LoadSvg(nameof(Undo));
 	public static readonly IImage Refresh = LoadSvg(nameof(Refresh));
 	public static readonly IImage Close = LoadSvg(nameof(Close));
 	public static readonly IImage RunTest = LoadSvg(nameof(RunTest));

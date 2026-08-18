@@ -253,7 +253,6 @@ public partial class MainWindow : Window
 	void OnNextCommit(object? s, RoutedEventArgs e) => App.Workspace?.Scopes.StepCommitAsync(1).HandleExceptions();
 	void OnPreviousCommit(object? s, RoutedEventArgs e) => App.Workspace?.Scopes.StepCommitAsync(-1).HandleExceptions();
 	void OnExitCommitScope(object? s, RoutedEventArgs e) => App.Workspace?.Scopes.ExitAsync().HandleExceptions();
-	void OnBounce(object? s, RoutedEventArgs e) => App.Workspace?.PrepareBounceBody();
 	void OnOpenVsCode(object? s, RoutedEventArgs e) => App.Workspace?.OpenInVsCodeAsync(oldSide: false).HandleExceptions();
 	void OnOpenFixtures(object? s, RoutedEventArgs e) => App.Workspace?.OpenAffectedFixturesInILSpyAsync().HandleExceptions();
 

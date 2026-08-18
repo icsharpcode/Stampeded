@@ -54,7 +54,6 @@ public partial class OverviewDocumentView : UserControl
 
 	OverviewDocumentViewModel? Vm => DataContext as OverviewDocumentViewModel;
 
-	void OnBounce(object? sender, RoutedEventArgs e) => Vm?.Bounce();
 
 	void OnOpenPr(object? sender, RoutedEventArgs e) => Vm?.OpenPrOnGitHub();
 

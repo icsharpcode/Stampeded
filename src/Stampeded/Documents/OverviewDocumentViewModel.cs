@@ -523,6 +523,4 @@ public class OverviewDocumentViewModel : Document
 			workspace.OpenUrlAsync(url).HandleExceptions();
 	}
 
-	public void Bounce() => workspace.PrepareBounceBody();
-
 }

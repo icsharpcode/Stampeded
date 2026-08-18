@@ -42,7 +42,6 @@ from it unmodified and under the name it gives them:
 | Open in VS Code                  | VisualStudioCode     |
 | Open on GitHub                   | GitHub               |
 | Approve / Decline                | Checkmark            |
-| Bounce                           | Undo                 |
 | Reload, refresh                  | Refresh              |
 | Close review                     | Close                |
 | Run tests / cancel               | RunTest / Cancel     |

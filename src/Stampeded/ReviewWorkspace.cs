@@ -922,22 +922,6 @@ public sealed class ReviewWorkspace(string repoPath)
 		return dot < 0 ? noArgs : noArgs[(dot + 1)..];
 	}
 
-	/// <summary>Triage's bounce outcome as a first-class action: drafts a review body naming
-	/// the cost, so declining a review is one click instead of a social confrontation.</summary>
-	public void PrepareBounceBody()
-	{
-		var t = ComputeTriage();
-		int changed = t.Rows.Sum(r => r.Added + r.Removed);
-		if (Comments.Pane is Panes.CommentsPaneViewModel comments)
-		{
-			comments.State.ReviewBody =
-				$"Bouncing this for now: {changed} changed lines across {Files.Count} files " +
-				$"is ~{t.Sittings} review sitting(s) (~{t.Minutes} min). Could this be split into smaller PRs? " +
-				"Happy to review the pieces promptly.";
-		}
-		StatusMessage?.Invoke("Bounce comment drafted in the Comments pane (submit as COMMENT).");
-	}
-
 	#endregion
 
 	/// <summary>Opens the side-by-side view of the active file (or a given one).</summary>
