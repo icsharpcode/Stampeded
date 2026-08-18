@@ -1430,33 +1430,71 @@ public partial class DiffDocumentView : UserControl, IReviewDocumentView
 		ShowHoverAsync().HandleExceptions();
 	}
 
+	/// <summary>Quick info under the pointer. Every way of coming up empty is logged, once per
+	/// reason, so that "no tooltip" can be told apart from "no hover".</summary>
 	async Task ShowHoverAsync()
 	{
-		if (model is null || viewModel is null || viewModel.Historical || App.Workspace is not { } ws)
+		if (model is null || viewModel is null || App.Workspace is not { } ws)
 			return;
+		if (viewModel.Historical)
+		{
+			HoverLog("hover: historical document - semantics are off here");
+			return;
+		}
 		var position = Editor.GetPositionFromPoint(lastPointerPosition);
 		if (position is null)
+		{
+			HoverLog("hover: pointer is past the end of the text");
 			return;
+		}
 		int docLine = position.Value.Line;
 		if (docLine < 1 || docLine > model.Tags.Count)
+		{
+			HoverLog($"hover: row {docLine} is outside the {model.Tags.Count} this document has");
 			return;
+		}
 		var tag = model.Tags[docLine - 1];
 		bool oldSide = tag.NewLine == 0;
 		if (oldSide && tag.OldLine == 0)
+		{
+			HoverLog($"hover: row {docLine} belongs to neither side");
 			return;
+		}
 		string relPath = oldSide ? viewModel.File.OldPath : viewModel.File.Path;
 		int blobLine = oldSide ? tag.OldLine : tag.NewLine;
 		var sem = ws.SemanticsFor(oldSide);
 		if (sem is not { State: SemanticState.Ready or SemanticState.SyntaxOnly })
+		{
+			HoverLog($"hover: semantics are {sem?.State.ToString() ?? "not loaded"}");
 			return;
+		}
 		int? pos = await sem.GetPositionAsync(relPath, blobLine, position.Value.Column, CancellationToken.None);
 		if (pos is null)
+		{
+			HoverLog($"hover: {relPath}:{blobLine} is not a line the compilation has");
 			return;
+		}
 		string? text = await sem.GetQuickInfoAsync(relPath, pos.Value, CancellationToken.None);
 		if (string.IsNullOrEmpty(text))
+		{
+			HoverLog($"hover: nothing to say about {relPath}:{blobLine},{position.Value.Column}");
 			return;
+		}
+		HoverLog($"hover: {relPath}:{blobLine},{position.Value.Column} -> {text.Split('\n')[0]}");
 		ToolTip.SetTip(Editor, text);
 		ToolTip.SetIsOpen(Editor, true);
+	}
+
+	string? lastHoverLog;
+
+	/// <summary>Logs a hover outcome, skipping a repeat of the one before it: a pointer at rest
+	/// asks again every time it twitches, and the log is for reading.</summary>
+	void HoverLog(string message)
+	{
+		if (message == lastHoverLog)
+			return;
+		lastHoverLog = message;
+		Core.Infra.CliLog.Write("semantics", message);
 	}
 
 	#endregion

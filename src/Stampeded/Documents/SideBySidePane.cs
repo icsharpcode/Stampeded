@@ -85,30 +85,69 @@ sealed class SideBySidePane
 	}
 
 	/// <summary>Quick info for whatever the pointer came to rest on, or nothing at all: a
-	/// tooltip that says "no symbol here" is a tooltip in the way.</summary>
+	/// tooltip that says "no symbol here" is a tooltip in the way.
+	///
+	/// Every way of coming up empty is logged, once per reason. A hover that produces nothing
+	/// is indistinguishable from a hover that never ran, and the difference is the whole
+	/// question when someone reports that this does not work.</summary>
 	async Task ShowHoverAsync()
 	{
+		string side = oldSide ? "left" : "right";
 		if (App.Workspace is not { } ws || relPath.Length == 0)
+		{
+			HoverLog($"hover({side}): no document in this pane yet");
 			return;
+		}
 		if (editor.GetPositionFromPoint(lastPointerPosition) is not { } position)
+		{
+			HoverLog($"hover({side}): pointer is past the end of the text");
 			return;
+		}
 		int docLine = position.Line;
 		if (docLine < 1 || docLine > tags.Count)
+		{
+			HoverLog($"hover({side}): row {docLine} is outside the {tags.Count} this pane has");
 			return;
+		}
 		int blobLine = oldSide ? tags[docLine - 1].OldLine : tags[docLine - 1].NewLine;
 		// A filler row belongs to neither blob, so there is nothing under the pointer to ask
 		// about.
 		if (blobLine <= 0)
+		{
+			HoverLog($"hover({side}): row {docLine} is filler - the other side's line");
 			return;
+		}
 		var semantics = ws.SemanticsFor(oldSide);
 		if (semantics is not { State: SemanticState.Ready or SemanticState.SyntaxOnly })
+		{
+			HoverLog($"hover({side}): semantics are {semantics?.State.ToString() ?? "not loaded"}");
 			return;
+		}
 		if (await semantics.GetPositionAsync(relPath, blobLine, position.Column, CancellationToken.None) is not { } offset)
+		{
+			HoverLog($"hover({side}): {relPath}:{blobLine} is not a line the compilation has");
 			return;
+		}
 		if (await semantics.GetQuickInfoAsync(relPath, offset, CancellationToken.None) is not { Length: > 0 } text)
+		{
+			HoverLog($"hover({side}): nothing to say about {relPath}:{blobLine},{position.Column}");
 			return;
+		}
+		HoverLog($"hover({side}): {relPath}:{blobLine},{position.Column} -> {text.Split('\n')[0]}");
 		Avalonia.Controls.ToolTip.SetTip(editor, text);
 		Avalonia.Controls.ToolTip.SetIsOpen(editor, true);
+	}
+
+	string? lastHoverLog;
+
+	/// <summary>Logs a hover outcome, skipping a repeat of the one before it: the pointer
+	/// resting still asks again every time it twitches, and the log is for reading.</summary>
+	void HoverLog(string message)
+	{
+		if (message == lastHoverLog)
+			return;
+		lastHoverLog = message;
+		Core.Infra.CliLog.Write("semantics", message);
 	}
 
 	public void SetDocument(SideBySideDocumentViewModel vm)
