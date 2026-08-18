@@ -590,21 +590,27 @@ public sealed class ReviewWorkspace(string repoPath)
 	/// </summary>
 	async Task LoadGeneratedSourcesAsync(CancellationToken ct)
 	{
-		if (WorktreePath is not { } head || await EnsureBaseWorktreeAsync(ct) is not { } baseTree)
-		{
-			SetGeneratedStatus("no worktrees", done: true);
-			return;
-		}
 		try
 		{
 			// The semantic load is a design-time build over these same trees; running a real
 			// build alongside it has both writing the same obj directories. The A/B run waits
 			// for the same reason.
+			//
+			// It is also what creates the head worktree, and waiting covers both: this used to
+			// read WorktreePath before that had happened - the two are started one after the
+			// other - and gave up with "no worktrees" every time a review was opened. Only a
+			// second pass over the same review found the field filled in, which is why
+			// generated sources appeared to be a thing that commit-by-commit mode had.
 			SetGeneratedStatus("waiting for semantics...", done: false);
-			while (Semantics is { State: SemanticState.Restoring or SemanticState.Loading }
+			while (Semantics is null or { State: SemanticState.NotLoaded or SemanticState.Restoring or SemanticState.Loading }
 				|| BaseSemantics is { State: SemanticState.Restoring or SemanticState.Loading })
 			{
 				await Task.Delay(1000, ct);
+			}
+			if (WorktreePath is not { } head || await EnsureBaseWorktreeAsync(ct) is not { } baseTree)
+			{
+				SetGeneratedStatus("no worktrees", done: true);
+				return;
 			}
 			SetGeneratedStatus("building head...", done: false);
 			string? solution = BuildSolutionPreference.For(RepoPath);
