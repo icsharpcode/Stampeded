@@ -1395,28 +1395,8 @@ public partial class DiffDocumentView : UserControl, IReviewDocumentView
 
 	bool foldCursorActive;
 
-	/// <summary>Hand cursor over collapsed-fold markers - they are drawn text, not
-	/// controls, so the affordance has to be set at the view level.</summary>
 	void UpdateTextCursor(PointerEventArgs e)
-	{
-		var view = Editor.TextArea.TextView;
-		bool overFold = false;
-		var point = e.GetPosition(view) + view.ScrollOffset;
-		var visualLine = view.GetVisualLineFromVisualTop(point.Y);
-		if (visualLine is not null)
-		{
-			var textLine = visualLine.GetTextLineByVisualYPosition(point.Y);
-			int column = visualLine.GetVisualColumn(textLine, point.X, allowVirtualSpace: false);
-			var element = visualLine.Elements.FirstOrDefault(el =>
-				el.VisualColumn <= column && column < el.VisualColumn + el.VisualLength);
-			overFold = element?.GetType().Name.Contains("Folding", StringComparison.Ordinal) == true;
-		}
-		if (overFold != foldCursorActive)
-		{
-			foldCursorActive = overFold;
-			view.Cursor = new Cursor(overFold ? StandardCursorType.Hand : StandardCursorType.Ibeam);
-		}
-	}
+		=> foldCursorActive = FoldCursor.Update(Editor.TextArea.TextView, e, foldCursorActive);
 
 	void CancelHover()
 	{

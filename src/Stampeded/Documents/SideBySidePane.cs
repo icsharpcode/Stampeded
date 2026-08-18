@@ -73,10 +73,16 @@ sealed class SideBySidePane
 	void OnPointerMoved(object? sender, PointerEventArgs e)
 	{
 		lastPointerPosition = e.GetPosition(editor);
+		UpdateTextCursor(e);
 		Avalonia.Controls.ToolTip.SetIsOpen(editor, false);
 		hoverTimer.Stop();
 		hoverTimer.Start();
 	}
+
+	bool foldCursorActive;
+
+	void UpdateTextCursor(PointerEventArgs e)
+		=> foldCursorActive = FoldCursor.Update(editor.TextArea.TextView, e, foldCursorActive);
 
 	void CancelHover()
 	{
