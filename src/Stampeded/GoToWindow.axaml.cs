@@ -236,6 +236,17 @@ public partial class GoToWindow : Window
 			: (trimmed, null);
 	}
 
+	/// <summary>Escape closes with nothing, wherever focus sits - the box, the list, or a row
+	/// being clicked.</summary>
+	protected override void OnKeyDown(KeyEventArgs e)
+	{
+		base.OnKeyDown(e);
+		if (e.Handled || e.Key != Key.Escape)
+			return;
+		Close(null);
+		e.Handled = true;
+	}
+
 	void OnInputKeyDown(object? sender, KeyEventArgs e)
 	{
 		switch (e.Key)
@@ -254,6 +265,9 @@ public partial class GoToWindow : Window
 			case Key.PageUp:
 				Step(-10);
 				break;
+			case Key.Tab:
+				Complete();
+				break;
 			case Key.Enter:
 				Accept();
 				break;
@@ -261,6 +275,18 @@ public partial class GoToWindow : Window
 				return;
 		}
 		e.Handled = true;
+	}
+
+	/// <summary>Writes what is selected into the box as its path, so what follows can be typed
+	/// against it - a line number, most of the time. A symbol completes to the file that
+	/// declares it: that is what a line belongs to. Any line already typed is kept.</summary>
+	void Complete()
+	{
+		if (Matches.SelectedItem is not GoToRow row)
+			return;
+		var (_, line) = Split(InputBox.Text ?? "");
+		InputBox.Text = line is { } l ? $"{row.Path}:{l.ToString(CultureInfo.InvariantCulture)}" : row.Path;
+		InputBox.CaretIndex = InputBox.Text.Length;
 	}
 
 	void Step(int delta)
