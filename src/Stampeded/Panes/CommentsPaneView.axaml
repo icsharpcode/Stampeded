@@ -35,6 +35,11 @@
         <ContextMenu Opening="OnCommentMenuOpening">
           <MenuItem Header="Go to Line (click)" x:Name="GoToItem" Click="OnGoTo" />
           <MenuItem Header="Delete Draft" x:Name="DeleteDraftItem" Click="OnDelete" />
+          <Separator />
+          <MenuItem Header="Mark Resolved" x:Name="ResolveItem" Click="OnResolve" />
+          <MenuItem Header="Mark Unresolved" x:Name="UnresolveItem" Click="OnUnresolve" />
+          <MenuItem Header="Mark All Resolved" x:Name="ResolveAllItem" Click="OnResolveAll" />
+          <Separator />
           <MenuItem Header="Open on GitHub" x:Name="OpenOnGitHubItem" Click="OnOpenOnGitHub" />
         </ContextMenu>
       </ListBox.ContextMenu>

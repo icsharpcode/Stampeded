@@ -33,8 +33,12 @@ public sealed partial class CommentsState : ObservableObject
 }
 
 public sealed record CommentRow(string RelPath, int? Line, bool OldSide, string Body, Guid? DraftId, string Author,
-	string? Url = null, bool IsReply = false)
+	string? Url = null, bool IsReply = false, string? ThreadId = null, bool IsResolved = false)
 {
+	/// <summary>Whether this comment's thread can be resolved on GitHub: a posted one, in a
+	/// thread GitHub named. A draft has no thread until it is submitted.</summary>
+	public bool CanResolve => ThreadId is { Length: > 0 };
+
 	/// <summary>Compact excerpt for the list row; the inline thread box (and the row
 	/// tooltip) carry the full text. Long bodies made the pane's layout pass crawl.</summary>
 	public string Preview {
@@ -89,7 +93,8 @@ public class CommentsPaneViewModel : Tool
 		foreach (var posted in workspace.Comments.Posted)
 		{
 			string author = posted.IsResolved ? $"[resolved] {posted.Author}" : posted.Author;
-			Items.Add(new CommentRow(posted.RelPath, posted.Line, posted.OldSide, posted.Body, null, author, posted.Url));
+			Items.Add(new CommentRow(posted.RelPath, posted.Line, posted.OldSide, posted.Body, null, author,
+				posted.Url, IsReply: false, posted.ThreadId, posted.IsResolved));
 		}
 		State.CanComment = workspace.Comments.CanComment;
 		// A reply posts into its thread by id, so a lost line does not put it at risk and it
@@ -142,6 +147,44 @@ public class CommentsPaneViewModel : Tool
 	{
 		if (row.DraftId is { } id)
 			workspace.Comments.RemoveDraft(id);
+	}
+
+	/// <summary>Resolves or reopens one thread on GitHub. What the pane shows follows from
+	/// what GitHub says afterwards, not from what was asked for: the request can be refused -
+	/// a repository where resolving is not the reviewer's to do - and a row that reads
+	/// resolved when it is not is worse than one that did not change.</summary>
+	public void SetResolved(CommentRow row, bool resolved)
+	{
+		if (row.ThreadId is { Length: > 0 } threadId)
+			workspace.Comments.SetThreadResolvedAsync(threadId, resolved).HandleExceptions();
+	}
+
+	/// <summary>Whether anything here is still open, which is what "all" would act on.</summary>
+	public bool HasUnresolvedThreads
+		=> workspace.Comments.Posted.Any(p => !p.IsResolved && p.ThreadId is { Length: > 0 });
+
+	/// <summary>Resolves every thread that is not resolved yet - the end of a pass where each
+	/// remark has been dealt with, which is otherwise a right-click per comment.</summary>
+	public void ResolveAll()
+	{
+		ResolveAllAsync().HandleExceptions();
+
+		async Task ResolveAllAsync()
+		{
+			var threads = workspace.Comments.Posted
+				.Where(p => !p.IsResolved && p.ThreadId is { Length: > 0 })
+				.Select(p => p.ThreadId!)
+				.Distinct(StringComparer.Ordinal)
+				.ToList();
+			if (threads.Count == 0)
+			{
+				State.Status = "No unresolved threads here.";
+				return;
+			}
+			foreach (string threadId in threads)
+				await workspace.Comments.SetThreadResolvedAsync(threadId, resolved: true);
+			State.Status = $"Marked {threads.Count} thread(s) resolved.";
+		}
 	}
 
 	public void OpenOnGitHub(CommentRow row)

@@ -39,7 +39,26 @@ public partial class CommentsPaneView : UserControl
 		GoToItem.IsEnabled = row is not null;
 		DeleteDraftItem.IsEnabled = row?.IsDraft == true;
 		OpenOnGitHubItem.IsEnabled = row?.Url is { Length: > 0 };
+		// One entry per direction rather than a toggle: which one is offered says what the
+		// thread is now, without the reader having to read the row's badge first.
+		ResolveItem.IsEnabled = row is { CanResolve: true, IsResolved: false };
+		UnresolveItem.IsEnabled = row is { CanResolve: true, IsResolved: true };
+		ResolveAllItem.IsEnabled = Vm?.HasUnresolvedThreads == true;
 	}
+
+	void OnResolve(object? s, RoutedEventArgs e)
+	{
+		if (Vm is { } vm && CommentList.SelectedItem is CommentRow row)
+			vm.SetResolved(row, resolved: true);
+	}
+
+	void OnUnresolve(object? s, RoutedEventArgs e)
+	{
+		if (Vm is { } vm && CommentList.SelectedItem is CommentRow row)
+			vm.SetResolved(row, resolved: false);
+	}
+
+	void OnResolveAll(object? s, RoutedEventArgs e) => Vm?.ResolveAll();
 
 	void OnDelete(object? s, RoutedEventArgs e)
 	{
