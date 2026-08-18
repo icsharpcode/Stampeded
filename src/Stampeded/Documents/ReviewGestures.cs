@@ -92,6 +92,11 @@ static class ReviewGestures
 	{
 		if (App.Workspace is not { } workspace)
 			return;
+		// Reading off the end of a file is finishing it, so the file being left is marked the
+		// way "v" would mark it. Only going forwards: backing up through a change is not the
+		// same statement about the file behind you.
+		if (direction > 0 && workspace.CurrentFile is { } finished)
+			workspace.SetViewed(finished.Path, viewed: true);
 		await workspace.OpenAdjacentFileAsync(direction);
 		// Whatever is in front now, which is the file just opened - and the edge it is entered
 		// at follows the direction of travel. Queued behind the layout the open triggers: until
