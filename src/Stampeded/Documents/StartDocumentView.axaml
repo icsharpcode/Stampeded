@@ -123,9 +123,6 @@
                    IsVisible="{Binding #PrFilterToggle.IsChecked}" />
         </Panel>
         <StackPanel Grid.Column="1" Orientation="Horizontal">
-          <controls:WaveSpinner SquareSize="4" Width="60" Margin="8,0,0,0"
-                                VerticalAlignment="Center"
-                                IsVisible="{Binding PrList.State.Loading}" />
           <ToggleButton x:Name="PrFilterToggle" Classes="tool" IsCheckedChanged="OnFilterToggled"
                         ToolTip.Tip="Filter (Ctrl+F, or just start typing in the list) - show only the pull requests matching every word typed, by number, title, author, head branch or target branch">
             <Image Source="{x:Static app:Images.Filter}" />
@@ -141,6 +138,9 @@
       <TextBlock DockPanel.Dock="Bottom" Margin="2,4,0,0" FontSize="12" Opacity="0.75"
                  TextWrapping="Wrap" Text="{Binding PrList.State.Status}"
                  IsVisible="{Binding !PrList.Items.Count}" />
+      <!-- Loading says so inside the list, which is the thing that is empty. In the header it
+           shared a row with the buttons and lost. -->
+      <Panel>
       <ListBox x:Name="PrListBox" ItemsSource="{Binding Prs}" DoubleTapped="OnPrDoubleTapped"
                TextInput="OnListTextInput" KeyDown="OnListKeyDown"
                ScrollViewer.HorizontalScrollBarVisibility="Disabled">
@@ -219,6 +219,14 @@
           </DataTemplate>
         </ListBox.ItemTemplate>
       </ListBox>
+        <!-- Over the list, near its top: the first rows are where a reader is looking, and
+             one that fills in underneath keeps its place. -->
+        <StackPanel IsVisible="{Binding PrList.State.Loading}" IsHitTestVisible="False"
+                    HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,24,0,0" Spacing="8">
+          <controls:WaveSpinner SquareSize="4" Width="60" HorizontalAlignment="Center" />
+          <TextBlock Text="Reading the open pull requests from GitHub..." FontSize="12" Opacity="0.7" HorizontalAlignment="Center" />
+        </StackPanel>
+      </Panel>
     </DockPanel>
     <DockPanel Grid.Column="4">
       <TextBlock DockPanel.Dock="Bottom" Margin="2,4,0,0" FontSize="12" Opacity="0.75"
@@ -240,8 +248,6 @@
                    IsVisible="{Binding #BranchFilterToggle.IsChecked}" />
         </Panel>
         <StackPanel Grid.Column="1" Orientation="Horizontal">
-          <controls:WaveSpinner SquareSize="4" Width="60" Margin="0,0,8,0"
-                                VerticalAlignment="Center" IsVisible="{Binding State.RefsLoading}" />
           <ToggleButton x:Name="BranchFilterToggle" Classes="tool" IsCheckedChanged="OnFilterToggled"
                         ToolTip.Tip="Filter (Ctrl+F, or just start typing in the list) - show only the branches or stashes matching every word typed, by name, commit subject or pull request number">
             <Image Source="{x:Static app:Images.Filter}" />
@@ -259,6 +265,7 @@
       <TextBlock DockPanel.Dock="Bottom" Margin="0,4,0,0" FontSize="12" Opacity="0.85" TextWrapping="Wrap"
                  Text="{Binding State.Status}"
                  IsVisible="{Binding State.Status, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+      <Panel>
       <ListBox x:Name="BranchList" ItemsSource="{Binding Branches}" DoubleTapped="OnBranchDoubleTapped"
                TextInput="OnListTextInput" KeyDown="OnListKeyDown"
                ScrollViewer.HorizontalScrollBarVisibility="Disabled">
@@ -362,6 +369,14 @@
           </DataTemplate>
         </ListBox.ItemTemplate>
       </ListBox>
+        <!-- Over the list, near its top: the first rows are where a reader is looking, and
+             one that fills in underneath keeps its place. -->
+        <StackPanel IsVisible="{Binding State.RefsLoading}" IsHitTestVisible="False"
+                    HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,24,0,0" Spacing="8">
+          <controls:WaveSpinner SquareSize="4" Width="60" HorizontalAlignment="Center" />
+          <TextBlock Text="Reading branches and stashes..." FontSize="12" Opacity="0.7" HorizontalAlignment="Center" />
+        </StackPanel>
+      </Panel>
     </DockPanel>
   </Grid>
 </UserControl>
