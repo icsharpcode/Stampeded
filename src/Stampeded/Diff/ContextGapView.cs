@@ -72,6 +72,38 @@ public sealed class ContextGapView
 	/// that the row they draw beside it carries the same background.</summary>
 	public bool HasBar(int line) => gaps.Any(g => g.FirstLine == line);
 
+	/// <summary>
+	/// The structural folds that can be installed as things stand, with any that run into
+	/// hidden context cut back to where it starts.
+	///
+	/// The two ways of hiding lines here are deliberately separate - folds are the code's own
+	/// structure, gaps are the diff's - and they do not nest: a member whose tail is unchanged
+	/// ends inside the gap hiding it. Collapsing such a fold would leave the editor with two
+	/// collapsed sections that overlap without containing one another, which it cannot lay out
+	/// ("Trying to build visual line from collapsed line") and which took the window down.
+	///
+	/// A fold that begins inside hidden context is dropped rather than cut: the gap's control
+	/// stands for all of those lines at once, so the margin would draw a marker beside it
+	/// offering to collapse code the reader cannot see. Both come back as the context does.
+	/// </summary>
+	public IReadOnlyList<FoldRange> ClipToVisible(IEnumerable<FoldRange> ranges)
+	{
+		var kept = new List<FoldRange>();
+		foreach (var range in ranges)
+		{
+			if (Hides(range.StartLine))
+				continue;
+			// The first hidden line of the gap its end runs into; the gap's own control sits on
+			// the line before it and stays reachable.
+			int end = range.EndLine;
+			if (gaps.FirstOrDefault(g => g.Contains(end)) is { } gap)
+				end = gap.FirstLine - 1;
+			if (end > range.StartLine)
+				kept.Add(range with { EndLine = end });
+		}
+		return kept;
+	}
+
 	/// <summary>The gaps of a freshly loaded document, all closed.</summary>
 	/// <param name="declarations">The code's structural ranges, in document lines; a run hiding
 	/// the header of a declaration the change is inside is cut around it.</param>

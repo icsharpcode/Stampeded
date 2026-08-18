@@ -1111,7 +1111,7 @@ public partial class DiffDocumentView : UserControl
 	{
 		if (foldingManager is null)
 			return;
-		var shown = structuralRanges.Where(r => contextGaps?.Hides(r.StartLine) != true).ToList();
+		var shown = contextGaps?.ClipToVisible(structuralRanges) ?? structuralRanges;
 		foldingManager.Clear();
 		foldingManager.UpdateFoldings(FoldInstaller.ToFoldings(Editor.Document, shown), -1);
 	}

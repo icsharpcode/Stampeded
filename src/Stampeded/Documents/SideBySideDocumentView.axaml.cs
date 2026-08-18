@@ -178,7 +178,7 @@ public partial class SideBySideDocumentView : UserControl
 	{
 		if (leftFolding is null || rightFolding is null)
 			return;
-		var shown = structuralRanges.Where(r => contextGaps?.Hides(r.StartLine) != true).ToList();
+		var shown = contextGaps?.ClipToVisible(structuralRanges) ?? structuralRanges;
 		leftFolding.Clear();
 		rightFolding.Clear();
 		leftFolding.UpdateFoldings(FoldInstaller.ToFoldings(Left.Document, shown), -1);
