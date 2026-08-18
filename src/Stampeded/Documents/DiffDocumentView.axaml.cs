@@ -907,6 +907,11 @@ public partial class DiffDocumentView : UserControl, IReviewDocumentView
 			vm.File.Path,
 			() => vm.Model.GetSideText(oldSide: vm.File.Kind == Core.Diff.FileChangeKind.Deleted).Text);
 		Editor.Text = vm.Model.Text;
+		// A source view is one blob shown whole - a file opened from the Explorer, a decompiled
+		// type, the base side of a file the change does not touch. There is no other side for
+		// its lines to be numbered against, and two identical columns of numbers only read as a
+		// diff that is missing.
+		margin.Columns = vm.IsSourceView ? DiffLineNumberColumns.New : DiffLineNumberColumns.Both;
 		margin.Tags = vm.Model.Tags;
 		margin.InvalidateMeasure();
 		Overview.Attach(Editor, vm.Model.Tags);
