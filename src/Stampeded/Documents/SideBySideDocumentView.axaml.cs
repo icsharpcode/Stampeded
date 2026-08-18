@@ -40,26 +40,45 @@ public partial class SideBySideDocumentView : UserControl, IReviewDocumentView
 
 	/// <summary>Moves the caret to the next row that is part of the change, in the pane the
 	/// reader is in. The tags say which rows those are, and a run of them is one hunk.</summary>
-	public void JumpToHunkCommand(int direction)
+	public bool JumpToHunkCommand(int direction)
+	{
+		var tags = FocusedEditor == Right ? rightTags : leftTags;
+		if (tags is null || tags.Count == 0)
+			return false;
+		var editor = FocusedEditor;
+		int line = editor.TextArea.Caret.Line;
+		// Off the current run first, so stepping does not stop on the row it started in.
+		int next = line;
+		while (InHunk(tags, next) && next + direction >= 1 && next + direction <= tags.Count)
+			next += direction;
+		while (next + direction >= 1 && next + direction <= tags.Count && !InHunk(tags, next))
+			next += direction;
+		if (!InHunk(tags, next))
+			return false;
+		MoveCaretTo(editor, next);
+		return true;
+	}
+
+	public void JumpToEdgeHunk(int direction)
 	{
 		var tags = FocusedEditor == Right ? rightTags : leftTags;
 		if (tags is null || tags.Count == 0)
 			return;
-		var editor = FocusedEditor;
-		int line = editor.TextArea.Caret.Line;
-		bool InHunk(int docLine) => docLine >= 1 && docLine <= tags.Count
+		var rows = Enumerable.Range(1, tags.Count).Where(row => InHunk(tags, row));
+		if ((direction > 0 ? rows.FirstOrDefault() : rows.LastOrDefault()) is > 0 and var row)
+			MoveCaretTo(FocusedEditor, row);
+	}
+
+	/// <summary>Whether a row is part of the change rather than context or filler.</summary>
+	static bool InHunk(IReadOnlyList<DiffLineTag> tags, int docLine)
+		=> docLine >= 1 && docLine <= tags.Count
 			&& tags[docLine - 1].Kind is not (DiffLineKind.Context or DiffLineKind.Filler);
-		// Off the current run first, so stepping does not stop on the row it started in.
-		int next = line;
-		while (InHunk(next) && next + direction >= 1 && next + direction <= tags.Count)
-			next += direction;
-		while (next + direction >= 1 && next + direction <= tags.Count && !InHunk(next))
-			next += direction;
-		if (!InHunk(next))
-			return;
-		editor.TextArea.Caret.Line = next;
+
+	static void MoveCaretTo(ReviewTextEditor editor, int docLine)
+	{
+		editor.TextArea.Caret.Line = docLine;
 		editor.TextArea.Caret.Column = 1;
-		editor.ScrollToLine(next);
+		editor.ScrollToLine(docLine);
 	}
 
 	public void GoToDefinitionCommand() => FocusedPane?.NavigateToDefinition();

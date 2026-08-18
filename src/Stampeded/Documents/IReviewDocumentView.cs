@@ -36,7 +36,14 @@ public interface IReviewDocumentView
 	/// one in front.</summary>
 	string DocumentId { get; }
 
-	void JumpToHunkCommand(int direction);
+	/// <summary>Moves to the next or previous hunk, and says whether there was one: past the
+	/// last, reading carries on in the next file rather than stopping.</summary>
+	bool JumpToHunkCommand(int direction);
+
+	/// <summary>Lands on the first hunk of this file when stepping forwards, or the last when
+	/// stepping back - where a reader arriving from the file before or after expects to be.
+	/// </summary>
+	void JumpToEdgeHunk(int direction);
 
 	void JumpToUncoveredCommand();
 

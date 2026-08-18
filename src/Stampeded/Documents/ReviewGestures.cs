@@ -25,11 +25,11 @@ static class ReviewGestures
 			// n/p are the review's own keys; Ctrl+Down/Up are the ones a hand arrives with.
 			case (Key.N, KeyModifiers.None):
 			case (Key.Down, KeyModifiers.Control):
-				view.JumpToHunkCommand(1);
+				StepHunk(view, 1);
 				return true;
 			case (Key.P, KeyModifiers.None):
 			case (Key.Up, KeyModifiers.Control):
-				view.JumpToHunkCommand(-1);
+				StepHunk(view, -1);
 				return true;
 			case (Key.OemCloseBrackets, KeyModifiers.Control):
 				workspace?.Scopes.StepCommitAsync(1).HandleExceptions();
@@ -73,5 +73,31 @@ static class ReviewGestures
 			default:
 				return false;
 		}
+	}
+
+	/// <summary>
+	/// The next hunk, or the next file when this one has no more. Reading a change is one pass
+	/// through it, not a pass through each file with a stop at every border: the key that says
+	/// "on to the next thing" should not stop meaning that at the end of a file, which is the
+	/// one place a reader is certainly done with it.
+	/// </summary>
+	static void StepHunk(IReviewDocumentView view, int direction)
+	{
+		if (view.JumpToHunkCommand(direction))
+			return;
+		StepFileAsync(direction).HandleExceptions();
+	}
+
+	static async Task StepFileAsync(int direction)
+	{
+		if (App.Workspace is not { } workspace)
+			return;
+		await workspace.OpenAdjacentFileAsync(direction);
+		// Whatever is in front now, which is the file just opened - and the edge it is entered
+		// at follows the direction of travel. Queued behind the layout the open triggers: until
+		// that has run there are no rows to land on.
+		Avalonia.Threading.Dispatcher.UIThread.Post(
+			() => ReviewViews.Active?.JumpToEdgeHunk(direction),
+			Avalonia.Threading.DispatcherPriority.Loaded);
 	}
 }

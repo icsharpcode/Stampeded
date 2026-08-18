@@ -183,7 +183,14 @@ public partial class DiffDocumentView : UserControl, IReviewDocumentView
 
 	#region Menu / context-menu commands
 
-	public void JumpToHunkCommand(int direction) => JumpToHunk(direction);
+	public bool JumpToHunkCommand(int direction) => JumpToHunk(direction);
+
+	public void JumpToEdgeHunk(int direction)
+	{
+		if (model is null || model.Hunks.Count == 0)
+			return;
+		MoveCaretToLine(direction > 0 ? model.Hunks[0].FirstDocLine : model.Hunks[^1].FirstDocLine);
+	}
 
 	public void JumpToUncoveredCommand() => JumpToNextUncovered();
 
@@ -1259,17 +1266,19 @@ public partial class DiffDocumentView : UserControl, IReviewDocumentView
 		}
 	}
 
-	void JumpToHunk(int direction)
+	/// <summary>Moves to the next hunk in that direction, and says whether there was one.</summary>
+	bool JumpToHunk(int direction)
 	{
 		if (model is null || model.Hunks.Count == 0)
-			return;
+			return false;
 		int caretLine = Editor.TextArea.Caret.Line;
 		HunkSpan? target = direction > 0
 			? model.Hunks.Cast<HunkSpan?>().FirstOrDefault(h => h!.Value.FirstDocLine > caretLine)
 			: model.Hunks.Cast<HunkSpan?>().LastOrDefault(h => h!.Value.FirstDocLine < caretLine);
 		if (target is null)
-			return;
+			return false;
 		MoveCaretToLine(target.Value.FirstDocLine);
+		return true;
 	}
 
 	#region Blame
