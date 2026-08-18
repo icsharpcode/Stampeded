@@ -35,6 +35,11 @@
          scales its content, so the window zoom never reached them. Scaling their host here
          reaches all of them at once - context menus, tooltips, the comment editor - and from
          the top-left, so a popup still starts where it was placed and grows away from it. -->
+    <!-- A button narrower than its label says so, rather than cutting a word in half: the
+         panes here are resizable and their buttons are labelled with sentences. -->
+    <Style Selector="Button TextBlock">
+      <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+    </Style>
     <!-- A row of commands over a list is a toolbar: pressed with the mouse, read at a glance,
          and narrow enough that a pane keeps room for what it is about. The name each icon
          stands for lives in its tooltip, which is also where the gesture goes when there is
