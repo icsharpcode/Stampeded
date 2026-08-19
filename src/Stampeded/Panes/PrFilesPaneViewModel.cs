@@ -152,11 +152,12 @@ public class PrFilesPaneViewModel : Tool
 	readonly ReviewWorkspace workspace;
 	bool suppressViewedPersist;
 
-	bool testsFirst = true;
+	/// <summary>The review's own setting, shown here because this is the list it reorders -
+	/// and read from there, so the keys that walk the list walk it in the same order.</summary>
 	public bool TestsFirst {
-		get => testsFirst;
+		get => workspace.TestsFirst;
 		set {
-			testsFirst = value;
+			workspace.TestsFirst = value;
 			Rebuild();
 		}
 	}
@@ -180,17 +181,9 @@ public class PrFilesPaneViewModel : Tool
 	{
 		Files.Clear();
 		// Every file in the since-last-pass scope changed since the last pass - that is what
-		// the list is - so marking them all says nothing, and ordering by it orders nothing.
-		// The mark belongs to the whole change, where it picks out the few that moved.
+		// the list is - so marking them all says nothing.
 		bool markTouched = !workspace.Scopes.InSinceLastPass;
-		var ordered = workspace.Files
-			// Generator output goes last whatever else is true of it: it is what the change
-			// caused, and reaching the cause should never mean scrolling past the effect.
-			.OrderBy(f => f.IsGenerated ? 1 : 0)
-			.ThenBy(f => markTouched && workspace.IsTouchedSinceLastPass(f.Path) ? 0 : 1)
-			.ThenBy(f => Core.Review.TestPaths.IsTestPath(f.Path) == testsFirst ? 0 : 1)
-			.ThenBy(f => f.Path, StringComparer.Ordinal);
-		foreach (var file in ordered)
+		foreach (var file in workspace.ReadingOrder)
 		{
 			int added = file.Hunks.Sum(h => h.Lines.Count(l => l.Kind == Core.Diff.PatchLineKind.Added));
 			int removed = file.Hunks.Sum(h => h.Lines.Count(l => l.Kind == Core.Diff.PatchLineKind.Removed));

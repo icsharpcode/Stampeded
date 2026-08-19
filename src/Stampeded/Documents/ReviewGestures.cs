@@ -101,7 +101,7 @@ static class ReviewGestures
 			// Off the end of the last file there is no next one, and what follows reading a
 			// change is saying something about it: the review page, rather than a key that
 			// stops answering at the moment the pass is over.
-			if (workspace.Files.Count > 0 && workspace.Files[^1].Path == finished.Path)
+			if (workspace.ReadingOrder is [.., var last] && last.Path == finished.Path)
 			{
 				workspace.OpenReviewDocument();
 				return;

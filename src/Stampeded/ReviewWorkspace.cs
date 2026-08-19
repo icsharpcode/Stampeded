@@ -821,6 +821,30 @@ public sealed class ReviewWorkspace(string repoPath)
 	/// side-by-side layout while this answered null there.</summary>
 	public FileDiff? CurrentFile => (Documents?.ActiveDockable as Documents.IDiffDocument)?.File;
 
+	/// <summary>Whether the tests of a change are read before the code they are about. A
+	/// review's own setting rather than the file list's: it decides the order the change is
+	/// read in, and every key that moves between files follows that order.</summary>
+	public bool TestsFirst { get; set; } = true;
+
+	/// <summary>
+	/// The files in the order they are meant to be read - the order the changed-files list
+	/// shows them in, which is the order a reader is walking down.
+	///
+	/// Navigation used the order git printed the diff in, which is neither: "the next file"
+	/// jumped somewhere else in the list, and "the last file" - where a pass ends and the
+	/// verdict page opens - was a file in the middle of it, so the end of the pass never
+	/// arrived. One order, asked for here, is what keeps the two in step.
+	/// </summary>
+	public IReadOnlyList<FileDiff> ReadingOrder => [.. Files
+		// Generator output goes last whatever else is true of it: it is what the change
+		// caused, and reaching the cause should never mean scrolling past the effect.
+		.OrderBy(f => f.IsGenerated ? 1 : 0)
+		// Every file in the since-last-pass scope changed since the last pass - that is what
+		// the list is - so ordering by it there orders nothing.
+		.ThenBy(f => !Scopes.InSinceLastPass && IsTouchedSinceLastPass(f.Path) ? 0 : 1)
+		.ThenBy(f => Core.Review.TestPaths.IsTestPath(f.Path) == TestsFirst ? 0 : 1)
+		.ThenBy(f => f.Path, StringComparer.Ordinal)];
+
 	public event Action<string>? StatusMessage;
 
 	/// <summary>Outcome line of the most recent local test run, for the overview.</summary>
@@ -1590,18 +1614,19 @@ public sealed class ReviewWorkspace(string repoPath)
 
 	public async Task OpenAdjacentFileAsync(int delta)
 	{
-		if (Files.Count == 0)
+		var order = ReadingOrder;
+		if (order.Count == 0)
 			return;
 		int index = 0;
 		var current = CurrentFile;
 		if (current is not null)
 		{
-			int i = Files.ToList().FindIndex(f => f.Path == current.Path);
-			index = Math.Clamp(i + delta, 0, Files.Count - 1);
+			int i = order.ToList().FindIndex(f => f.Path == current.Path);
+			index = Math.Clamp(i + delta, 0, order.Count - 1);
 			if (i >= 0 && index == i)
 				return;
 		}
-		if (await OpenFileAsync(Files[index]) is { } opened)
+		if (await OpenFileAsync(order[index]) is { } opened)
 			FocusEditorOf(opened);
 	}
 
@@ -1629,9 +1654,16 @@ public sealed class ReviewWorkspace(string repoPath)
 			// from here that is the first file still unread. With nothing left unread there is
 			// nothing to go on to, and opening a file that was already read would be a loop.
 			if (FirstUnread() is { } start && await OpenFileAsync(start) is { } opened)
+			{
 				FocusEditorOf(opened);
+			}
 			else if (Files.Count > 0)
+			{
+				// Nothing left to read is the end of the pass wherever the key was pressed,
+				// and what follows a pass is saying something about it.
+				OpenReviewDocument();
 				StatusMessage?.Invoke($"All {Files.Count} file(s) here are marked viewed.");
+			}
 			return;
 		}
 		bool viewed = !Store.IsViewed(file.Path);
@@ -1641,8 +1673,9 @@ public sealed class ReviewWorkspace(string repoPath)
 			return;
 		// The end of what is being read: the last file of the list, or the last one of it that
 		// was still unread. Either way there is nothing left below to advance into.
-		bool through = Files.Count > 0
-			&& (Files[^1].Path == file.Path || Files.All(f => Store.IsViewed(f.Path)));
+		var order = ReadingOrder;
+		bool through = order.Count > 0
+			&& (order[^1].Path == file.Path || order.All(f => Store.IsViewed(f.Path)));
 		if (through && Scopes.Commit is not null)
 		{
 			int unread = Files.Count(f => !Store.IsViewed(f.Path));
@@ -1654,7 +1687,7 @@ public sealed class ReviewWorkspace(string repoPath)
 				// reading before the diff - but reading the series with 'v' is one continuous
 				// pass, and a stop at the overview between every commit is a key pressed for
 				// nothing.
-				if (Files.Count > 0 && await OpenFileAsync(Files[0]) is { } first)
+				if (ReadingOrder is [var firstOfCommit, ..] && await OpenFileAsync(firstOfCommit) is { } first)
 					FocusEditorOf(first);
 				if (unread > 0)
 					StatusMessage?.Invoke($"Moved on with {unread} file(s) of that commit still unread.");
@@ -1670,10 +1703,11 @@ public sealed class ReviewWorkspace(string repoPath)
 		}
 		// Outside a scope the last file has nowhere to advance to, and the advance would
 		// silently do nothing - leaving 'v' pressed once more to un-view the file just
-		// finished. The read is over at that point, so it ends where the close-out lives.
-		if (Files.Count > 0 && Files[^1].Path == file.Path)
+		// finished. The read is over at that point, so it ends on the page where a verdict is
+		// given, which is what 'n' off the end of the last file does as well.
+		if (order.Count > 0 && order[^1].Path == file.Path)
 		{
-			OpenOverview();
+			OpenReviewDocument();
 			StatusMessage?.Invoke($"Last file read; {Files.Count(f => Store.IsViewed(f.Path))} of {Files.Count} viewed.");
 			return;
 		}
@@ -1682,7 +1716,7 @@ public sealed class ReviewWorkspace(string repoPath)
 
 	/// <summary>The file a pass continues at: the first one not marked viewed. Null once every
 	/// one of them has been - a pass that is over has nowhere to continue.</summary>
-	FileDiff? FirstUnread() => Files.FirstOrDefault(f => !Store.IsViewed(f.Path));
+	FileDiff? FirstUnread() => ReadingOrder.FirstOrDefault(f => !Store.IsViewed(f.Path));
 
 	string? fileBeforeOverview;
 
