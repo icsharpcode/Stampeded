@@ -55,6 +55,78 @@ public sealed record SideBySideModel(
 		}
 		return (string.Join('\n', sideLines), sideToDoc);
 	}
+
+	/// <summary>The document row a blob line of one side sits on, or null when that side has
+	/// no such line.</summary>
+	public int? DocLineFor(bool oldSide, int blobLine)
+	{
+		var tags = oldSide ? LeftTags : RightTags;
+		for (int i = 0; i < tags.Count; i++)
+		{
+			if ((oldSide ? tags[i].OldLine : tags[i].NewLine) == blobLine)
+				return i + 1;
+		}
+		return null;
+	}
+
+	/// <summary>
+	/// Derives a pair with one marker row per anchor, inserted below the row the anchor sits
+	/// on - in <em>both</em> documents, at the same index.
+	///
+	/// The two panes are kept in step by copying one scroll offset to the other, which is only
+	/// exact while they hold the same number of rows. So a thread cannot be a row of the side
+	/// it belongs to alone: the other side reserves the row as well, and the view draws the
+	/// box on one and a spacer of the same height on the other.
+	/// </summary>
+	public SideBySideModel WithThreadLines(IReadOnlyList<ThreadAnchor> anchors)
+	{
+		var insertAfter = new SortedDictionary<int, List<string>>();
+		foreach (var anchor in anchors)
+		{
+			// BlobLine 0 = no surviving location (outdated): pinned above the first row.
+			int? docLine = anchor.BlobLine == 0 ? 0 : DocLineFor(anchor.OldSide, anchor.BlobLine);
+			if (docLine is not { } dl)
+				continue;
+			if (!insertAfter.TryGetValue(dl, out var keys))
+				insertAfter[dl] = keys = [];
+			keys.Add(anchor.Key);
+		}
+		if (insertAfter.Count == 0)
+			return this;
+		var (leftText, leftTags) = SpliceSide(LeftText, LeftTags, insertAfter);
+		var (rightText, rightTags) = SpliceSide(RightText, RightTags, insertAfter);
+		return new SideBySideModel(leftText, rightText, leftTags, rightTags);
+	}
+
+	static (string Text, IReadOnlyList<DiffLineTag> Tags) SpliceSide(
+		string text, IReadOnlyList<DiffLineTag> tags, SortedDictionary<int, List<string>> insertAfter)
+	{
+		var sourceLines = text.Split('\n');
+		var newLines = new List<string>(sourceLines.Length + insertAfter.Count);
+		var newTags = new List<DiffLineTag>(tags.Count + insertAfter.Count);
+		void Markers(List<string> keys)
+		{
+			foreach (var key in keys)
+			{
+				newLines.Add(DiffDocumentModel.ThreadMarkerPrefix + key + DiffDocumentModel.ThreadMarkerSuffix);
+				// Carrying no line of either blob, so nothing that reads a side's own text -
+				// its syntax, its symbols, its line numbers - sees the row at all.
+				newTags.Add(new DiffLineTag(DiffLineKind.Comment, 0, 0, null));
+			}
+		}
+		if (insertAfter.TryGetValue(0, out var topKeys))
+			Markers(topKeys);
+		for (int i = 0; i < tags.Count; i++)
+		{
+			newLines.Add(i < sourceLines.Length ? sourceLines[i] : "");
+			newTags.Add(tags[i]);
+			if (insertAfter.TryGetValue(i + 1, out var keys))
+				Markers(keys);
+		}
+		for (int i = tags.Count; i < sourceLines.Length; i++)
+			newLines.Add(sourceLines[i]);
+		return (string.Join('\n', newLines), newTags);
+	}
 }
 
 /// <summary>

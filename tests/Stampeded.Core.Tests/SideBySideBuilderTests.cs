@@ -90,4 +90,48 @@ public class SideBySideBuilderTests
 		Assert.That(pair.LeftTags.All(t => t.Kind == DiffLineKind.Context), Is.True);
 		Assert.That(pair.RightTags.All(t => t.Kind == DiffLineKind.Context), Is.True);
 	}
+
+	[Test]
+	public void ThreadRowIsReservedOnBothSides()
+	{
+		var pair = DiffDocumentBuilder.BuildPair(OldText, NewText);
+		int before = pair.LeftText.Split('\n').Length;
+		int row = pair.DocLineFor(oldSide: false, blobLine: 2)!.Value;
+		var spliced = pair.WithThreadLines([new ThreadAnchor(OldSide: false, BlobLine: 2, Key: "n2")]);
+		var left = spliced.LeftText.Split('\n');
+		var right = spliced.RightText.Split('\n');
+		Assert.That(left, Has.Length.EqualTo(before + 1));
+		Assert.That(right, Has.Length.EqualTo(left.Length), "the panes are kept in step by row count");
+		Assert.That(right[row], Is.EqualTo("@@thread:n2@@"));
+		Assert.That(left[row], Is.EqualTo("@@thread:n2@@"), "the other side reserves the row too");
+		Assert.That(spliced.LeftTags[row].Kind, Is.EqualTo(DiffLineKind.Comment));
+		Assert.That(spliced.RightTags[row].Kind, Is.EqualTo(DiffLineKind.Comment));
+	}
+
+	[Test]
+	public void ThreadRowCarriesNoBlobLine()
+	{
+		var pair = DiffDocumentBuilder.BuildPair(OldText, NewText)
+			.WithThreadLines([new ThreadAnchor(OldSide: true, BlobLine: 1, Key: "o1")]);
+		// The row belongs to neither blob, so the side text a parser sees is unchanged.
+		Assert.That(pair.GetSideText(oldSide: true).Text, Is.EqualTo(OldText));
+		Assert.That(pair.GetSideText(oldSide: false).Text, Is.EqualTo(NewText));
+	}
+
+	[Test]
+	public void OutdatedThreadGoesAboveTheFirstRow()
+	{
+		var pair = DiffDocumentBuilder.BuildPair(OldText, NewText)
+			.WithThreadLines([new ThreadAnchor(OldSide: false, BlobLine: 0, Key: "od0")]);
+		Assert.That(pair.LeftText.Split('\n')[0], Is.EqualTo("@@thread:od0@@"));
+		Assert.That(pair.RightText.Split('\n')[0], Is.EqualTo("@@thread:od0@@"));
+	}
+
+	[Test]
+	public void AnchorOnALineThatSideHasNotIsDropped()
+	{
+		var pair = DiffDocumentBuilder.BuildPair(OldText, NewText);
+		var spliced = pair.WithThreadLines([new ThreadAnchor(OldSide: true, BlobLine: 99, Key: "o99")]);
+		Assert.That(spliced, Is.SameAs(pair));
+	}
 }

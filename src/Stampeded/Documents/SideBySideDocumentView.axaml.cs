@@ -24,7 +24,7 @@ public partial class SideBySideDocumentView : UserControl, IReviewDocumentView
 	/// layouts is written down in one place instead of being discovered by pressing a key.
 	/// </summary>
 	public ReviewCommands Supported => ReviewCommands.JumpToHunk | ReviewCommands.GoToDefinition
-		| ReviewCommands.FindReferences;
+		| ReviewCommands.FindReferences | ReviewCommands.CommentAtCaret;
 
 	public string DocumentId => (DataContext as SideBySideDocumentViewModel)?.Id ?? "";
 
@@ -72,7 +72,8 @@ public partial class SideBySideDocumentView : UserControl, IReviewDocumentView
 	/// <summary>Whether a row is part of the change rather than context or filler.</summary>
 	static bool InHunk(IReadOnlyList<DiffLineTag> tags, int docLine)
 		=> docLine >= 1 && docLine <= tags.Count
-			&& tags[docLine - 1].Kind is not (DiffLineKind.Context or DiffLineKind.Filler);
+			&& tags[docLine - 1].Kind is not (DiffLineKind.Context or DiffLineKind.Filler
+				or DiffLineKind.Comment);
 
 	static void MoveCaretTo(ReviewTextEditor editor, int docLine)
 	{
@@ -89,7 +90,135 @@ public partial class SideBySideDocumentView : UserControl, IReviewDocumentView
 
 	public void ToggleBlameCommand() => NotHere("Blame");
 
-	public void CommentAtCaretCommand() => NotHere("Commenting");
+	/// <summary>Height the comment editor needs, as laid out in the view's markup.</summary>
+	const double CommentBoxHeight = 150;
+
+	CommentTarget? inlineCommentTarget;
+
+	/// <summary>The draft the editor is rewriting, when it was opened on one.</summary>
+	Guid? editingDraftId;
+
+	public void CommentAtCaretCommand() => CommentAtCaret(null);
+
+	/// <summary>
+	/// Opens the comment editor under a row of the pane the caret is in. The row is the
+	/// caret's own unless a thread is being answered, in which case it is the bottom of what
+	/// has already been said there - a reply written on top of the thread it answers is a
+	/// reply nobody can read while writing it.
+	/// </summary>
+	void CommentAtCaret(int? anchorRow, long inReplyTo = 0)
+	{
+		if (FocusedPane?.CaretBlobPosition() is not { } position)
+			return;
+		if (App.Workspace is { Comments.CanComment: false } local)
+		{
+			local.PostStatus("Comments need a pull request; this is a local review.");
+			return;
+		}
+		var editor = FocusedEditor;
+		editingDraftId = null;
+		CommentBox.Text = "";
+		var docLine = editor.Document.GetLineByNumber(editor.TextArea.Caret.Line);
+		string text = editor.Document.GetText(docLine.Offset, docLine.Length);
+		inlineCommentTarget = new CommentTarget(
+			position.RelPath, position.OldSide, position.Line, text, inReplyTo == 0 ? null : inReplyTo);
+		CommentTargetText.Text = (inReplyTo == 0 ? "" : "Reply  |  ")
+			+ $"{position.RelPath}:{position.Line}{(position.OldSide ? " (base)" : "")}  |  {text.Trim()}";
+		int anchorAt = Math.Clamp(anchorRow ?? editor.TextArea.Caret.Line, 1, editor.Document.LineCount);
+		var view = editor.TextArea.TextView;
+		double anchorY = (view.GetVisualPosition(
+			new AvaloniaEdit.TextViewPosition(anchorAt, 1), AvaloniaEdit.Rendering.VisualYPosition.LineBottom)
+			- view.ScrollOffset).Y;
+		// One editor over both panes, anchored to the left one; a comment on the right side is
+		// pushed across by where that pane starts, so the box sits under the line it names.
+		double paneOffset = editor == Right ? Right.Bounds.X - Left.Bounds.X : 0;
+		double marginsWidth = editor.TextArea.LeftMargins.OfType<Avalonia.Controls.Control>().Sum(m => m.Bounds.Width);
+		CommentPopup.HorizontalOffset = paneOffset + marginsWidth + 8;
+		CommentPopup.VerticalOffset = Math.Max(0, Math.Min(anchorY, view.Bounds.Height - CommentBoxHeight));
+		CommentPopup.IsLightDismissEnabled = true;
+		CommentPopup.IsOpen = true;
+		CommentBox.Focus();
+	}
+
+	/// <summary>Opens the editor on a draft that already exists. Saving rewrites that draft
+	/// rather than adding another: it is the same remark, said better.</summary>
+	void EditDraft(Guid draftId, string body, ThreadData thread)
+	{
+		if (!MoveToThread(thread))
+			return;
+		CommentAtCaret(LastThreadRowAfter(thread));
+		if (!CommentPopup.IsOpen)
+			return;
+		editingDraftId = draftId;
+		CommentBox.Text = body;
+		CommentBox.CaretIndex = body.Length;
+	}
+
+	void ReplyInThread(ThreadData thread, long replyTo)
+	{
+		if (MoveToThread(thread))
+			CommentAtCaret(LastThreadRowAfter(thread), replyTo);
+	}
+
+	/// <summary>Puts the caret on the line a thread hangs on, in the pane that shows that
+	/// side, so what follows is written about the right blob.</summary>
+	bool MoveToThread(ThreadData thread)
+	{
+		var pane = thread.OldSide ? leftPane : rightPane;
+		if (pane?.MoveCaretToBlobLine(thread.BlobLine) != true)
+			return false;
+		(thread.OldSide ? Left : Right).TextArea.Focus();
+		return true;
+	}
+
+	/// <summary>The last of the rows reserved for threads under the line a thread hangs on.
+	/// Everything said there is spliced in below the code, so this is the bottom of it.</summary>
+	int LastThreadRowAfter(ThreadData thread)
+	{
+		var tags = thread.OldSide ? leftTags : rightTags;
+		if (tags is null || viewModel?.Pair.DocLineFor(thread.OldSide, thread.BlobLine) is not { } row)
+			return 1;
+		int last = row;
+		for (int line = row + 1; line <= tags.Count && tags[line - 1].Kind == DiffLineKind.Comment; line++)
+			last = line;
+		return last;
+	}
+
+	void OnCommentTextChanged(object? sender, TextChangedEventArgs e)
+		=> CommentPopup.IsLightDismissEnabled = string.IsNullOrEmpty(CommentBox.Text);
+
+	void OnCommentSave(object? sender, RoutedEventArgs e) => SaveInlineCommentAsync().HandleExceptions();
+
+	async Task SaveInlineCommentAsync()
+	{
+		if (inlineCommentTarget is not { } target || App.Workspace is not { } ws)
+			return;
+		string body = CommentBox.Text?.Trim() ?? "";
+		if (body.Length == 0)
+			return;
+		if (editingDraftId is { } editing)
+		{
+			ws.Comments.UpdateDraft(editing, body);
+			editingDraftId = null;
+		}
+		else
+		{
+			ws.Comments.BeginComment(target, activatePane: false);
+			await ws.Comments.CommitDraftAsync(body);
+		}
+		CloseCommentEditor();
+	}
+
+	void OnCommentCancel(object? sender, RoutedEventArgs e) => CloseCommentEditor();
+
+	void CloseCommentEditor()
+	{
+		editingDraftId = null;
+		CommentBox.Text = "";
+		CommentPopup.IsOpen = false;
+		inlineCommentTarget = null;
+		FocusedEditor.TextArea.Focus();
+	}
 
 	public void HighlightOccurrencesCommand() => NotHere("Highlighting occurrences");
 
@@ -111,6 +240,14 @@ public partial class SideBySideDocumentView : UserControl, IReviewDocumentView
 
 	readonly DiffLineNumberMargin leftMargin = new();
 	readonly DiffLineNumberMargin rightMargin = new();
+	readonly Editor.ThreadElementGenerator leftThreadGenerator = new();
+	readonly Editor.ThreadElementGenerator rightThreadGenerator = new();
+	CommentThreadBox? leftBoxes;
+	CommentThreadBox? rightBoxes;
+	Dictionary<string, ThreadData>? threadsByKey;
+	/// <summary>One per thread row, so the pane that draws nothing there draws it exactly as
+	/// tall as the box on the other side.</summary>
+	readonly Dictionary<string, ThreadRowHeight> rowHeights = [];
 	SideBySidePane? leftPane;
 	SideBySidePane? rightPane;
 	SideBySideDocumentViewModel? viewModel;
@@ -147,6 +284,35 @@ public partial class SideBySideDocumentView : UserControl, IReviewDocumentView
 		Right.TextArea.AddHandler(KeyDownEvent, OnPaneKeyDown, RoutingStrategies.Tunnel);
 		FoldViewportAnchor.Install(Left);
 		FoldViewportAnchor.Install(Right);
+		CommentBox.AddHandler(KeyDownEvent, OnCommentBoxKeyDown, RoutingStrategies.Bubble, handledEventsToo: true);
+		leftBoxes = new CommentThreadBox(Left.TextArea.TextView, EditDraft, ReplyInThread);
+		rightBoxes = new CommentThreadBox(Right.TextArea.TextView, EditDraft, ReplyInThread);
+		leftThreadGenerator.ControlFactory = key => ThreadControl(key, paneIsOldSide: true);
+		rightThreadGenerator.ControlFactory = key => ThreadControl(key, paneIsOldSide: false);
+		Left.TextArea.TextView.ElementGenerators.Add(leftThreadGenerator);
+		Right.TextArea.TextView.ElementGenerators.Add(rightThreadGenerator);
+	}
+
+	/// <summary>
+	/// What one pane draws on a thread's row: the box, when the comment is about the blob this
+	/// pane shows, and otherwise a spacer that follows the box's height. Both panes reserve
+	/// the row - they are scrolled by copying one offset to the other, which only holds while
+	/// they hold the same rows.
+	/// </summary>
+	Avalonia.Controls.Control? ThreadControl(string key, bool paneIsOldSide)
+	{
+		if (threadsByKey is null || !threadsByKey.TryGetValue(key, out var thread))
+			return null;
+		if (!rowHeights.TryGetValue(key, out var row))
+			rowHeights[key] = row = new ThreadRowHeight();
+		// An outdated thread has no line on either side; it is pinned at the top of the file
+		// and drawn on the right, which is the side a review is read on.
+		bool ownedHere = thread.OldSide == paneIsOldSide;
+		if (!ownedHere)
+			return new ThreadSpacer(row, (paneIsOldSide ? Left : Right).TextArea.TextView);
+		var box = (paneIsOldSide ? leftBoxes : rightBoxes)!.Build(key, thread);
+		row.Track(box);
+		return box;
 	}
 
 	protected override void OnAttachedToVisualTree(Avalonia.VisualTreeAttachmentEventArgs e)
@@ -155,15 +321,22 @@ public partial class SideBySideDocumentView : UserControl, IReviewDocumentView
 		ReviewViews.Register(this);
 		Dispatcher.UIThread.Post(WireScrollSync, DispatcherPriority.Loaded);
 		if (App.Workspace is { } ws)
+		{
 			ws.SemanticsChanged += OnSemanticsChanged;
+			ws.Comments.Changed += OnCommentsChanged;
+		}
 		RefreshSemantics();
+		RebuildThreads();
 	}
 
 	protected override void OnDetachedFromVisualTree(Avalonia.VisualTreeAttachmentEventArgs e)
 	{
 		ReviewViews.Unregister(this);
 		if (App.Workspace is { } ws)
+		{
 			ws.SemanticsChanged -= OnSemanticsChanged;
+			ws.Comments.Changed -= OnCommentsChanged;
+		}
 		base.OnDetachedFromVisualTree(e);
 	}
 
@@ -174,6 +347,20 @@ public partial class SideBySideDocumentView : UserControl, IReviewDocumentView
 		if (e.Source is Avalonia.Visual source && source.FindAncestorOfType<TextBox>(includeSelf: true) is not null)
 			return;
 		e.Handled = ReviewGestures.Handle(e, this);
+	}
+
+	void OnCommentBoxKeyDown(object? sender, KeyEventArgs e)
+	{
+		if (e.Key == Key.Enter && e.KeyModifiers.HasFlag(KeyModifiers.Control))
+		{
+			e.Handled = true;
+			SaveInlineCommentAsync().HandleExceptions();
+		}
+		else if (e.Key == Key.Escape)
+		{
+			e.Handled = true;
+			CloseCommentEditor();
+		}
 	}
 
 	void OnSemanticsChanged() => Dispatcher.UIThread.Post(RefreshSemantics);
@@ -235,6 +422,20 @@ public partial class SideBySideDocumentView : UserControl, IReviewDocumentView
 			() => vm.Pair.GetSideText(oldSide: vm.File.Kind == FileChangeKind.Deleted).Text);
 		Left.SyntaxHighlighting = highlighting;
 		Right.SyntaxHighlighting = highlighting;
+		rowHeights.Clear();
+		ApplyPair(vm);
+		RebuildThreads();
+		// A caret asked for before this view had the document: navigation opens a document and
+		// then says where to land, and the two need not happen in that order.
+		if (vm.TakePendingCaret() is { } pending)
+			OnCaretRequested(pending.Line, pending.OldSide);
+	}
+
+	/// <summary>Puts the pair on screen: both texts, the tags every margin and renderer reads,
+	/// the folds and the gaps. Called for the document the tab was opened with and again
+	/// whenever the comment rows spliced into it change.</summary>
+	void ApplyPair(SideBySideDocumentViewModel vm)
+	{
 		Left.Text = vm.Pair.LeftText;
 		Right.Text = vm.Pair.RightText;
 		leftTags = vm.Pair.LeftTags;
@@ -247,10 +448,35 @@ public partial class SideBySideDocumentView : UserControl, IReviewDocumentView
 		leftPane?.SetDocument(vm);
 		rightPane?.SetDocument(vm);
 		RefreshSemantics();
-		// A caret asked for before this view had the document: navigation opens a document and
-		// then says where to land, and the two need not happen in that order.
-		if (vm.TakePendingCaret() is { } pending)
-			OnCaretRequested(pending.Line, pending.OldSide);
+	}
+
+	void OnCommentsChanged() => Dispatcher.UIThread.Post(RebuildThreads);
+
+	/// <summary>
+	/// Re-splices the pair with one reserved row per comment thread of this file. The caret is
+	/// put back by blob line rather than by document line: the rows it is counted in have just
+	/// moved.
+	/// </summary>
+	void RebuildThreads()
+	{
+		if (viewModel is not { } vm || App.Workspace is not { } ws)
+			return;
+		var threads = CommentThreads.For(ws, vm.File);
+		threadsByKey = threads.Count == 0 ? null : threads;
+		var anchors = CommentThreads.Anchors(threads);
+		var target = anchors.Count == 0 ? vm.PristinePair : vm.PristinePair.WithThreadLines(anchors);
+		if (target.LeftText == vm.Pair.LeftText && target.RightText == vm.Pair.RightText)
+		{
+			// The rows are already right; only what is drawn in them changed.
+			Left.TextArea.TextView.Redraw();
+			Right.TextArea.TextView.Redraw();
+			return;
+		}
+		var caret = FocusedPane?.CaretBlobPosition();
+		vm.ReplacePair(target);
+		ApplyPair(vm);
+		if (caret is { } position)
+			OnCaretRequested(position.Line, position.OldSide);
 	}
 
 	/// <summary>

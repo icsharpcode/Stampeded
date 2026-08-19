@@ -7,7 +7,15 @@ namespace Stampeded.Documents;
 public class SideBySideDocumentViewModel(FileDiff file, SideBySideModel pair) : Document, IDiffDocument
 {
 	public FileDiff File { get; } = file;
-	public SideBySideModel Pair { get; } = pair;
+
+	/// <summary>The two documents as they are shown, comment rows and all.</summary>
+	public SideBySideModel Pair { get; private set; } = pair;
+
+	/// <summary>The pair as the diff produced it. Threads are spliced into a copy, so the
+	/// next splice starts from the code rather than from the last set of comment rows.</summary>
+	public SideBySideModel PristinePair { get; } = pair;
+
+	public void ReplacePair(SideBySideModel replacement) => Pair = replacement;
 
 	/// <inheritdoc cref="DiffDocumentViewModel.TabTooltip" />
 	public string TabTooltip => File.Path;

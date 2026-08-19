@@ -15,10 +15,27 @@ namespace Stampeded;
 /// external tools from reading an XWayland window's pixels, so "take a screenshot of the
 /// app" is only reliable from inside the app. Trigger: write the target PNG path into
 /// <c>/tmp/stampeded-screenshot-request</c>; the file is consumed on capture.
+///
+/// The same path in every instance, which is what makes a second window a problem: any of
+/// them may pick a request up, and a request that drives the wrong window drives whoever is
+/// reading in it. So each instance also watches a file of its own, named after its process
+/// id and reported in the log when it starts - a request written there can only reach the
+/// window it was meant for.
 /// </summary>
 static class ScreenshotWatcher
 {
 	const string TriggerFile = "/tmp/stampeded-screenshot-request";
+
+	/// <summary>This window's own trigger file, for driving one instance while another is
+	/// open. Reported at startup, since the reader cannot guess a process id.</summary>
+	static readonly string OwnTriggerFile = $"{TriggerFile}.{Environment.ProcessId}";
+
+	/// <summary>The request waiting to be served, own file first: a request aimed at this
+	/// window outranks one that any window could take.</summary>
+	static string? PendingRequest()
+		=> File.Exists(OwnTriggerFile) ? OwnTriggerFile
+			: File.Exists(TriggerFile) ? TriggerFile
+			: null;
 
 	/// <summary>
 	/// Reports rows a virtualizing panel is still painting but no longer owns - the ghost rows
@@ -127,14 +144,15 @@ static class ScreenshotWatcher
 
 	public static void Attach(Window mainWindow)
 	{
+		CliLog.Write("app", $"screenshot requests: {TriggerFile} (any window) or {OwnTriggerFile} (this one)");
 		var timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
 		timer.Tick += (_, _) => {
-			if (!File.Exists(TriggerFile))
+			if (PendingRequest() is not { } requestFile)
 				return;
 			try
 			{
-				var lines = File.ReadAllLines(TriggerFile);
-				File.Delete(TriggerFile);
+				var lines = File.ReadAllLines(requestFile);
+				File.Delete(requestFile);
 				string target = lines.Length > 0 ? lines[0].Trim() : "";
 				if (target.Length == 0)
 					return;
