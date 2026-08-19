@@ -62,6 +62,32 @@ public sealed class FileEntry(FileDiff file, bool viewed) : ObservableObject
 		get => comments;
 		set => SetProperty(ref comments, value);
 	}
+
+	/// <summary>The colours of the comment mark: amber while something on the file is still
+	/// open, green once it is not. A file with something outstanding and a file that has been
+	/// answered both carry a count, and the count alone made them look alike.</summary>
+	static readonly Avalonia.Media.IBrush Open = Avalonia.Media.Brush.Parse("#D29922");
+	static readonly Avalonia.Media.IBrush Settled = Avalonia.Media.Brush.Parse("#2EA043");
+
+	bool commentsSettled;
+	/// <summary>Whether every remark on this file has been answered - each thread resolved and
+	/// nothing still drafted.</summary>
+	public bool CommentsSettled {
+		get => commentsSettled;
+		set {
+			if (SetProperty(ref commentsSettled, value))
+			{
+				OnPropertyChanged(nameof(CommentColor));
+				OnPropertyChanged(nameof(CommentTip));
+			}
+		}
+	}
+
+	public Avalonia.Media.IBrush CommentColor => commentsSettled ? Settled : Open;
+
+	public string CommentTip => commentsSettled
+		? "Comments on this file, all of them resolved"
+		: "Comments on this file - drafts of this pass and comments already posted";
 }
 
 /// <summary>
@@ -168,10 +194,12 @@ public class PrFilesPaneViewModel : Tool
 		{
 			int added = file.Hunks.Sum(h => h.Lines.Count(l => l.Kind == Core.Diff.PatchLineKind.Added));
 			int removed = file.Hunks.Sum(h => h.Lines.Count(l => l.Kind == Core.Diff.PatchLineKind.Removed));
+			var (badge, settled) = CommentBadgeFor(file.Path);
 			var entry = new FileEntry(file, workspace.Store.IsViewed(file.Path)) {
 				AddedText = added > 0 ? $"+{added}" : "",
 				RemovedText = removed > 0 ? $"-{removed}" : "",
-				CommentBadge = CommentBadgeFor(file.Path),
+				CommentBadge = badge,
+				CommentsSettled = settled,
 				SinceBadge = markTouched && workspace.IsTouchedSinceLastPass(file.Path) ? "new!" : "",
 			};
 			entry.PropertyChanged += OnEntryChanged;
@@ -202,17 +230,21 @@ public class PrFilesPaneViewModel : Tool
 	/// <summary>The remarks standing on a file: drafts written in this pass and comments
 	/// already posted, counted together - both are things said about it that a reader is about
 	/// to meet.</summary>
-	string CommentBadgeFor(string path)
+	(string Badge, bool Settled) CommentBadgeFor(string path)
 	{
-		int count = workspace.Comments.Drafts.Count(d => d.Stored.Anchor.Path == path)
-			+ workspace.Comments.Posted.Count(p => p.RelPath == path);
-		return count > 0 ? $"{count} \u25cf" : "";
+		var drafts = workspace.Comments.Drafts.Where(d => d.Stored.Anchor.Path == path).ToList();
+		var posted = workspace.Comments.Posted.Where(p => p.RelPath == path).ToList();
+		int count = drafts.Count + posted.Count;
+		// A draft has no resolution to have: it has not been posted, so nothing about it is
+		// settled, and one of them is enough to keep the file's mark open.
+		bool settled = count > 0 && drafts.Count == 0 && posted.All(p => p.IsResolved);
+		return (count > 0 ? $"{count} \u25cf" : "", settled);
 	}
 
 	void RefreshCommentBadges()
 	{
 		foreach (var entry in Files)
-			entry.CommentBadge = CommentBadgeFor(entry.File.Path);
+			(entry.CommentBadge, entry.CommentsSettled) = CommentBadgeFor(entry.File.Path);
 	}
 
 	void RefreshCoverageBadges()

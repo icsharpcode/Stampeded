@@ -48,9 +48,12 @@
             <TextBlock FontSize="10" Foreground="#F85149" Text="{Binding Entry.RemovedText}"
                        IsVisible="{Binding Entry.RemovedText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
                        ToolTip.Tip="Lines removed" />
-            <TextBlock FontSize="10" Foreground="#D29922" Text="{Binding Entry.CommentBadge}"
+            <!-- Green once every thread on the file is resolved and nothing is still drafted:
+                 what is left to answer is the reason to look, and a file that has been answered
+                 should not keep asking. -->
+            <TextBlock FontSize="10" Foreground="{Binding Entry.CommentColor}" Text="{Binding Entry.CommentBadge}"
                        IsVisible="{Binding Entry.CommentBadge, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
-                       ToolTip.Tip="Comments on this file - drafts of this pass and comments already posted" />
+                       ToolTip.Tip="{Binding Entry.CommentTip}" />
             <TextBlock FontSize="10" Foreground="#3794FF" Text="{Binding Entry.SinceBadge}"
                        IsVisible="{Binding Entry.SinceBadge, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
                        ToolTip.Tip="Touched since your last pass (viewed flag was invalidated)" />
