@@ -259,6 +259,18 @@ public sealed class ReviewWorkspace(string repoPath)
 	/// </summary>
 	public bool Offline { get; private set; }
 
+	/// <summary>
+	/// The commit the attached pull request is showing, while the review is reading a different
+	/// one - a local branch that has moved on from what was pushed. Null whenever the head on
+	/// screen is the pull request's own, which is every review opened from the pull request list.
+	/// </summary>
+	public string? PrHeadSha { get; private set; }
+
+	/// <summary>Whether the code being read is not what the pull request holds. What GitHub
+	/// says about lines - a posted comment's line number, a line a new comment could go on -
+	/// is about commits it has; here it is about commits it does not.</summary>
+	public bool LocalHead => PrHeadSha is not null;
+
 	public DateTimeOffset? OfflineSince { get; private set; }
 
 	/// <summary>What is kept for the next time GitHub cannot be reached, updated as the parts
@@ -309,16 +321,48 @@ public sealed class ReviewWorkspace(string repoPath)
 	public ChangedLines Changed => changed;
 	readonly NavigationHistory<NavEntry> history = new();
 
-	/// <summary>Opens a review of a local base..head range (no PR: checks, posted comments
-	/// and review submission stay empty/disabled; everything else works identically).</summary>
-	public async Task OpenLocalRangeAsync(string baseRef, string headRef)
+	/// <summary>
+	/// Opens a review of a local base..head range (no PR: checks, posted comments and review
+	/// submission stay empty/disabled; everything else works identically).
+	///
+	/// <paramref name="prNumber"/> attaches the pull request the branch belongs to: its
+	/// description, its comment threads, its checks and its reviewers, read against the local
+	/// commits rather than the pushed ones. That is the state a branch is in between answering
+	/// a review and pushing the answer, and reading the feedback next to the code it is about
+	/// should not require pushing first. What GitHub cannot be told about lines it does not
+	/// have is refused where it would be posted, not here.
+	/// </summary>
+	public async Task OpenLocalRangeAsync(string baseRef, string headRef, int? prNumber = null)
 	{
 		sessionCts?.Cancel();
 		var cts = sessionCts = new CancellationTokenSource();
 		var ct = cts.Token;
 
 		using var busy = Busy.Begin($"Opening {baseRef}..{headRef}");
-		CliLog.Write("action", $"open local range {baseRef}..{headRef}");
+		CliLog.Write("action", $"open local range {baseRef}..{headRef}"
+			+ (prNumber is { } attached ? $" with PR #{attached}" : ""));
+		PrDetail? detail = null;
+		string? prHead = null;
+		if (prNumber is { } number)
+		{
+			try
+			{
+				detail = await GitHub.GetPrAsync(number, ct);
+				prHead = await Git.FetchPrHeadAsync(number, ct);
+				await Git.FetchBranchAsync(detail.BaseRefName, ct);
+				// The pull request's own target, not the repository's default branch: a branch
+				// that targets a release branch is not a diff against master.
+				baseRef = $"origin/{detail.BaseRefName}";
+			}
+			catch (ToolFailedException ex)
+			{
+				// The branch is here either way, and reading it is the point. Losing the
+				// discussion is worth a line; failing the whole open over it is not.
+				CliLog.Write("gh", $"PR #{number} not attached to this branch review: {ex.Message}");
+				detail = null;
+				prHead = null;
+			}
+		}
 		string headSha = await ResolveAsync(headRef, ct);
 		string baseSha = await Git.GetMergeBaseAsync(await ResolveAsync(baseRef, ct), headSha, ct);
 		DirtyWorktreePath = await FindDirtyCheckoutAsync(headRef, ct);
@@ -331,7 +375,13 @@ public sealed class ReviewWorkspace(string repoPath)
 
 		Scopes.Reset();
 		Reviewers = null;
-		CurrentPr = null;
+		CurrentPr = detail;
+		Offline = false;
+		OfflineSince = null;
+		snapshot = null;
+		// Only worth saying when the two differ: a branch whose tip is what was pushed reads
+		// exactly like the pull request, and a warning about it would be about nothing.
+		PrHeadSha = prHead is { } pushed && pushed != headSha ? pushed : null;
 		LocalRange = (baseRef, headRef);
 		BaseSha = baseSha;
 		HeadSha = headSha;
@@ -343,7 +393,8 @@ public sealed class ReviewWorkspace(string repoPath)
 		ComputeChurnAsync().HandleExceptions();
 		history.Clear();
 		CloseDocumentsExceptStart();
-		Comments.NoneToLoad();
+		if (detail is null)
+			Comments.NoneToLoad();
 		ReviewChanged?.Invoke();
 		// The overview is where a review starts; files open as the Explorer's list is walked,
 		// one tab at a time, instead of arriving as a wall of them.
@@ -353,6 +404,11 @@ public sealed class ReviewWorkspace(string repoPath)
 		LoadSemanticsAsync(headSha, baseSha, ct).HandleExceptions();
 		LoadGeneratedSourcesAsync(ct).HandleExceptions();
 		Comments.ReattachDraftsAsync(ct).HandleExceptions();
+		if (detail is not null && prNumber is { } opened)
+		{
+			Comments.LoadPostedAsync(opened, ct).HandleExceptions();
+			LoadReviewersAsync(opened, ct).HandleExceptions();
+		}
 	}
 
 	async Task<string> ResolveAsync(string reference, CancellationToken ct)
@@ -401,6 +457,7 @@ public sealed class ReviewWorkspace(string repoPath)
 		Scopes.Reset();
 		Reviewers = null;
 		CurrentPr = detail;
+		PrHeadSha = null;
 		LocalRange = null;
 		BaseSha = baseSha;
 		HeadSha = headSha;
@@ -1351,10 +1408,12 @@ public sealed class ReviewWorkspace(string repoPath)
 	{
 		string? before = HeadSha;
 		var open = CaptureOpenDocuments();
-		if (CurrentPr is { } pr)
+		// The range first: a branch review with a pull request attached has both, and reloading
+		// it as the pull request would quietly replace the local commits with the pushed ones.
+		if (LocalRange is { } local)
+			await OpenLocalRangeAsync(local.Base, local.Head, CurrentPr?.Number);
+		else if (CurrentPr is { } pr)
 			await OpenPrAsync(pr.Number);
-		else if (LocalRange is { } local)
-			await OpenLocalRangeAsync(local.Base, local.Head);
 		else
 			return;
 		// A head that moved is reported by the carry-over, which knows what it kept; standing
@@ -1376,6 +1435,7 @@ public sealed class ReviewWorkspace(string repoPath)
 		BaseSemantics?.Dispose();
 		BaseSemantics = null;
 		CurrentPr = null;
+		PrHeadSha = null;
 		LocalRange = null;
 		Scopes.Reset();
 		DirtyWorktreePath = null;
@@ -2134,6 +2194,10 @@ public sealed class ReviewWorkspace(string repoPath)
 		bool merge = await new ConfirmWindow("Merge pull request",
 			$"#{pr.Number} {pr.Title}\n\n"
 				+ $"{pr.HeadRefName}  ->  {pr.BaseRefName}, by {method}.\n\n"
+				+ (LocalHead
+					? $"This merges {PrHeadSha![..9]}, what GitHub has - not the local branch you have "
+						+ "been reading, which is ahead of it.\n\n"
+					: "")
 				+ "This merges on GitHub, for everyone. It cannot be undone from here.",
 			$"Merge ({method})").ShowDialog<bool>(owner);
 		if (!merge)

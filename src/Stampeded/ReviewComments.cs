@@ -308,6 +308,23 @@ public sealed class ReviewComments(ReviewWorkspace workspace)
 				+ $"verdict has to go to GitHub. Reload (F5) when there is a connection; your "
 				+ $"{Drafts.Count} draft(s) are kept.";
 		}
+		// A line comment names a path and a line of the pull request's own head. Read against a
+		// branch that has moved past it, the lines on screen are lines GitHub does not have, and
+		// a comment posted from here would land on whatever text now sits at that number - or be
+		// refused for being outside the diff. A reply names a thread instead and is unaffected.
+		if (workspace.LocalHead)
+		{
+			int placed = Drafts.Count(d => d.Stored.InReplyTo is null);
+			if (eventType != "COMMENT" || placed > 0)
+			{
+				return $"This review is reading the local branch, which is ahead of what #{workspace.CurrentPr?.Number} "
+					+ $"shows ({workspace.PrHeadSha?[..9]}). "
+					+ (placed > 0
+						? $"{placed} draft(s) sit on lines GitHub does not have; push the branch, then submit. "
+						: "A verdict is given on the pushed head; push the branch, then submit. ")
+					+ "Replies to existing threads can be submitted as a comment review from here.";
+			}
+		}
 		// Drafts are matched against the files in scope, so submitting from one would keep every
 		// draft written elsewhere local and report it as outdated - which is not what happened
 		// to it. This used to be answered inside the submit, with a status line and a return

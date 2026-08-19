@@ -114,6 +114,9 @@
         </DockPanel>
       </Border>
       <TextBlock Classes="statusline" Foreground="#D29922" Margin="0,4,0,0" TextWrapping="Wrap"
+                 Text="{Binding State.LocalHeadLine}"
+                 IsVisible="{Binding State.LocalHeadLine, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+      <TextBlock Classes="statusline" Foreground="#D29922" Margin="0,4,0,0" TextWrapping="Wrap"
                  Text="{Binding State.OfflineLine}"
                  IsVisible="{Binding State.OfflineLine, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
       <TextBlock Classes="statusline" Foreground="#D29922" Margin="0,4,0,0" TextWrapping="Wrap"

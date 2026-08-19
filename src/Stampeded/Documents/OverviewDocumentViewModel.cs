@@ -119,6 +119,11 @@ public sealed partial class OverviewState : ObservableObject
 	[ObservableProperty]
 	string offlineLine = "";
 
+	/// <summary>Set while a pull request's discussion is being read against a local branch that
+	/// is ahead of it: which commits are on screen and which are not.</summary>
+	[ObservableProperty]
+	string localHeadLine = "";
+
 	[ObservableProperty]
 	string toolStatus = "";
 
@@ -183,7 +188,9 @@ public class OverviewDocumentViewModel : Document
 	void RebuildAll()
 	{
 		State.Title = workspace.CurrentPr is { } pr
-			? $"#{pr.Number}  {pr.Title}"
+			? workspace.LocalRange is { } branch
+				? $"#{pr.Number}  {pr.Title}  ({branch.Head})"
+				: $"#{pr.Number}  {pr.Title}"
 			: workspace.LocalRange is { } range
 				// The merge base, not the base ref: the diff is against where the branch left
 				// its base, which is a different commit as soon as the base moved on.
@@ -192,6 +199,11 @@ public class OverviewDocumentViewModel : Document
 		State.WorkingTreeLine = workspace.DirtyWorktreePath is { } dirty
 			? $"Head is the working tree at {dirty} - uncommitted changes included"
 			+ (workspace.UncommittedFileCount > 0 ? $" ({workspace.UncommittedFileCount} file(s) beyond the last commit)." : ".")
+			: "";
+		State.LocalHeadLine = workspace is { LocalHead: true, LocalRange: { } local, CurrentPr: { } attached }
+			? $"Reading the local branch {local.Head} ({workspace.HeadSha?[..9]}); #{attached.Number} shows "
+				+ $"{workspace.PrHeadSha?[..9]}. The description, threads, checks and reviewers are the pull "
+				+ "request's; comments and a verdict need the branch pushed."
 			: "";
 		State.OfflineLine = workspace is { Offline: true, OfflineSince: { } since }
 			? $"Offline: opened from the snapshot taken {since:g}. The change and its diff are exact; "

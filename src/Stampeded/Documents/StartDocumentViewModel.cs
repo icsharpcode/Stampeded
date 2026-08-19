@@ -449,7 +449,11 @@ public class StartDocumentViewModel : Document
 		var (baseRef, head) = row.IsStash
 			? ($"{row.Info.Sha}^", row.Info.Sha)
 			: (defaultBase, row.Info.Name);
-		workspace.OpenLocalRangeAsync(baseRef, head).HandleExceptions();
+		// A branch that has a pull request brings its description, threads, checks and reviewers
+		// along, read against the local commits. Opening the same change from the pull request
+		// list reads the pushed head instead - which is the difference between the two lists
+		// once a branch has moved on from what was pushed.
+		workspace.OpenLocalRangeAsync(baseRef, head, row.PrNumber).HandleExceptions();
 	}
 
 	/// <summary>Gives a stash a durable name by pointing a new branch at its commit. The
