@@ -11,9 +11,10 @@ namespace Stampeded.Documents;
 sealed record ThreadComment(bool IsDraft, string Author, string Body, Guid? DraftId, string? ThreadId = null,
 	bool Resolved = false, string? Url = null, long CommentId = 0);
 
-/// <summary>Everything said about one line of one side of a file.</summary>
+/// <summary>Everything said about one line of one side of a file. <paramref name="MovedTo"/>
+/// says how the thread found this line when the code it was written against has changed.</summary>
 sealed record ThreadData(bool OldSide, int BlobLine, List<ThreadComment> Comments, string? OutdatedQuote = null,
-	bool Approximate = false);
+	bool Approximate = false, string? MovedTo = null);
 
 /// <summary>
 /// What has been said about one file, keyed the way the document marker lines name it.
@@ -32,24 +33,31 @@ static class CommentThreads
 		var threads = new Dictionary<string, ThreadData>();
 		void Add(string path, bool oldSide, int? blobLine, bool isDraft, string author, string body, Guid? draftId,
 			bool approximate = false, string? threadId = null, bool resolved = false, string? url = null,
-			long commentId = 0)
+			long commentId = 0, string? movedTo = null)
 		{
 			string expected = oldSide ? file.OldPath : file.Path;
 			if (blobLine is not { } line || path != expected)
 				return;
 			string key = $"{(oldSide ? "o" : "n")}{line}";
 			if (!threads.TryGetValue(key, out var thread))
-				threads[key] = thread = new ThreadData(oldSide, line, [], Approximate: approximate);
-			else if (approximate && !thread.Approximate)
-				threads[key] = thread = thread with { Approximate = true, Comments = thread.Comments };
+				threads[key] = thread = new ThreadData(oldSide, line, [], Approximate: approximate, MovedTo: movedTo);
+			else if ((approximate && !thread.Approximate) || (movedTo is not null && thread.MovedTo is null))
+			{
+				threads[key] = thread = thread with {
+					Approximate = thread.Approximate || approximate,
+					MovedTo = thread.MovedTo ?? movedTo,
+					Comments = thread.Comments,
+				};
+			}
 			thread.Comments.Add(new ThreadComment(isDraft, author, body, draftId, threadId, resolved, url, commentId));
 		}
 		foreach (var posted in workspace.Comments.Posted)
 			Add(posted.RelPath, posted.OldSide, posted.Line, false, posted.Author, posted.Body, null,
-				posted.IsApproximate, posted.ThreadId, posted.IsResolved, posted.Url, posted.CommentId);
+				posted.IsApproximate, posted.ThreadId, posted.IsResolved, posted.Url, posted.CommentId,
+				posted.MovedTo);
 		foreach (var draft in workspace.Comments.Drafts)
 			Add(draft.Stored.Anchor.Path, draft.Stored.Anchor.OldSide, draft.CurrentLine, true, "you (draft)",
-				draft.Stored.Body, draft.Stored.Id, draft.IsApproximate);
+				draft.Stored.Body, draft.Stored.Id, draft.IsApproximate, movedTo: draft.MovedTo);
 
 		// Comments whose location no longer exists are pinned at the top of the file, marked
 		// outdated and quoting the code they originally hung on.
@@ -106,10 +114,11 @@ sealed class CommentThreadBox(
 	{
 		bool dark = Themes.ThemeManager.Current.IsDarkTheme;
 		var panel = new Avalonia.Controls.StackPanel { Spacing = 4 };
-		if (thread.BlobLine == 0 || thread.Approximate)
+		if (thread.BlobLine == 0 || thread.Approximate || thread.MovedTo is not null)
 		{
 			string banner = thread.BlobLine == 0
 				? "OUTDATED - the commented code is gone from this head"
+				: thread.MovedTo is { } moved ? $"MOVED - {moved}"
 				: "OUTDATED - approximate location (the exact line is gone)";
 			panel.Children.Add(new Avalonia.Controls.TextBlock {
 				Text = banner + (thread.OutdatedQuote is { Length: > 0 } quote ? $"; was: {quote.Trim()}" : ""),

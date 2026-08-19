@@ -238,6 +238,10 @@ public sealed record PostedComment(
 	PostedUser? User,
 	[property: JsonPropertyName("original_line")] int? OriginalLine,
 	[property: JsonPropertyName("diff_hunk")] string? DiffHunk,
+	/// <summary>The commit the comment was written against. Still in the object database
+	/// whenever that head was ever fetched, which is what lets the code it was about be read
+	/// as it was.</summary>
+	[property: JsonPropertyName("original_commit_id")] string? OriginalCommitId,
 	[property: JsonPropertyName("html_url")] string? HtmlUrl = null);
 
 /// <summary>One submitted review of a pull request: who, what they said of it, and the head

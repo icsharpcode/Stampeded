@@ -6,16 +6,20 @@ namespace Stampeded;
 
 /// <summary>A comment written in this pass, and the line it currently hangs on -
 /// <paramref name="CurrentLine"/> is null once the code it was written about is gone.</summary>
-public sealed record DraftComment(StoredComment Stored, int? CurrentLine, bool IsApproximate = false);
+public sealed record DraftComment(StoredComment Stored, int? CurrentLine, bool IsApproximate = false,
+	string? MovedTo = null);
 
 /// <summary>Where a comment is being written. <paramref name="InReplyTo"/> names the posted
 /// comment this one answers, when the reader is replying rather than starting a thread.</summary>
 public sealed record CommentTarget(string RelPath, bool OldSide, int Line, string LineText, long? InReplyTo = null);
 
 /// <summary>A comment already on the pull request, placed in the code as it stands now.</summary>
+/// <summary><paramref name="MovedTo"/> says how a comment found its line when the code it was
+/// written against has changed: which member it was in, and whether the line itself is still
+/// there. Null for a comment GitHub still places itself.</summary>
 public sealed record PostedCommentView(string RelPath, int? Line, bool OldSide, string Body, string Author,
 	bool IsApproximate = false, string? ThreadId = null, bool IsResolved = false, string? Url = null,
-	long CommentId = 0);
+	long CommentId = 0, string? MovedTo = null);
 
 /// <summary>
 /// The comments of one review: the drafts written in this pass, the ones already on the pull
@@ -143,27 +147,36 @@ public sealed class ReviewComments(ReviewWorkspace workspace)
 	/// outdated with CurrentLine null).</summary>
 	public async Task ReattachDraftsAsync(CancellationToken ct)
 	{
+		blobs.Clear();
 		var reattached = new List<DraftComment>();
 		foreach (var stored in workspace.Store.Drafts)
 		{
 			int? line = null;
 			bool approximate = false;
+			string? movedTo = null;
 			try
 			{
 				string rev = stored.Anchor.OldSide ? workspace.BaseSha! : workspace.HeadSha!;
-				var lines = SplitBlobLines(await workspace.Git.ShowFileAsync(rev, stored.Anchor.Path, ct));
+				string text = await ReadBlobAsync(rev, stored.Anchor.Path, ct);
+				var lines = SplitBlobLines(text);
 				line = stored.Anchor.Reattach(lines);
 				if (line is null)
 				{
-					line = stored.Anchor.Approximate(lines);
-					approximate = true;
+					// A draft is written against the head of the pass it was written in, which
+					// is the head this review had last time it was opened. That blob says which
+					// member the remark was about.
+					var move = await RelocateAsync(stored.Anchor.Path, workspace.Store.PreviousHead,
+						stored.Anchor.Line, stored.Anchor.LineText, text, ct);
+					line = move?.Line ?? stored.Anchor.Approximate(lines);
+					approximate = move is null || !move.FoundTheLine;
+					movedTo = move is null ? null : Describe(move);
 				}
 			}
 			catch (ToolFailedException)
 			{
 				// File gone at that revision: outdated with no location at all.
 			}
-			reattached.Add(new DraftComment(stored, line, approximate));
+			reattached.Add(new DraftComment(stored, line, approximate, movedTo));
 		}
 		Drafts = reattached;
 		Changed?.Invoke();
@@ -188,6 +201,9 @@ public sealed class ReviewComments(ReviewWorkspace workspace)
 	public async Task LoadPostedAsync(int number, CancellationToken ct)
 	{
 		Loaded = false;
+		// The blobs read while placing comments are this pass's; a reload reads a head that
+		// may have moved.
+		blobs.Clear();
 		try
 		{
 			// Offline the snapshot is the answer; asking would only fail slowly. A review
@@ -214,13 +230,13 @@ public sealed class ReviewComments(ReviewWorkspace workspace)
 			foreach (var comment in raw)
 			{
 				bool oldSide = comment.Side == "LEFT";
-				var (line, approximate) = comment.Line is { } stated
-					? ((int?)stated, false)
+				var (line, approximate, movedTo) = comment.Line is { } stated
+					? ((int?)stated, false, null)
 					: await LocateAsync(comment, oldSide, ct);
 				var resolution = resolutionByComment.GetValueOrDefault(comment.Id);
 				views.Add(new PostedCommentView(
 					comment.Path, line, oldSide, comment.Body, comment.User?.Login ?? "?",
-					approximate, resolution.ThreadId, resolution.Resolved, comment.HtmlUrl, comment.Id));
+					approximate, resolution.ThreadId, resolution.Resolved, comment.HtmlUrl, comment.Id, movedTo));
 			}
 			// Resolved threads are answered business: they stay, because what was said about a
 			// file is worth finding again, but after everything still open - and here rather
@@ -242,26 +258,86 @@ public sealed class ReviewComments(ReviewWorkspace workspace)
 	/// surviving context allows. Both answers come out of one read of the blob - they are the
 	/// same anchor asked two ways, and asking separately cost a `git show` each.
 	/// </summary>
-	async Task<(int? Line, bool Approximate)> LocateAsync(PostedComment comment, bool oldSide, CancellationToken ct)
+	async Task<(int? Line, bool Approximate, string? MovedTo)> LocateAsync(
+		PostedComment comment, bool oldSide, CancellationToken ct)
 	{
 		if (comment.DiffHunk is not { } hunk || comment.OriginalLine is not { } originalLine
 			|| (oldSide ? workspace.BaseSha : workspace.HeadSha) is not { } rev
 			|| CommentAnchor.FromDiffHunk(comment.Path, oldSide, originalLine, hunk) is not { } anchor)
 		{
-			return (null, false);
+			return (null, false, null);
 		}
 		try
 		{
-			var blobLines = SplitBlobLines(await workspace.Git.ShowFileAsync(rev, comment.Path, ct));
-			return anchor.Reattach(blobLines) is { } exact
-				? (exact, false)
-				: (anchor.Approximate(blobLines), true);
+			string text = await ReadBlobAsync(rev, comment.Path, ct);
+			var blobLines = SplitBlobLines(text);
+			if (anchor.Reattach(blobLines) is { } exact)
+				return (exact, false, null);
+			// The line is not there as it was written. Before falling back to the best the
+			// surviving context can suggest, ask the member: the commit the comment was
+			// written against says which one the line was in, and that member is usually
+			// still here, only somewhere else in the file.
+			if (await RelocateAsync(comment.Path, comment.OriginalCommitId, originalLine, anchor.LineText, text, ct)
+				is { } move)
+			{
+				return (move.Line, !move.FoundTheLine, Describe(move));
+			}
+			return (anchor.Approximate(blobLines), true, null);
 		}
 		catch (ToolFailedException)
 		{
 			// The file is not in that revision at all: the comment keeps no location.
-			return (null, false);
+			return (null, false, null);
 		}
+	}
+
+	static string Describe(Core.Roslyn.MemberMove move)
+		=> move.FoundTheLine
+			? $"moved with {move.Member}"
+			: $"the exact line is gone; placed in {move.Member}, where it was written";
+
+	/// <summary>
+	/// Where a comment's line went, read from the member it was written in. Needs the blob it
+	/// was written against, which is in the object database whenever that head was fetched -
+	/// so this answers for a branch that has moved on and stays quiet about one whose earlier
+	/// commits were never here.
+	/// </summary>
+	async Task<Core.Roslyn.MemberMove?> RelocateAsync(string path, string? oldRev, int oldLine, string lineText,
+		string newText, CancellationToken ct)
+	{
+		// A syntax-only C# parse is what finds the members; anything else has no outline to
+		// follow and would only cost a blob read.
+		if (oldRev is not { Length: > 0 } || !path.EndsWith(".cs", StringComparison.OrdinalIgnoreCase))
+			return null;
+		try
+		{
+			string oldText = await ReadBlobAsync(oldRev, path, ct);
+			if (Core.Roslyn.MemberRelocation.Locate(oldText, oldLine, newText, lineText) is not { } move)
+				return null;
+			// A comment that has quietly moved is a comment the reader may find in a place
+			// they did not write it; the log says where it came from.
+			CliLog.Write("comments", $"{path}:{oldLine} of {oldRev[..Math.Min(9, oldRev.Length)]} -> line "
+				+ $"{move.Line} ({move.Member}{(move.FoundTheLine ? "" : ", the line itself is gone")})");
+			return move;
+		}
+		catch (ToolFailedException)
+		{
+			// That commit is not in this clone (never fetched, or gone with a prune).
+			return null;
+		}
+	}
+
+	/// <summary>One read per revision and path for the whole pass: a thread of ten comments on
+	/// one file would otherwise be ten identical `git show` calls.</summary>
+	readonly Dictionary<(string Rev, string Path), string> blobs = [];
+
+	async Task<string> ReadBlobAsync(string rev, string path, CancellationToken ct)
+	{
+		if (blobs.TryGetValue((rev, path), out string? cached))
+			return cached;
+		string text = await workspace.Git.ShowFileAsync(rev, path, ct);
+		blobs[(rev, path)] = text;
+		return text;
 	}
 
 	/// <summary>Sets a review thread's resolution on GitHub, then refreshes the comments.</summary>
