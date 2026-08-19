@@ -1,6 +1,8 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:panes="using:Stampeded.Panes"
+             xmlns:controls="using:Stampeded.Controls"
+             xmlns:system="using:System"
              x:Class="Stampeded.Panes.LogPaneView"
              x:DataType="panes:LogPaneViewModel">
   <DockPanel>
@@ -8,6 +10,11 @@
             Click="OnClear" />
     <ListBox x:Name="LogList" ItemsSource="{Binding Lines}" SelectionMode="Multiple"
              FontFamily="monospace" FontSize="11" KeyDown="OnKeyDown">
+      <ListBox.ItemTemplate>
+        <DataTemplate x:DataType="system:String">
+          <controls:LogLineBlock Line="{Binding}" />
+        </DataTemplate>
+      </ListBox.ItemTemplate>
       <ListBox.ContextMenu>
         <ContextMenu>
           <MenuItem Header="Copy Selected" InputGesture="Ctrl+C" Click="OnCopySelected" />
