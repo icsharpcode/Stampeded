@@ -629,6 +629,9 @@ public partial class DiffDocumentView : UserControl, IReviewDocumentView
 			// scroll regions into every visual line and wreck scrolling performance.
 			var rendered = ThreadMarkdownEngine.Transform(
 			Core.GitHub.IssueLinks.Autolink(comment.Body, App.Workspace?.IssueUrlPrefix));
+			// A remark about `Foo` written in bold is bold and about `Foo`; the renderer draws
+			// one of the two and the markers of the other.
+			Controls.MarkdownEmphasis.Repair(rendered);
 			var host = new Avalonia.Controls.ContentControl {
 				Content = rendered,
 				Margin = new Avalonia.Thickness(0, 0, 0, 4),

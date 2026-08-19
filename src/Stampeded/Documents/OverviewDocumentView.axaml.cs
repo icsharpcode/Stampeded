@@ -17,6 +17,18 @@ public partial class OverviewDocumentView : UserControl
 		// description: the blocks the markdown is drawn in never take focus, so the gesture
 		// arrives wherever the reader left it.
 		Controls.MarkdownSelection.Enable(this);
+		// The renderer draws the markers of an emphasis that reaches around a link or a code
+		// span instead of the emphasis; they are paired again once it has drawn, from the
+		// pieces it left. Posted rather than done here: the rendered blocks exist after the
+		// pass that lays the new document out.
+		DescriptionView.PropertyChanged += (_, e) => {
+			if (e.Property == global::Markdown.Avalonia.MarkdownScrollViewer.MarkdownProperty)
+			{
+				Avalonia.Threading.Dispatcher.UIThread.Post(
+					() => Controls.MarkdownEmphasis.Repair(DescriptionView),
+					Avalonia.Threading.DispatcherPriority.Loaded);
+			}
+		};
 		// Takes focus itself so 'o' has somewhere to land: the overview is a page of text and
 		// buttons, none of which would otherwise hold the keyboard.
 		Focusable = true;
