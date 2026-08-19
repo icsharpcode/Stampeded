@@ -222,7 +222,11 @@ public sealed class ReviewComments(ReviewWorkspace workspace)
 					comment.Path, line, oldSide, comment.Body, comment.User?.Login ?? "?",
 					approximate, resolution.ThreadId, resolution.Resolved, comment.HtmlUrl, comment.Id));
 			}
-			Posted = views;
+			// Resolved threads are answered business: they stay, because what was said about a
+			// file is worth finding again, but after everything still open - and here rather
+			// than in each list that shows them, so the pane and the review page agree. The
+			// sort is stable, so within each group GitHub's own order is untouched.
+			Posted = [.. views.OrderBy(v => v.IsResolved ? 1 : 0)];
 		}
 		catch (ToolFailedException)
 		{
