@@ -9,5 +9,9 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\src\Stampeded.Core\Stampeded.Core.csproj" />
+    <!-- Built, not referenced: the LSP test starts it as a process, and linking its
+         assembly in would put a second MSBuildLocator registration in this one. -->
+    <ProjectReference Include="..\..\src\Stampeded.RoslynLsp\Stampeded.RoslynLsp.csproj"
+                      ReferenceOutputAssembly="false" />
   </ItemGroup>
 </Project>

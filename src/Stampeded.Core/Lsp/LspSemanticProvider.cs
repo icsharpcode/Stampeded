@@ -23,6 +23,7 @@ public sealed class LspSemanticProvider : ISemanticProvider
 	readonly Dictionary<string, string> overlay = new(StringComparer.Ordinal);
 	readonly string[] tokenTypes;
 	SemanticState state = SemanticState.Loading;
+	string detail = "";
 
 	public LspSemanticProvider(LspConnection connection, string rootPath, string name)
 	{
@@ -30,12 +31,42 @@ public sealed class LspSemanticProvider : ISemanticProvider
 		this.rootPath = rootPath;
 		this.name = name;
 		tokenTypes = ReadTokenLegend(connection.Capabilities);
-		state = SemanticState.Ready;
+		// A server that says it loads asynchronously answers about nothing until it says
+		// otherwise; one that says nothing was ready when it answered initialize.
+		state = Experimental(connection.Capabilities, "loadsAsynchronously")
+			? SemanticState.Loading
+			: SemanticState.Ready;
+		detail = name;
+		connection.Notification += OnNotification;
+	}
+
+	/// <summary>Whether the server announced one of the abilities this client knows to ask
+	/// for beyond the protocol.</summary>
+	internal static bool Experimental(JsonElement capabilities, string ability)
+		=> capabilities.ValueKind == JsonValueKind.Object
+			&& capabilities.TryGetProperty("experimental", out var experimental)
+			&& experimental.ValueKind == JsonValueKind.Object
+			&& experimental.TryGetProperty(ability, out var value)
+			&& value.ValueKind == JsonValueKind.True;
+
+	void OnNotification(string method, JsonElement parameters)
+	{
+		if (method != "stampeded/state" || parameters.ValueKind != JsonValueKind.Object)
+			return;
+		if (parameters.TryGetProperty("state", out var reported)
+			&& Enum.TryParse<SemanticState>(reported.GetString(), out var parsed))
+		{
+			state = parsed;
+		}
+		detail = parameters.TryGetProperty("detail", out var reportedDetail)
+			? $"{name}: {reportedDetail.GetString()}"
+			: name;
+		StateChanged?.Invoke();
 	}
 
 	public SemanticState State => state;
 
-	public string StateDetail => name;
+	public string StateDetail => detail;
 
 	public string LoadLog => "";
 
@@ -572,6 +603,7 @@ public sealed class LspSemanticProvider : ISemanticProvider
 
 	public void Dispose()
 	{
+		connection.Notification -= OnNotification;
 		state = SemanticState.NotLoaded;
 		StateChanged?.Invoke();
 		connection.Dispose();

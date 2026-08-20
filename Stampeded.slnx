@@ -1,6 +1,7 @@
 <Solution>
   <Folder Name="/src/">
     <Project Path="src/Stampeded.Core/Stampeded.Core.csproj" />
+    <Project Path="src/Stampeded.RoslynLsp/Stampeded.RoslynLsp.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Stampeded.Core.Tests/Stampeded.Core.Tests.csproj" />
