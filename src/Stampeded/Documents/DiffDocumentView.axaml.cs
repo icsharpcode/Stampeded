@@ -51,6 +51,8 @@ public partial class DiffDocumentView : UserControl, IReviewDocumentView
 	DiffDocumentModel? model;
 	DiffDocumentViewModel? viewModel;
 	RichTextColorizer? semanticColorizer;
+	RichTextColorizer? syntaxColorizer;
+	IHighlightingDefinition? highlighting;
 	bool semanticsRefreshQueued;
 
 	public DiffDocumentView()
@@ -450,6 +452,7 @@ public partial class DiffDocumentView : UserControl, IReviewDocumentView
 	void ApplyModelToEditor(DiffDocumentModel m)
 	{
 		Editor.Text = m.Text;
+		ApplySyntaxColors();
 		margin.Tags = m.Tags;
 		margin.InvalidateMeasure();
 		Overview.Attach(Editor, m.Tags);
@@ -635,7 +638,30 @@ public partial class DiffDocumentView : UserControl, IReviewDocumentView
 		});
 	}
 
-	void OnThemeChangedForSemantics(object? sender, EventArgs e) => QueueSemanticsRefresh();
+	void OnThemeChangedForSemantics(object? sender, EventArgs e)
+	{
+		// The colours were copied into the model when it was built, so a new palette needs
+		// the transfer done again rather than only a repaint.
+		ApplySyntaxColors();
+		QueueSemanticsRefresh();
+	}
+
+	/// <summary>
+	/// Installs the syntax colours as a colorizer of its own, below the semantic one, instead
+	/// of letting the editor highlight the document it displays. See
+	/// <see cref="DiffSyntaxColors"/> for why the document itself cannot be highlighted.
+	/// </summary>
+	void ApplySyntaxColors()
+	{
+		if (syntaxColorizer is not null)
+			Editor.TextArea.TextView.LineTransformers.Remove(syntaxColorizer);
+		syntaxColorizer = null;
+		if (highlighting is null || model is null)
+			return;
+		syntaxColorizer = new RichTextColorizer(DiffSyntaxColors.Build(highlighting, model, Editor.Document));
+		Editor.TextArea.TextView.LineTransformers.Insert(0, syntaxColorizer);
+		Editor.TextArea.TextView.Redraw();
+	}
 
 	protected override void OnDataContextChanged(EventArgs e)
 	{
@@ -651,10 +677,11 @@ public partial class DiffDocumentView : UserControl, IReviewDocumentView
 		model = vm.Model;
 		// One side's text, not the document's: the unified diff interleaves the two, and no
 		// format parses as itself with the lines it used to have spliced back into it.
-		Editor.SyntaxHighlighting = HighlightingService.GetForFile(
+		highlighting = HighlightingService.GetForFile(
 			vm.File.Path,
 			() => vm.Model.GetSideText(oldSide: vm.File.Kind == Core.Diff.FileChangeKind.Deleted).Text);
 		Editor.Text = vm.Model.Text;
+		ApplySyntaxColors();
 		// A source view is one blob shown whole - a file opened from the Explorer, a decompiled
 		// type, the base side of a file the change does not touch. There is no other side for
 		// its lines to be numbered against, and two identical columns of numbers only read as a
