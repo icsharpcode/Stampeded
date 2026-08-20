@@ -685,13 +685,13 @@ public class StartDocumentViewModel : Document
 			workspace.OpenOverview();
 	}
 
-	static (string Status, bool Done) SemanticStatus(Core.Roslyn.RoslynWorkspaceService? sem)
+	static (string Status, bool Done) SemanticStatus(ISemanticProvider? sem)
 		=> sem?.State switch {
-			Core.Roslyn.SemanticState.Restoring => ("restoring packages...", false),
-			Core.Roslyn.SemanticState.Loading => ("loading solution...", false),
-			Core.Roslyn.SemanticState.Ready => ("ready", true),
-			Core.Roslyn.SemanticState.SyntaxOnly => ("syntax-only fallback", true),
-			Core.Roslyn.SemanticState.Failed => ("FAILED (see load log)", true),
+			SemanticState.Restoring => ("restoring packages...", false),
+			SemanticState.Loading => ("loading solution...", false),
+			SemanticState.Ready => ("ready", true),
+			SemanticState.SyntaxOnly => ("syntax-only fallback", true),
+			SemanticState.Failed => ("FAILED (see load log)", true),
 			_ => ("waiting", false),
 		};
 
@@ -703,7 +703,7 @@ public class StartDocumentViewModel : Document
 		Set(2, SemanticStatus(workspace.BaseSemantics));
 		Set(3, workspace.ChangeMapComputed
 			? ($"{workspace.ChangeMap.Count} member(s)", true)
-			: workspace.Semantics is { State: Core.Roslyn.SemanticState.Failed }
+			: workspace.Semantics is { State: SemanticState.Failed }
 				? ("unavailable (semantics failed)", true)
 				: ("waiting for semantics...", false));
 		Set(4, workspace.Checks is { } checks ? ($"{checks.Count} check(s)", true)

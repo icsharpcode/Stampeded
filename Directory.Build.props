@@ -8,4 +8,9 @@
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
     <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
   </PropertyGroup>
+  <ItemGroup>
+    <!-- The semantic vocabulary (tokens, symbols, hits) is named unqualified everywhere it
+         is used, the way the framework's own types are. -->
+    <Using Include="Stampeded.Core.Semantics" />
+  </ItemGroup>
 </Project>

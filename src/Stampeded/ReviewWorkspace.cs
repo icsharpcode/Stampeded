@@ -61,8 +61,8 @@ public sealed class ReviewWorkspace(string repoPath)
 	public string? BaseSha { get; private set; }
 	public string? HeadSha { get; private set; }
 	public IReadOnlyList<FileDiff> Files { get; private set; } = [];
-	public RoslynWorkspaceService? Semantics { get; private set; }
-	public RoslynWorkspaceService? BaseSemantics { get; private set; }
+	public ISemanticProvider? Semantics { get; private set; }
+	public ISemanticProvider? BaseSemantics { get; private set; }
 
 	/// <summary>Per worktree-relative file: line -> hit count, from the last coverage run.</summary>
 	public IReadOnlyDictionary<string, IReadOnlyDictionary<int, int>>? Coverage { get; private set; }
@@ -183,8 +183,7 @@ public sealed class ReviewWorkspace(string repoPath)
 			traced++;
 			// A test rarely names a private helper. When nothing under test refers to the
 			// member itself, the type that owns it is what the tests do exercise.
-			if (!await AddTestClassesAsync(member) && member is not Microsoft.CodeAnalysis.INamedTypeSymbol
-				&& member.ContainingType is { } type)
+			if (!await AddTestClassesAsync(member) && !member.IsType && member.ContainingType is { } type)
 			{
 				await AddTestClassesAsync(type);
 			}
@@ -202,7 +201,7 @@ public sealed class ReviewWorkspace(string repoPath)
 			+ (suggested.Count > 0 ? ": " + string.Join(", ", suggested) : ""));
 		return suggested;
 
-		async Task<bool> AddTestClassesAsync(Microsoft.CodeAnalysis.ISymbol symbol)
+		async Task<bool> AddTestClassesAsync(SymbolRef symbol)
 		{
 			bool anyTestHit = false;
 			foreach (var hit in await sem.FindReferencesAsync(symbol, CancellationToken.None))
@@ -522,7 +521,8 @@ public sealed class ReviewWorkspace(string repoPath)
 		Semantics?.Dispose();
 		BaseSemantics?.Dispose();
 		BaseSemantics = null;
-		var semantics = Semantics = new RoslynWorkspaceService();
+		var semantics = new RoslynWorkspaceService();
+		Semantics = semantics;
 		semantics.StateChanged += () => SemanticsChanged?.Invoke();
 		SemanticsChanged?.Invoke();
 		using (Busy.Begin("Loading semantics (head)"))
@@ -536,7 +536,8 @@ public sealed class ReviewWorkspace(string repoPath)
 		// object database - the two revisions differ in exactly those files, so a second
 		// checkout, restore and design-time build would spend minutes to arrive at the same
 		// answers.
-		var baseSemantics = BaseSemantics = new RoslynWorkspaceService();
+		var baseSemantics = new RoslynWorkspaceService();
+		BaseSemantics = baseSemantics;
 		baseSemantics.StateChanged += () => SemanticsChanged?.Invoke();
 		using (Busy.Begin("Reading the base side"))
 		{
@@ -1754,9 +1755,9 @@ public sealed class ReviewWorkspace(string repoPath)
 
 	/// <summary>The workspace serving one side of a diff: head for context/added lines,
 	/// base for removed lines.</summary>
-	public RoslynWorkspaceService? SemanticsFor(bool oldSide) => oldSide ? BaseSemantics : Semantics;
+	public ISemanticProvider? SemanticsFor(bool oldSide) => oldSide ? BaseSemantics : Semantics;
 
-	static bool IsReady(RoslynWorkspaceService? sem)
+	static bool IsReady(ISemanticProvider? sem)
 		=> sem is { State: SemanticState.Ready or SemanticState.SyntaxOnly };
 
 	/// <summary>Whether head-side semantics have finished loading. A review opens as soon as
@@ -1765,7 +1766,7 @@ public sealed class ReviewWorkspace(string repoPath)
 	/// reads as a fact about the code.</summary>
 	public bool SemanticsReady => IsReady(Semantics);
 
-	async Task<Microsoft.CodeAnalysis.ISymbol?> SymbolAtAsync(bool oldSide, string relPath, int line, int column)
+	async Task<SymbolRef?> SymbolAtAsync(bool oldSide, string relPath, int line, int column)
 	{
 		var sem = SemanticsFor(oldSide);
 		if (!IsReady(sem))
@@ -1789,7 +1790,7 @@ public sealed class ReviewWorkspace(string repoPath)
 		var symbol = await SymbolAtAsync(oldSide, relPath, line, column);
 		if (symbol is null)
 			return;
-		var location = sem!.GetDefinitionLocation(symbol);
+		var location = await sem!.GetDefinitionAsync(symbol, CancellationToken.None);
 		if (location is null)
 		{
 			await OpenDecompiledDefinitionAsync(sem, symbol, origin);
@@ -1805,43 +1806,40 @@ public sealed class ReviewWorkspace(string repoPath)
 
 	/// <summary>Definition view for a symbol without source: decompile its top-level
 	/// containing type from the referenced assembly and jump to the member.</summary>
-	async Task OpenDecompiledDefinitionAsync(RoslynWorkspaceService sem, Microsoft.CodeAnalysis.ISymbol symbol, NavEntryOrigin origin)
+	async Task OpenDecompiledDefinitionAsync(ISemanticProvider sem, SymbolRef symbol, NavEntryOrigin origin)
 	{
-		var original = symbol.OriginalDefinition;
-		var topType = original as Microsoft.CodeAnalysis.INamedTypeSymbol ?? original.ContainingType;
-		while (topType?.ContainingType is { } outer)
-			topType = outer;
-		string? assemblyPath = topType is null ? null : sem.TryGetMetadataAssemblyPath(topType);
-		if (topType is null || assemblyPath is null)
+		// Only a provider with real metadata behind it can answer this; a language server
+		// knows about files, and a symbol without source has none.
+		var target = sem is IDecompileTargets targets
+			? await targets.GetDecompileTargetAsync(symbol, CancellationToken.None)
+			: null;
+		if (target is null)
 		{
 			StatusMessage?.Invoke($"'{symbol.Name}' has no source and its defining assembly could not be resolved.");
 			return;
 		}
-		string reflectionName = topType.ContainingNamespace is { IsGlobalNamespace: false } ns
-			? ns.ToDisplayString() + "." + topType.MetadataName
-			: topType.MetadataName;
-		using var busy = Busy.Begin($"Decompiling {topType.Name}");
+		using var busy = Busy.Begin($"Decompiling {target.TypeName}");
 		try
 		{
-			int token = original.MetadataToken;
-			var result = await Task.Run(() => DecompilationService.DecompileType(assemblyPath, reflectionName, token));
-			string id = $"decomp:{reflectionName}";
+			var result = await Task.Run(() => DecompilationService.DecompileType(
+				target.AssemblyPath, target.ReflectionName, target.MetadataToken));
+			string id = $"decomp:{target.ReflectionName}";
 			var vm = ShowDocument(id, () => {
-				var doc = DiffDocumentViewModel.ForSource(topType.Name + ".cs", result.Text);
-				doc.Title = topType.Name + " [decompiled]";
+				var doc = DiffDocumentViewModel.ForSource(target.TypeName + ".cs", result.Text);
+				doc.Title = target.TypeName + " [decompiled]";
 				return doc;
 			});
 			if (vm is null)
 				return;
-			CliLog.Write("action", $"decompiled {reflectionName} ({Path.GetFileName(assemblyPath)}) -> line {result.MemberLine}");
+			CliLog.Write("action", $"decompiled {target.ReflectionName} ({Path.GetFileName(target.AssemblyPath)}) -> line {result.MemberLine}");
 			RecordOrigin(origin);
 			history.Record(new NavEntry(id, result.MemberLine, false));
 			vm.RequestCaret(result.MemberLine);
 		}
 		catch (Exception ex)
 		{
-			StatusMessage?.Invoke($"Decompiling {topType.Name} failed: {ex.Message}");
-			CliLog.Write("action", $"decompile {reflectionName} FAILED: {ex.Message}");
+			StatusMessage?.Invoke($"Decompiling {target.TypeName} failed: {ex.Message}");
+			CliLog.Write("action", $"decompile {target.ReflectionName} FAILED: {ex.Message}");
 		}
 	}
 
@@ -1885,9 +1883,7 @@ public sealed class ReviewWorkspace(string repoPath)
 			CallGraphFailed?.Invoke($"No symbol found on {System.IO.Path.GetFileName(relPath)}:{line}.");
 			return;
 		}
-		CallGraphRequested?.Invoke(new CallRoot(
-			symbol.ToDisplayString(Microsoft.CodeAnalysis.SymbolDisplayFormat.CSharpShortErrorMessageFormat),
-			relPath, line, column, oldSide));
+		CallGraphRequested?.Invoke(new CallRoot(symbol.Display, relPath, line, column, oldSide));
 	}
 
 	/// <summary>One level of the call hierarchy at a blob position. Paths come back
@@ -1977,11 +1973,11 @@ public sealed class ReviewWorkspace(string repoPath)
 	/// <summary>Source declarations matching a name pattern, for going to one. Answers empty
 	/// while semantics are still loading rather than waiting for them: this runs against every
 	/// keystroke, and a box that stops responding is worse than one that fills in late.</summary>
-	public Task<IReadOnlyList<Core.Roslyn.DeclarationHit>> FindDeclarationsAsync(
+	public Task<IReadOnlyList<DeclarationHit>> FindDeclarationsAsync(
 		string pattern, int max, CancellationToken ct)
 		=> IsReady(Semantics)
 			? Semantics!.FindDeclarationsAsync(pattern, max, ct)
-			: Task.FromResult<IReadOnlyList<Core.Roslyn.DeclarationHit>>([]);
+			: Task.FromResult<IReadOnlyList<DeclarationHit>>([]);
 
 	IReadOnlyList<string>? headFiles;
 	string? headFilesFor;

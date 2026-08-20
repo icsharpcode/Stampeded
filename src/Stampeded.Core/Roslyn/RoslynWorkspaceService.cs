@@ -10,34 +10,13 @@ using Stampeded.Core.Infra;
 
 namespace Stampeded.Core.Roslyn;
 
-public enum SemanticState
-{
-	NotLoaded,
-	Restoring,
-	Loading,
-	Ready,
-	SyntaxOnly,
-	Failed,
-}
-
-public sealed record SymbolLocation(string FilePath, TextSpan Span, int Line);
-
-public sealed record ReferenceHit(string FilePath, int Line, TextSpan Span, string LineText);
-
-public sealed record SemanticToken(int Line, int Column, int Length, string Classification);
-
-public sealed record ChangedMember(string Display, string Kind, int FirstLine);
-
-/// <summary>A declaration found by name: where it is, and what it is called in.</summary>
-public sealed record DeclarationHit(string Name, string Container, string Kind, string RelPath, int Line);
-
 /// <summary>
 /// Source semantics over one checked-out worktree: an MSBuildWorkspace when the solution
 /// loads (NuGet restore is run first so the design-time build sees its references), an
 /// AdhocWorkspace over all .cs files otherwise. One instance per review session; dispose
 /// and reload on PR switch, never patch incrementally.
 /// </summary>
-public sealed class RoslynWorkspaceService : IDisposable
+public sealed class RoslynWorkspaceService : ISemanticProvider, IDecompileTargets
 {
 	Workspace? workspace;
 	bool ownsWorkspace;
@@ -526,7 +505,7 @@ public sealed class RoslynWorkspaceService : IDisposable
 
 	/// <summary>All reference and definition occurrences of a symbol within one file, for
 	/// in-document occurrence highlighting.</summary>
-	public async Task<IReadOnlyList<SemanticToken>> FindOccurrencesInFileAsync(
+	async Task<IReadOnlyList<SemanticToken>> OccurrencesOfAsync(
 		ISymbol symbol, string repoRelativePath, CancellationToken ct)
 	{
 		var document = GetDocument(ToAbsolutePath(repoRelativePath));
@@ -700,7 +679,7 @@ public sealed class RoslynWorkspaceService : IDisposable
 	/// keyed on, handed back as a symbol so callers can search its references. Resolving by
 	/// (line, guessed column) instead lands on whatever token sits at that column, which on
 	/// a body line is a local or a callee rather than the member that changed.</summary>
-	public async Task<ISymbol?> GetEnclosingMemberAsync(string repoRelativePath, int line, CancellationToken ct)
+	async Task<ISymbol?> FindEnclosingMemberAsync(string repoRelativePath, int line, CancellationToken ct)
 	{
 		var document = GetDocument(ToAbsolutePath(repoRelativePath));
 		if (document is null)
@@ -784,7 +763,7 @@ public sealed class RoslynWorkspaceService : IDisposable
 		return textLine.Start + Math.Clamp(column - 1, 0, textLine.Span.Length);
 	}
 
-	public async Task<ISymbol?> GetSymbolAtAsync(string repoRelativePath, int position, CancellationToken ct)
+	async Task<ISymbol?> FindSymbolAtAsync(string repoRelativePath, int position, CancellationToken ct)
 	{
 		var document = GetDocument(ToAbsolutePath(repoRelativePath));
 		if (document is null)
@@ -801,7 +780,7 @@ public sealed class RoslynWorkspaceService : IDisposable
 	/// sits wherever it was left - often in the indentation - and a command aimed at "the
 	/// symbol here" should still find the one the line is about.
 	/// </summary>
-	public async Task<ISymbol?> GetSymbolOnLineAsync(
+	async Task<ISymbol?> FindSymbolOnLineAsync(
 		string repoRelativePath, int line, int preferredColumn, CancellationToken ct)
 	{
 		var document = GetDocument(ToAbsolutePath(repoRelativePath));
@@ -832,19 +811,19 @@ public sealed class RoslynWorkspaceService : IDisposable
 		return null;
 	}
 
-	public SymbolLocation? GetDefinitionLocation(ISymbol symbol)
+	static SymbolLocation? DefinitionLocationOf(ISymbol symbol)
 	{
 		var location = symbol.OriginalDefinition.Locations.FirstOrDefault(l => l.IsInSource);
 		if (location is null || location.SourceTree?.FilePath is not { Length: > 0 } path)
 			return null;
-		var line = location.GetLineSpan().StartLinePosition.Line + 1;
-		return new SymbolLocation(path, location.SourceSpan, line);
+		var start = location.GetLineSpan().StartLinePosition;
+		return new SymbolLocation(path, start.Line + 1, start.Character + 1, location.SourceSpan.Length);
 	}
 
 	/// <summary>File path of the PE reference defining <paramref name="symbol"/>, for
 	/// metadata symbols without source. Only already-realized compilations are consulted;
 	/// the compilation that produced the symbol necessarily is one.</summary>
-	public string? TryGetMetadataAssemblyPath(ISymbol symbol)
+	string? TryGetMetadataAssemblyPath(ISymbol symbol)
 	{
 		if (solution is null || symbol.ContainingAssembly is not { } assembly)
 			return null;
@@ -859,7 +838,7 @@ public sealed class RoslynWorkspaceService : IDisposable
 		return null;
 	}
 
-	public async Task<IReadOnlyList<ReferenceHit>> FindReferencesAsync(ISymbol symbol, CancellationToken ct)
+	async Task<IReadOnlyList<ReferenceHit>> ReferencesOfAsync(ISymbol symbol, CancellationToken ct)
 	{
 		if (solution is null)
 			return [];
@@ -876,11 +855,13 @@ public sealed class RoslynWorkspaceService : IDisposable
 				var lineSpan = location.Location.GetLineSpan();
 				int line = lineSpan.StartLinePosition.Line + 1;
 				string lineText = text.Lines[lineSpan.StartLinePosition.Line].ToString().Trim();
-				hits.Add(new ReferenceHit(path, line, location.Location.SourceSpan, lineText));
+				hits.Add(new ReferenceHit(
+					path, line, lineSpan.StartLinePosition.Character + 1,
+					location.Location.SourceSpan.Length, lineText));
 			}
 		}
 		return hits
-			.DistinctBy(h => (h.FilePath, h.Span.Start))
+			.DistinctBy(h => (h.FilePath, h.Line, h.Column))
 			.OrderBy(h => h.FilePath, StringComparer.Ordinal)
 			.ThenBy(h => h.Line)
 			.ToList();
@@ -891,7 +872,7 @@ public sealed class RoslynWorkspaceService : IDisposable
 	/// solution; callees from the member's own body. Each node carries the declaration
 	/// position of the member it names, which is what lets the tree expand another level.
 	/// </summary>
-	public async Task<IReadOnlyList<CallNode>> GetCallsAsync(ISymbol symbol, CallDirection direction, CancellationToken ct)
+	async Task<IReadOnlyList<CallNode>> CallsOfAsync(ISymbol symbol, CallDirection direction, CancellationToken ct)
 		=> direction == CallDirection.Callers
 			? await GetCallersAsync(symbol, ct)
 			: await GetCalleesAsync(symbol, ct);
@@ -982,7 +963,7 @@ public sealed class RoslynWorkspaceService : IDisposable
 
 	public async Task<string?> GetHoverTextAsync(string repoRelativePath, int position, CancellationToken ct)
 	{
-		var symbol = await GetSymbolAtAsync(repoRelativePath, position, ct);
+		var symbol = await FindSymbolAtAsync(repoRelativePath, position, ct);
 		if (symbol is null)
 			return null;
 		string signature = symbol.ToDisplayString(SymbolDisplayFormat.CSharpErrorMessageFormat);
@@ -1002,6 +983,128 @@ public sealed class RoslynWorkspaceService : IDisposable
 		inner = System.Text.RegularExpressions.Regex.Replace(inner, "<[^>]+>", "");
 		return System.Text.RegularExpressions.Regex.Replace(inner, @"\s+", " ").Trim();
 	}
+
+	#region ISemanticProvider: symbols named by position
+
+	/// <summary>
+	/// A symbol as the interface hands it around: the position that resolves to it, and what
+	/// it is called. The position has to be one this workspace answers with the same symbol
+	/// again - a query position for a use, the declaration's own name token for a member
+	/// found by enclosing scope - because that is all a later call gets back.
+	/// </summary>
+	SymbolRef MakeRef(ISymbol symbol, string relPath, int line, int column)
+		=> new(relPath, line, column,
+			symbol.ToDisplayString(SymbolDisplayFormat.CSharpShortErrorMessageFormat),
+			symbol.Name,
+			symbol is INamedTypeSymbol,
+			ContainingTypeRef(symbol));
+
+	SymbolRef? ContainingTypeRef(ISymbol symbol)
+	{
+		if (symbol is INamedTypeSymbol || symbol.ContainingType is not { } type)
+			return null;
+		if (DeclarationRef(type) is not { } declared)
+			return null;
+		return declared;
+	}
+
+	/// <summary>The symbol's own declaration as a reference, or null when it has no source
+	/// here - a metadata type, a member of one.</summary>
+	SymbolRef? DeclarationRef(ISymbol symbol)
+	{
+		var location = symbol.Locations.FirstOrDefault(l => l.IsInSource);
+		if (location?.SourceTree?.FilePath is not { Length: > 0 } path || ToRelativePath(path) is not { } rel)
+			return null;
+		var start = location.GetLineSpan().StartLinePosition;
+		return new SymbolRef(rel, start.Line + 1, start.Character + 1,
+			symbol.ToDisplayString(SymbolDisplayFormat.CSharpShortErrorMessageFormat),
+			symbol.Name, symbol is INamedTypeSymbol, null);
+	}
+
+	async Task<ISymbol?> ResolveAsync(SymbolRef symbol, CancellationToken ct)
+	{
+		int? position = await GetPositionAsync(symbol.RelPath, symbol.Line, symbol.Column, ct);
+		return position is null ? null : await FindSymbolAtAsync(symbol.RelPath, position.Value, ct);
+	}
+
+	/// <summary>The 1-based (line, column) of an offset, for naming a symbol found at one.</summary>
+	async Task<(int Line, int Column)?> LineColumnAsync(string relPath, int position, CancellationToken ct)
+	{
+		var document = GetDocument(ToAbsolutePath(relPath));
+		if (document is null)
+			return null;
+		var text = await document.GetTextAsync(ct);
+		if (position < 0 || position > text.Length)
+			return null;
+		var line = text.Lines.GetLineFromPosition(position);
+		return (line.LineNumber + 1, position - line.Start + 1);
+	}
+
+	public async Task<SymbolRef?> GetSymbolAtAsync(string relPath, int position, CancellationToken ct)
+	{
+		if (await FindSymbolAtAsync(relPath, position, ct) is not { } symbol)
+			return null;
+		if (await LineColumnAsync(relPath, position, ct) is not { } at)
+			return null;
+		return MakeRef(symbol, relPath, at.Line, at.Column);
+	}
+
+	public async Task<SymbolRef?> GetSymbolOnLineAsync(
+		string relPath, int line, int preferredColumn, CancellationToken ct)
+	{
+		if (await FindSymbolOnLineAsync(relPath, line, preferredColumn, ct) is not { } symbol)
+			return null;
+		// The position that found it is not reported back, so the reference points at the
+		// declaration when there is one - which resolves to the same symbol - and at the
+		// asked-for line otherwise.
+		return DeclarationRef(symbol) ?? MakeRef(symbol, relPath, line, preferredColumn);
+	}
+
+	public async Task<SymbolRef?> GetEnclosingMemberAsync(string relPath, int line, CancellationToken ct)
+	{
+		if (await FindEnclosingMemberAsync(relPath, line, ct) is not { } symbol)
+			return null;
+		return DeclarationRef(symbol);
+	}
+
+	public async Task<SymbolLocation?> GetDefinitionAsync(SymbolRef symbol, CancellationToken ct)
+		=> await ResolveAsync(symbol, ct) is { } resolved ? DefinitionLocationOf(resolved) : null;
+
+	public async Task<IReadOnlyList<ReferenceHit>> FindReferencesAsync(SymbolRef symbol, CancellationToken ct)
+		=> await ResolveAsync(symbol, ct) is { } resolved ? await ReferencesOfAsync(resolved, ct) : [];
+
+	public async Task<IReadOnlyList<SemanticToken>> FindOccurrencesInFileAsync(
+		SymbolRef symbol, string relPath, CancellationToken ct)
+		=> await ResolveAsync(symbol, ct) is { } resolved
+			? await OccurrencesOfAsync(resolved, relPath, ct)
+			: [];
+
+	public async Task<IReadOnlyList<CallNode>> GetCallsAsync(
+		SymbolRef symbol, CallDirection direction, CancellationToken ct)
+		=> await ResolveAsync(symbol, ct) is { } resolved ? await CallsOfAsync(resolved, direction, ct) : [];
+
+	/// <summary>
+	/// The assembly and type to decompile for a symbol without source. The top-level
+	/// containing type is what gets decompiled - a nested type reads as part of the file its
+	/// outer type owns - while the token names the member to land on inside it.
+	/// </summary>
+	public async Task<DecompileTarget?> GetDecompileTargetAsync(SymbolRef symbol, CancellationToken ct)
+	{
+		if (await ResolveAsync(symbol, ct) is not { } resolved)
+			return null;
+		var original = resolved.OriginalDefinition;
+		var topType = original as INamedTypeSymbol ?? original.ContainingType;
+		while (topType?.ContainingType is { } outer)
+			topType = outer;
+		if (topType is null || TryGetMetadataAssemblyPath(topType) is not { } assemblyPath)
+			return null;
+		string reflectionName = topType.ContainingNamespace is { IsGlobalNamespace: false } ns
+			? ns.ToDisplayString() + "." + topType.MetadataName
+			: topType.MetadataName;
+		return new DecompileTarget(assemblyPath, reflectionName, original.MetadataToken, topType.Name);
+	}
+
+	#endregion
 
 	public void Dispose()
 	{

@@ -198,8 +198,8 @@ public class TestsPaneViewModel : Tool
 		using var busy = workspace.Busy.Begin("A/B test run (base, then head)");
 		try
 		{
-			while (workspace.Semantics is { State: Core.Roslyn.SemanticState.Restoring or Core.Roslyn.SemanticState.Loading }
-				|| workspace.BaseSemantics is { State: Core.Roslyn.SemanticState.Restoring or Core.Roslyn.SemanticState.Loading })
+			while (workspace.Semantics is { State: SemanticState.Restoring or SemanticState.Loading }
+				|| workspace.BaseSemantics is { State: SemanticState.Restoring or SemanticState.Loading })
 			{
 				State.Status = "Waiting for the semantic workspace load to finish before building tests...";
 				await Task.Delay(1000, ct);
@@ -281,8 +281,8 @@ public class TestsPaneViewModel : Tool
 			// The semantic load runs dotnet restore and design-time builds in this same
 			// worktree; a concurrent test build trips over the half-written obj/ state
 			// and dies with an opaque "Build failed" (MTP hides MSBuild's errors).
-			while (workspace.Semantics is { State: Core.Roslyn.SemanticState.Restoring or Core.Roslyn.SemanticState.Loading }
-				|| workspace.BaseSemantics is { State: Core.Roslyn.SemanticState.Restoring or Core.Roslyn.SemanticState.Loading })
+			while (workspace.Semantics is { State: SemanticState.Restoring or SemanticState.Loading }
+				|| workspace.BaseSemantics is { State: SemanticState.Restoring or SemanticState.Loading })
 			{
 				State.Status = "Waiting for the semantic workspace load to finish before building tests...";
 				await Task.Delay(1000, ct);

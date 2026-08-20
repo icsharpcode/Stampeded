@@ -755,7 +755,7 @@ public partial class DiffDocumentView : UserControl, IReviewDocumentView
 	/// own: less knowledgeable, but aligned with what is actually shown.
 	/// </summary>
 	static async Task<IReadOnlyList<SemanticToken>> TokensForSideAsync(
-		RoslynWorkspaceService? semantics, string relPath, DiffDocumentModel model, bool oldSide)
+		ISemanticProvider? semantics, string relPath, DiffDocumentModel model, bool oldSide)
 	{
 		var (displayed, _) = model.GetSideText(oldSide);
 		if (displayed.Length == 0)
