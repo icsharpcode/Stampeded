@@ -14,7 +14,7 @@ namespace Stampeded.Core.Lsp;
 /// come back with the line it sits on, and "the symbol at the caret" is the word under it -
 /// there is no server request that answers what a token is called.
 /// </summary>
-public sealed class LspSemanticProvider : ISemanticProvider
+public sealed class LspSemanticProvider : ISemanticProvider, IDecompileTargets
 {
 	readonly LspConnection connection;
 	readonly string rootPath;
@@ -524,6 +524,32 @@ public sealed class LspSemanticProvider : ISemanticProvider
 			.OrderByDescending(s => s.StartLine)
 			.ThenBy(s => s.EndLine)
 			.FirstOrDefault();
+
+	/// <summary>
+	/// Where a symbol without source came from, asked of a server that has metadata behind it
+	/// - ours does, no other server does, and one that does not says so in its capabilities
+	/// rather than by failing the request.
+	/// </summary>
+	public async Task<DecompileTarget?> GetDecompileTargetAsync(SymbolRef symbol, CancellationToken ct)
+	{
+		if (!Experimental(connection.Capabilities, "decompileTarget"))
+			return null;
+		var result = await connection.RequestAsync("stampeded/decompileTarget", new {
+			textDocument = new { uri = Uri(symbol.RelPath) },
+			position = new { line = symbol.Line - 1, character = symbol.Column - 1 },
+		}, ct);
+		if (result.ValueKind != JsonValueKind.Object
+			|| !result.TryGetProperty("assemblyPath", out var assembly)
+			|| !result.TryGetProperty("reflectionName", out var reflectionName)
+			|| !result.TryGetProperty("metadataToken", out var token)
+			|| !result.TryGetProperty("typeName", out var typeName))
+		{
+			return null;
+		}
+		return new DecompileTarget(
+			assembly.GetString() ?? "", reflectionName.GetString() ?? "",
+			token.GetInt32(), typeName.GetString() ?? "");
+	}
 
 	#endregion
 

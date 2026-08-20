@@ -25,11 +25,13 @@ results and coverage, in one Avalonia window. See `README.md` for the pitch.
 ## Project layout
 
 - `src/Stampeded.Core/` - everything that does not need a UI: git and GitHub access, diff and
-  fold building, Roslyn hosting, the review store. No Avalonia reference; keep it that way.
+  fold building, Roslyn hosting, the LSP client, the review store. No Avalonia reference; keep
+  it that way.
 - `src/Stampeded/` - the Avalonia app: panes, documents, controls, view models.
+- `src/Stampeded.RoslynLsp/` - Roslyn as a language server, for reading C# out of process.
 - `tests/Stampeded.Core.Tests/` - NUnit, covering `Stampeded.Core` only. The UI layer has no
   automated tests.
-- `Stampeded.slnx` builds all three.
+- `Stampeded.slnx` builds all four.
 
 ## Everything external is a CLI
 
@@ -39,8 +41,37 @@ an exit code alone never says what went wrong). There are no API tokens of the t
 SSO and token refresh ride on the user's `gh` login. Keep it that way; do not add an HTTP client
 for GitHub.
 
+A language server is the one exception, because it is not a command with an exit code: it
+starts once and answers until the review closes, over JSON-RPC on its stdin and stdout
+(`Stampeded.Core/Lsp/`). Everything it does still reaches the log - the command line, the
+requests that take a noticeable while, every line of its stderr.
+
 `CliLog.Write` is the log sink the Log pane shows. Anything a user might have to explain to
 someone else belongs in it.
+
+## Semantics come from a provider, not from Roslyn
+
+Everything the review asks about source - what a token means, where it is declared, who uses
+it, which member owns a line - goes through `ISemanticProvider` (`Stampeded.Core/Semantics/`).
+A symbol is a `SymbolRef`: the file and position that resolves to it, because that is all a
+language server can be handed back. There are two implementations: `RoslynWorkspaceService`
+in this process, and `LspSemanticProvider` over a server's stdin and stdout.
+
+A review holds one provider pair (head and base) **per language**, so `SemanticsFor(oldSide,
+relPath)` is the lookup; the pathless overload is the primary (C#) one. A Python server is
+started only for a review that actually changes Python. Its base side is a second process on
+a checkout of the base revision - a language server holds one text per file, so two revisions
+cannot be one process. Only our own Roslyn server derives one side from the other, which is
+what `?side=base` on a document URI means.
+
+Environment switches, both off by default:
+
+- `STAMPEDED_SEMANTICS=lsp` reads C# through `Stampeded.RoslynLsp` instead of in process.
+- `STAMPEDED_PYTHON_LSP` / `STAMPEDED_CSHARP_LSP` name a server command line to use instead
+  of the search (PATH first, then npx for pyright).
+
+Decompiling a definition without source is not something a language server can answer, so it
+is a capability a provider may also have (`IDecompileTargets`), not part of the interface.
 
 ## Invariants worth knowing
 

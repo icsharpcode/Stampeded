@@ -30,6 +30,7 @@ sealed class RoslynLspServer : IDisposable
 	readonly SemaphoreSlim writeLock = new(1, 1);
 	readonly RoslynWorkspaceService head = new();
 	RoslynWorkspaceService? @base;
+	Task headLoad = Task.CompletedTask;
 	string rootPath = "";
 	bool shuttingDown;
 
@@ -41,9 +42,9 @@ sealed class RoslynLspServer : IDisposable
 
 	public async Task RunAsync(CancellationToken ct)
 	{
-		// Anything the workspace logs while loading becomes a window/logMessage, so the
-		// review's Log pane reads the same as when this ran in-process.
-		CliLog.Sink = line => Notify("window/logMessage", new { type = 3, message = line });
+		// Nothing is added to CliLog's sink: everything written for a human already goes to
+		// stderr, which the client copies into its Log pane. A sink as well would put every
+		// line there twice.
 		while (!shuttingDown)
 		{
 			if (await LspStream.ReadMessageAsync(input, ct) is not { } payload)
@@ -141,7 +142,7 @@ sealed class RoslynLspServer : IDisposable
 		// Loading is minutes on a large solution, and initialize has to answer now: the
 		// client is told the state as it changes and offers the commands that need a
 		// compilation only once there is one.
-		_ = Task.Run(() => head.LoadAsync(rootPath, solution, ct), ct);
+		headLoad = Task.Run(() => head.LoadAsync(rootPath, solution, ct), ct);
 		return new {
 			capabilities = new {
 				textDocumentSync = 1, // full text on every change
@@ -177,7 +178,10 @@ sealed class RoslynLspServer : IDisposable
 	/// revision being compared against.</summary>
 	async Task<object?> LoadBaseAsync(JsonElement parameters, CancellationToken ct)
 	{
-		await Task.CompletedTask;
+		// After the head has finished loading, whatever that costs: the base side is the
+		// head's own compilation with some files reading differently, and deriving from a
+		// solution that is still being opened produces a workspace that knows nothing.
+		await headLoad;
 		var replaced = ReadTexts(parameters, "replaced");
 		var added = ReadTexts(parameters, "added");
 		var removed = parameters.TryGetProperty("removed", out var removedPaths)
