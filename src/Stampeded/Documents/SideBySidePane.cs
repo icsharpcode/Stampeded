@@ -125,7 +125,7 @@ sealed class SideBySidePane
 			HoverLog($"hover({side}): row {docLine} is filler - the other side's line");
 			return;
 		}
-		var semantics = ws.SemanticsFor(oldSide);
+		var semantics = ws.SemanticsFor(oldSide, relPath);
 		if (semantics is not { State: SemanticState.Ready or SemanticState.SyntaxOnly })
 		{
 			HoverLog($"hover({side}): semantics are {semantics?.State.ToString() ?? "not loaded"}");
@@ -202,7 +202,7 @@ sealed class SideBySidePane
 	{
 		if (App.Workspace is not { } ws || relPath.Length == 0)
 			return;
-		var semantics = ws.SemanticsFor(oldSide);
+		var semantics = ws.SemanticsFor(oldSide, relPath);
 		if (semantics is not { State: SemanticState.Ready or SemanticState.SyntaxOnly })
 			return;
 		var expectedTags = tags;

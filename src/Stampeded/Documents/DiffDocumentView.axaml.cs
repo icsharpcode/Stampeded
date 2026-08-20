@@ -724,8 +724,8 @@ public partial class DiffDocumentView : UserControl, IReviewDocumentView
 		var m = model;
 		var vm = viewModel;
 
-		var headSem = ws.SemanticsFor(oldSide: false);
-		var baseSem = ws.SemanticsFor(oldSide: true);
+		var headSem = ws.SemanticsFor(oldSide: false, vm.File.Path);
+		var baseSem = ws.SemanticsFor(oldSide: true, vm.File.OldPath);
 		var headTokens = await TokensForSideAsync(headSem, vm.File.Path, m, oldSide: false);
 		bool hasRemoved = m.Tags.Any(t => t.Kind == DiffLineKind.Removed);
 		var baseTokens = hasRemoved
@@ -1156,7 +1156,7 @@ public partial class DiffDocumentView : UserControl, IReviewDocumentView
 		}
 		string relPath = oldSide ? viewModel.File.OldPath : viewModel.File.Path;
 		int blobLine = oldSide ? tag.OldLine : tag.NewLine;
-		var sem = ws.SemanticsFor(oldSide);
+		var sem = ws.SemanticsFor(oldSide, relPath);
 		if (sem is not { State: SemanticState.Ready or SemanticState.SyntaxOnly })
 		{
 			HoverLog($"hover: semantics are {sem?.State.ToString() ?? "not loaded"}");

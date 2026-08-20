@@ -28,6 +28,15 @@ public sealed class LspConnection : IDisposable
 		DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
 	};
 
+	/// <summary>
+	/// For responses, where a null result is an answer and not an absence: JSON-RPC requires
+	/// a response to carry either a result or an error, and a serializer that drops null
+	/// properties turns "nothing found" into a message the other end rejects outright.
+	/// </summary>
+	static readonly JsonSerializerOptions ResponseJson = new() {
+		PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+	};
+
 	readonly LspServerSpec spec;
 	readonly Process process;
 	readonly Stream toServer;
@@ -213,7 +222,7 @@ public sealed class LspConnection : IDisposable
 		string name = method.GetString() ?? "";
 		if (hasId)
 		{
-			AnswerServerRequest(id, name);
+			AnswerServerRequest(id, name, message.TryGetProperty("params", out var request) ? request : default);
 			return;
 		}
 		if (name == "window/logMessage" && message.TryGetProperty("params", out var log)
@@ -229,17 +238,36 @@ public sealed class LspConnection : IDisposable
 	/// declined by silence: a server that asked for configuration and heard nothing back
 	/// waits, and everything after it waits too.
 	/// </summary>
-	void AnswerServerRequest(JsonElement id, string method)
+	void AnswerServerRequest(JsonElement id, string method, JsonElement parameters)
 	{
 		object? result = method switch {
-			// One entry per item asked about; no settings of our own, so all empty.
-			"workspace/configuration" => Array.Empty<object>(),
-			"client/registerCapability" or "client/unregisterCapability" => null,
-			"window/workDoneProgress/create" => null,
+			// One entry per item asked about, in the order asked: a server that gets fewer
+			// than it asked for cannot tell which setting it was told about.
+			"workspace/configuration" => Enumerable
+				.Repeat(new object(), parameters.ValueKind == JsonValueKind.Object
+					&& parameters.TryGetProperty("items", out var items)
+					&& items.ValueKind == JsonValueKind.Array
+					? items.GetArrayLength()
+					: 1)
+				.ToArray(),
 			_ => null,
 		};
-		SendAsync(new { jsonrpc = "2.0", id = id.Clone(), result }, CancellationToken.None)
-			.HandleFailure(spec.Name);
+		SendResponseAsync(id, result).HandleFailure(spec.Name);
+	}
+
+	async Task SendResponseAsync(JsonElement id, object? result)
+	{
+		var payload = JsonSerializer.SerializeToUtf8Bytes(
+			new { jsonrpc = "2.0", id = id.Clone(), result }, ResponseJson);
+		await writeLock.WaitAsync();
+		try
+		{
+			await LspStream.WriteMessageAsync(toServer, payload, CancellationToken.None);
+		}
+		finally
+		{
+			writeLock.Release();
+		}
 	}
 
 	async Task PumpStdErrAsync()

@@ -5,6 +5,7 @@ using Stampeded.Core.Diff;
 using Stampeded.Core.Git;
 using Stampeded.Core.GitHub;
 using Stampeded.Core.Infra;
+using Stampeded.Core.Lsp;
 using Stampeded.Core.Review;
 using Stampeded.Core.Roslyn;
 using Stampeded.Core.Testing;
@@ -518,32 +519,14 @@ public sealed class ReviewWorkspace(string repoPath)
 
 	async Task LoadSemanticsAsync(string headSha, string baseSha, CancellationToken ct)
 	{
-		Semantics?.Dispose();
-		BaseSemantics?.Dispose();
-		BaseSemantics = null;
-		var semantics = new RoslynWorkspaceService();
-		Semantics = semantics;
-		semantics.StateChanged += () => SemanticsChanged?.Invoke();
+		DisposeSemantics();
 		SemanticsChanged?.Invoke();
-		using (Busy.Begin("Loading semantics (head)"))
-		{
-			WorktreePath = await Worktrees.GetOrCreateAsync(headSha, ct);
-			string? chosen = BuildSolutionPreference.For(RepoPath);
-			await Task.Run(() => semantics.LoadAsync(WorktreePath, chosen, ct), ct);
-		}
-		// The base-side workspace powers navigation FROM removed lines. It is the head's own
-		// compilation with the review's files reading as they did before, taken from the
-		// object database - the two revisions differ in exactly those files, so a second
-		// checkout, restore and design-time build would spend minutes to arrive at the same
-		// answers.
-		var baseSemantics = new RoslynWorkspaceService();
-		BaseSemantics = baseSemantics;
-		baseSemantics.StateChanged += () => SemanticsChanged?.Invoke();
-		using (Busy.Begin("Reading the base side"))
-		{
-			var (replaced, removed, added) = await BaseSideTextsAsync(baseSha, ct);
-			baseSemantics.LoadFrom(semantics, replaced, removed, added);
-		}
+		WorktreePath = await Worktrees.GetOrCreateAsync(headSha, ct);
+		if (CSharpOutOfProcess)
+			await LoadCSharpOverLspAsync(baseSha, ct);
+		else
+			await LoadCSharpInProcessAsync(baseSha, ct);
+		await LoadOtherLanguagesAsync(ct);
 		using (Busy.Begin("Computing change map"))
 			await ComputeChangeMapAsync();
 		await PruneCachedWorktreesAsync(ct);
@@ -1175,14 +1158,19 @@ public sealed class ReviewWorkspace(string repoPath)
 		}
 		Semantics?.SetTextOverlay(headText);
 		BaseSemantics?.SetTextOverlay(originText);
+		foreach (var language in languages)
+		{
+			language.Head.SetTextOverlay(headText);
+			language.Base?.SetTextOverlay(originText);
+		}
 		SemanticsChanged?.Invoke();
 	}
 
 	/// <summary>Back to answering about the review's own head, on the way out of a scope.</summary>
 	internal void ClearScopeSemantics()
 	{
-		Semantics?.ClearTextOverlay();
-		BaseSemantics?.ClearTextOverlay();
+		foreach (var provider in AllProviders)
+			provider.ClearTextOverlay();
 	}
 
 	/// <summary>
@@ -1223,8 +1211,7 @@ public sealed class ReviewWorkspace(string repoPath)
 	{
 		sessionCts?.Cancel();
 		Blobs.Dispose();
-		Semantics?.Dispose();
-		BaseSemantics?.Dispose();
+		DisposeSemantics();
 	}
 
 	/// <summary>Head-side text of a file, or null when the head does not have it.</summary>
@@ -1455,10 +1442,7 @@ public sealed class ReviewWorkspace(string repoPath)
 	public void CloseReview()
 	{
 		sessionCts?.Cancel();
-		Semantics?.Dispose();
-		Semantics = null;
-		BaseSemantics?.Dispose();
-		BaseSemantics = null;
+		DisposeSemantics();
 		CurrentPr = null;
 		PrHeadSha = null;
 		LocalRange = null;
@@ -1757,6 +1741,147 @@ public sealed class ReviewWorkspace(string repoPath)
 	/// base for removed lines.</summary>
 	public ISemanticProvider? SemanticsFor(bool oldSide) => oldSide ? BaseSemantics : Semantics;
 
+	/// <summary>
+	/// The provider for one file of one side. A review is not answered by one thing any more:
+	/// C# comes from Roslyn (in this process or a server of its own) and a .py from whatever
+	/// Python server was found, so which provider answers depends on what is being asked
+	/// about. Files no server here serves fall back to the primary one, which will not know
+	/// them and says so the same way it says it about anything else.
+	/// </summary>
+	public ISemanticProvider? SemanticsFor(bool oldSide, string relPath)
+	{
+		string extension = Path.GetExtension(relPath);
+		foreach (var language in languages)
+		{
+			if (language.Extensions.Contains(extension))
+				return oldSide ? language.Base : language.Head;
+		}
+		return SemanticsFor(oldSide);
+	}
+
+	/// <summary>One language's pair of providers, head and base.</summary>
+	sealed record LanguageProviders(IReadOnlySet<string> Extensions, ISemanticProvider Head, ISemanticProvider? Base);
+
+	readonly List<LanguageProviders> languages = [];
+
+	/// <summary>Every provider serving this review, for the things that concern all of them:
+	/// scope overlays, disposal, and whether anything is still loading.</summary>
+	IEnumerable<ISemanticProvider> AllProviders => new[] { Semantics, BaseSemantics }
+		.Concat(languages.SelectMany(l => new[] { l.Head, l.Base }))
+		.OfType<ISemanticProvider>();
+
+	/// <summary>Whether C# is answered by the Roslyn language server rather than by a
+	/// workspace in this process. Off by default: the out-of-process path is younger, and
+	/// the in-process one is what every review has been read with so far.</summary>
+	static bool CSharpOutOfProcess
+		=> string.Equals(Environment.GetEnvironmentVariable("STAMPEDED_SEMANTICS"), "lsp",
+			StringComparison.OrdinalIgnoreCase);
+
+	async Task LoadCSharpInProcessAsync(string baseSha, CancellationToken ct)
+	{
+		var semantics = new RoslynWorkspaceService();
+		Semantics = semantics;
+		semantics.StateChanged += () => SemanticsChanged?.Invoke();
+		using (Busy.Begin("Loading semantics (head)"))
+		{
+			string? chosen = BuildSolutionPreference.For(RepoPath);
+			await Task.Run(() => semantics.LoadAsync(WorktreePath!, chosen, ct), ct);
+		}
+		// The base-side workspace powers navigation FROM removed lines. It is the head's own
+		// compilation with the review's files reading as they did before, taken from the
+		// object database - the two revisions differ in exactly those files, so a second
+		// checkout, restore and design-time build would spend minutes to arrive at the same
+		// answers.
+		var baseSemantics = new RoslynWorkspaceService();
+		BaseSemantics = baseSemantics;
+		baseSemantics.StateChanged += () => SemanticsChanged?.Invoke();
+		using (Busy.Begin("Reading the base side"))
+		{
+			var (replaced, removed, added) = await BaseSideTextsAsync(baseSha, ct);
+			baseSemantics.LoadFrom(semantics, replaced, removed, added);
+		}
+	}
+
+	/// <summary>
+	/// The same two sides, from the Roslyn server. Both come off one connection: the base
+	/// side is derived from the head's compilation inside the server, and a URI says which
+	/// of the two a request is about.
+	/// </summary>
+	async Task LoadCSharpOverLspAsync(string baseSha, CancellationToken ct)
+	{
+		if (LanguageServers.Roslyn() is not { } spec)
+		{
+			StatusMessage?.Invoke("STAMPEDED_SEMANTICS=lsp, but the Roslyn language server was not found.");
+			await LoadCSharpInProcessAsync(baseSha, ct);
+			return;
+		}
+		using var busy = Busy.Begin("Starting the Roslyn language server");
+		try
+		{
+			var connection = await LspConnection.StartAsync(spec, WorktreePath!, ct);
+			var head = new LspSemanticProvider(connection, WorktreePath!, spec.Name);
+			head.StateChanged += () => SemanticsChanged?.Invoke();
+			Semantics = head;
+			var (replaced, removed, added) = await BaseSideTextsAsync(baseSha, ct);
+			await connection.RequestAsync("stampeded/loadBase", new { replaced, removed, added }, ct);
+			BaseSemantics = new LspSemanticProvider(connection, WorktreePath!, spec.Name + " (base)") {
+				UriSide = "base",
+			};
+		}
+		catch (ToolFailedException ex)
+		{
+			StatusMessage?.Invoke($"The Roslyn language server did not start ({ex.Message}); reading in process.");
+			await LoadCSharpInProcessAsync(baseSha, ct);
+		}
+	}
+
+	/// <summary>
+	/// A server per other language the review actually touches. Only started for languages
+	/// with changed files: a repository with one .py in it should not pay for a Python
+	/// server on every review, and a server that is never asked anything is a process
+	/// nobody can account for.
+	/// </summary>
+	async Task LoadOtherLanguagesAsync(CancellationToken ct)
+	{
+		var extensions = Files.Select(f => Path.GetExtension(f.Path)).ToHashSet(StringComparer.OrdinalIgnoreCase);
+		if (!LanguageServers.ExtensionsByLanguage.TryGetValue("python", out var python)
+			|| !extensions.Overlaps(python)
+			|| LanguageServers.Python() is not { } spec)
+		{
+			return;
+		}
+		using var busy = Busy.Begin($"Starting {spec.Name}");
+		try
+		{
+			var head = new LspSemanticProvider(
+				await LspConnection.StartAsync(spec, WorktreePath!, ct), WorktreePath!, spec.Name);
+			head.StateChanged += () => SemanticsChanged?.Invoke();
+			// The base side is a second server on a checkout of the base revision: a language
+			// server holds one text per file, so the two revisions cannot be one process.
+			ISemanticProvider? baseSide = null;
+			if (await EnsureBaseWorktreeAsync(ct) is { } baseTree)
+			{
+				baseSide = new LspSemanticProvider(
+					await LspConnection.StartAsync(spec, baseTree, ct), baseTree, spec.Name + " (base)");
+			}
+			languages.Add(new LanguageProviders(python, head, baseSide));
+			SemanticsChanged?.Invoke();
+		}
+		catch (ToolFailedException ex)
+		{
+			StatusMessage?.Invoke($"{spec.Name} did not start: {ex.Message}");
+		}
+	}
+
+	void DisposeSemantics()
+	{
+		foreach (var provider in AllProviders)
+			provider.Dispose();
+		languages.Clear();
+		Semantics = null;
+		BaseSemantics = null;
+	}
+
 	static bool IsReady(ISemanticProvider? sem)
 		=> sem is { State: SemanticState.Ready or SemanticState.SyntaxOnly };
 
@@ -1768,7 +1893,7 @@ public sealed class ReviewWorkspace(string repoPath)
 
 	async Task<SymbolRef?> SymbolAtAsync(bool oldSide, string relPath, int line, int column)
 	{
-		var sem = SemanticsFor(oldSide);
+		var sem = SemanticsFor(oldSide, relPath);
 		if (!IsReady(sem))
 		{
 			StatusMessage?.Invoke(oldSide
@@ -1786,7 +1911,7 @@ public sealed class ReviewWorkspace(string repoPath)
 	/// this resolves in the BASE workspace and navigation lands in base-side views.</summary>
 	public async Task NavigateToDefinitionAsync(string relPath, int line, int column, bool oldSide, NavEntryOrigin origin)
 	{
-		var sem = SemanticsFor(oldSide);
+		var sem = SemanticsFor(oldSide, relPath);
 		var symbol = await SymbolAtAsync(oldSide, relPath, line, column);
 		if (symbol is null)
 			return;
@@ -1845,7 +1970,7 @@ public sealed class ReviewWorkspace(string repoPath)
 
 	public async Task ShowReferencesAtAsync(string relPath, int line, int column, bool oldSide)
 	{
-		var sem = SemanticsFor(oldSide);
+		var sem = SemanticsFor(oldSide, relPath);
 		var symbol = await SymbolAtAsync(oldSide, relPath, line, column);
 		if (symbol is null)
 			return;
@@ -1871,7 +1996,7 @@ public sealed class ReviewWorkspace(string repoPath)
 	/// <summary>Asks the call-graph pane to root itself at a blob position.</summary>
 	public async Task RequestCallGraphAsync(string relPath, int line, int column, bool oldSide)
 	{
-		var sem = SemanticsFor(oldSide);
+		var sem = SemanticsFor(oldSide, relPath);
 		if (!IsReady(sem))
 		{
 			CallGraphFailed?.Invoke("Semantics are not loaded yet, so calls cannot be resolved.");
@@ -1892,7 +2017,7 @@ public sealed class ReviewWorkspace(string repoPath)
 	public async Task<IReadOnlyList<CallGraphItem>> GetCallsAsync(
 		string relPath, int line, int column, bool oldSide, CallDirection direction)
 	{
-		var sem = SemanticsFor(oldSide);
+		var sem = SemanticsFor(oldSide, relPath);
 		if (!IsReady(sem))
 			return [];
 		var symbol = await sem!.GetSymbolOnLineAsync(relPath, line, column, CancellationToken.None);
@@ -1937,7 +2062,7 @@ public sealed class ReviewWorkspace(string repoPath)
 	/// <summary>Occurrences of the symbol at the given blob position within its own file.</summary>
 	public async Task<IReadOnlyList<SemanticToken>> FindOccurrencesAsync(string relPath, int line, int column, bool oldSide)
 	{
-		var sem = SemanticsFor(oldSide);
+		var sem = SemanticsFor(oldSide, relPath);
 		var symbol = await SymbolAtAsync(oldSide, relPath, line, column);
 		if (symbol is null)
 			return [];

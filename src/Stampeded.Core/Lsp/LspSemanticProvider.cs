@@ -64,6 +64,17 @@ public sealed class LspSemanticProvider : ISemanticProvider
 		StateChanged?.Invoke();
 	}
 
+	/// <summary>
+	/// Which side of the review this provider asks about, for a server that serves both from
+	/// one connection - our Roslyn one derives the base side from the head's compilation, and
+	/// a query on the document URI is how a request says which it means. Empty for a server
+	/// rooted at one revision, which is every server we did not write.
+	/// </summary>
+	public string UriSide { get; init; } = "";
+
+	string Uri(string relPath)
+		=> LspUri.FromPath(ToAbsolutePath(relPath)) + (UriSide.Length > 0 ? "?side=" + UriSide : "");
+
 	public SemanticState State => state;
 
 	public string StateDetail => detail;
@@ -102,7 +113,7 @@ public sealed class LspSemanticProvider : ISemanticProvider
 		openDocuments[relPath] = index;
 		connection.Notify("textDocument/didOpen", new {
 			textDocument = new {
-				uri = LspUri.FromPath(ToAbsolutePath(relPath)),
+				uri = Uri(relPath),
 				languageId = LanguageIdOf(relPath),
 				version = 1,
 				text,
@@ -160,7 +171,7 @@ public sealed class LspSemanticProvider : ISemanticProvider
 			return;
 		openDocuments[relPath] = new TextIndex(text);
 		connection.Notify("textDocument/didChange", new {
-			textDocument = new { uri = LspUri.FromPath(ToAbsolutePath(relPath)), version = 2 },
+			textDocument = new { uri = Uri(relPath), version = 2 },
 			contentChanges = new[] { new { text } },
 		});
 	}
@@ -221,7 +232,7 @@ public sealed class LspSemanticProvider : ISemanticProvider
 	{
 		Open(symbol.RelPath);
 		var result = await connection.RequestAsync("textDocument/definition", new {
-			textDocument = new { uri = LspUri.FromPath(ToAbsolutePath(symbol.RelPath)) },
+			textDocument = new { uri = Uri(symbol.RelPath) },
 			position = new { line = symbol.Line - 1, character = symbol.Column - 1 },
 		}, ct);
 		foreach (var location in Locations(result))
@@ -233,7 +244,7 @@ public sealed class LspSemanticProvider : ISemanticProvider
 	{
 		Open(symbol.RelPath);
 		var result = await connection.RequestAsync("textDocument/references", new {
-			textDocument = new { uri = LspUri.FromPath(ToAbsolutePath(symbol.RelPath)) },
+			textDocument = new { uri = Uri(symbol.RelPath) },
 			position = new { line = symbol.Line - 1, character = symbol.Column - 1 },
 			context = new { includeDeclaration = true },
 		}, ct);
@@ -256,7 +267,7 @@ public sealed class LspSemanticProvider : ISemanticProvider
 	{
 		Open(relPath);
 		var result = await connection.RequestAsync("textDocument/documentHighlight", new {
-			textDocument = new { uri = LspUri.FromPath(ToAbsolutePath(relPath)) },
+			textDocument = new { uri = Uri(relPath) },
 			position = new { line = symbol.Line - 1, character = symbol.Column - 1 },
 		}, ct);
 		if (result.ValueKind != JsonValueKind.Array)
@@ -290,7 +301,7 @@ public sealed class LspSemanticProvider : ISemanticProvider
 		if (Open(relPath) is not { } index || index.LineColumnOf(position) is not { } at)
 			return null;
 		var result = await connection.RequestAsync("textDocument/hover", new {
-			textDocument = new { uri = LspUri.FromPath(ToAbsolutePath(relPath)) },
+			textDocument = new { uri = Uri(relPath) },
 			position = new { line = at.Line - 1, character = at.Column - 1 },
 		}, ct);
 		if (result.ValueKind != JsonValueKind.Object || !result.TryGetProperty("contents", out var contents))
@@ -317,7 +328,7 @@ public sealed class LspSemanticProvider : ISemanticProvider
 		if (tokenTypes.Length == 0 || Open(relPath) is null)
 			return [];
 		var result = await connection.RequestAsync("textDocument/semanticTokens/full", new {
-			textDocument = new { uri = LspUri.FromPath(ToAbsolutePath(relPath)) },
+			textDocument = new { uri = Uri(relPath) },
 		}, ct);
 		if (result.ValueKind != JsonValueKind.Object || !result.TryGetProperty("data", out var data)
 			|| data.ValueKind != JsonValueKind.Array)
@@ -412,7 +423,7 @@ public sealed class LspSemanticProvider : ISemanticProvider
 	{
 		Open(symbol.RelPath);
 		var prepared = await connection.RequestAsync("textDocument/prepareCallHierarchy", new {
-			textDocument = new { uri = LspUri.FromPath(ToAbsolutePath(symbol.RelPath)) },
+			textDocument = new { uri = Uri(symbol.RelPath) },
 			position = new { line = symbol.Line - 1, character = symbol.Column - 1 },
 		}, ct);
 		if (prepared.ValueKind != JsonValueKind.Array || prepared.GetArrayLength() == 0)
@@ -468,7 +479,7 @@ public sealed class LspSemanticProvider : ISemanticProvider
 		if (Open(relPath) is null)
 			return [];
 		var result = await connection.RequestAsync("textDocument/documentSymbol", new {
-			textDocument = new { uri = LspUri.FromPath(ToAbsolutePath(relPath)) },
+			textDocument = new { uri = Uri(relPath) },
 		}, ct);
 		if (result.ValueKind != JsonValueKind.Array)
 			return [];

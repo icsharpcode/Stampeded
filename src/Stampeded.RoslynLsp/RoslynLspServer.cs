@@ -19,9 +19,10 @@ namespace Stampeded.RoslynLsp;
 /// </summary>
 sealed class RoslynLspServer : IDisposable
 {
+	/// <summary>A null result is an answer - "no definition here" - and JSON-RPC wants it
+	/// written out, not dropped: a response with neither result nor error is malformed.</summary>
 	static readonly JsonSerializerOptions Json = new() {
 		PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-		DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull,
 	};
 
 	readonly Stream input;
