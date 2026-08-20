@@ -92,6 +92,19 @@ public interface ISemanticProvider : IDisposable
 	/// <summary>Every member a file declares, named as <see cref="ChangedMember.Display"/>
 	/// names them, for telling a moved member from a deleted one.</summary>
 	Task<IReadOnlySet<string>> ListMemberDisplaysAsync(string relPath, CancellationToken ct);
+
+	/// <summary>
+	/// What a file declares, as a tree, for the Structure pane.
+	/// </summary>
+	/// <param name="sideText">The text actually on screen. One side of a diff is not what is
+	/// on disk - it is the other revision, or a historical one - and an outline drawn at the
+	/// wrong lines is worse than none. A provider that can only answer about the revision it
+	/// holds answers with nothing when the two differ.</param>
+	Task<IReadOnlyList<OutlineNode>> GetOutlineAsync(string relPath, string sideText, CancellationToken ct);
+
+	/// <summary>The foldable regions of the same text: one per declaration.</summary>
+	Task<IReadOnlyList<MemberFoldRegion>> GetFoldRegionsAsync(
+		string relPath, string sideText, CancellationToken ct);
 }
 
 /// <summary>

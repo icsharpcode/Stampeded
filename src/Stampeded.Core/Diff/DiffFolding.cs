@@ -21,16 +21,18 @@ public sealed record FoldRange(int StartLine, int EndLine, string Name, bool Def
 public static class DiffFolding
 {
 	/// <summary>
-	/// IDE-style folds for types, methods, properties and events. A diff document is not
-	/// valid C# (either side is interleaved with the other, or padded with filler), so the
-	/// side text is reconstructed from the line map, parsed, and the regions mapped back.
+	/// IDE-style folds for types, methods, properties and events, in document lines. A diff
+	/// document is not valid source of either side (they interleave, or are padded with
+	/// filler), so the regions are found in one side's own text - by whichever provider
+	/// serves that language - and mapped back here through the line map.
 	/// </summary>
-	public static List<FoldRange> Members(string sideText, IReadOnlyList<int> sideToDocLine)
+	public static List<FoldRange> Members(
+		IReadOnlyList<Semantics.MemberFoldRegion> regions, IReadOnlyList<int> sideToDocLine)
 	{
 		var ranges = new List<FoldRange>();
 		if (sideToDocLine.Count == 0)
 			return ranges;
-		foreach (var region in Roslyn.MemberFolding.Compute(sideText))
+		foreach (var region in regions)
 		{
 			if (region.StartLine > sideToDocLine.Count || region.EndLine > sideToDocLine.Count)
 				continue;

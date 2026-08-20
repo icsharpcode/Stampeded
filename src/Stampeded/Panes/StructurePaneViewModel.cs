@@ -75,7 +75,9 @@ public partial class StructurePaneViewModel : Tool
 		});
 	}
 
-	void Rebuild()
+	void Rebuild() => RebuildAsync().HandleExceptions();
+
+	async Task RebuildAsync()
 	{
 		var view = DiffDocumentView.ActiveView;
 		var vm = view?.ViewModel;
@@ -85,15 +87,28 @@ public partial class StructurePaneViewModel : Tool
 			return;
 		currentPath = vm.File.Path;
 		Root = null;
-		if (!vm.File.Path.EndsWith(".cs", StringComparison.OrdinalIgnoreCase))
+		bool oldSide = vm.File.Kind == Core.Diff.FileChangeKind.Deleted;
+		string relPath = oldSide ? vm.File.OldPath : vm.File.Path;
+		// Whatever serves this language, which for most files is nothing: a repository is
+		// full of json, markdown and yaml, and saying so names the file rather than the rule.
+		if (workspace.SemanticsFor(oldSide, relPath) is not { } provider)
 		{
-			State.Status = $"{Path.GetFileName(vm.File.Path)}: not a C# document.";
+			State.Status = $"{Path.GetFileName(vm.File.Path)}: no structure for this file type.";
 			return;
 		}
-		bool oldSide = vm.File.Kind == Core.Diff.FileChangeKind.Deleted;
 		var (sideText, _) = vm.Model.GetSideText(oldSide);
 		if (sideText.Length == 0)
 			return;
+		var outline = await provider.GetOutlineAsync(relPath, sideText, CancellationToken.None);
+		// The reader may have moved on while a language server was answering.
+		if (currentPath != vm.File.Path)
+			return;
+		if (outline.Count == 0)
+		{
+			State.Status = $"{Path.GetFileName(vm.File.Path)}: nothing to outline "
+				+ $"({provider.StateDetail}).";
+			return;
+		}
 		// Side lines touched by the change, for tinting members like the map.
 		var changedSideLines = new SortedSet<int>();
 		foreach (var tag in vm.Model.Tags)
@@ -103,15 +118,14 @@ public partial class StructurePaneViewModel : Tool
 			else if (oldSide && tag.OldLine > 0)
 				changedSideLines.Add(tag.OldLine);
 		}
-		string relPath = oldSide ? vm.File.OldPath : vm.File.Path;
 		var root = new StructureNode(null, Brushes.Gray, "", relPath, 1, oldSide);
-		foreach (var node in Core.Roslyn.DocumentOutline.Compute(sideText))
+		foreach (var node in outline)
 			root.Children.Add(Convert(node, relPath, oldSide, changedSideLines));
 		Root = root;
 		State.Status = $"{Path.GetFileName(vm.File.Path)}: green fully added, blue touched by the change. Double-click to jump.";
 	}
 
-	StructureNode Convert(Core.Roslyn.OutlineNode node, string relPath, bool oldSide, SortedSet<int> changed)
+	StructureNode Convert(OutlineNode node, string relPath, bool oldSide, SortedSet<int> changed)
 	{
 		int changedInRange = changed.GetViewBetween(node.StartLine, node.EndLine).Count;
 		int range = node.EndLine - node.StartLine + 1;

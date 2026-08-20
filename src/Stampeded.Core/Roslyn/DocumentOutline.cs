@@ -5,9 +5,6 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 
 namespace Stampeded.Core.Roslyn;
 
-/// <summary>A node of a document's structure outline; lines are 1-based source lines.</summary>
-public sealed record OutlineNode(string Kind, string Title, int StartLine, int EndLine, IReadOnlyList<OutlineNode> Children);
-
 /// <summary>
 /// Computes an IDE-style document outline (types and their members) from C# source via
 /// a syntax-only parse; resilient to broken code.

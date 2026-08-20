@@ -695,12 +695,29 @@ public class StartDocumentViewModel : Document
 			_ => ("waiting", false),
 		};
 
+	/// <summary>
+	/// The primary provider's line, with a word about the other languages' servers when there
+	/// are any. A review of a repository with Python in it is not ready because C# is: the
+	/// line says which of them is still coming up.
+	/// </summary>
+	(string Status, bool Done) WithOtherLanguages((string Status, bool Done) primary, bool oldSide)
+	{
+		var others = workspace.OtherLanguageProviders(oldSide).ToList();
+		if (others.Count == 0)
+			return primary;
+		var pending = others.Where(p => SemanticStatus(p.Provider) is { Done: false }).ToList();
+		string names = string.Join(", ", others.Select(p => p.Name).Distinct());
+		return pending.Count == 0
+			? ($"{primary.Status}, {names} ready", primary.Done)
+			: ($"{primary.Status}, {string.Join(", ", pending.Select(p => p.Name))} starting...", false);
+	}
+
 	void UpdatePreparation()
 	{
 		bool reviewOpen = workspace.HeadSha is not null;
 		Set(0, reviewOpen ? ($"{workspace.Files.Count} changed file(s)", true) : ("waiting", false));
-		Set(1, SemanticStatus(workspace.Semantics));
-		Set(2, SemanticStatus(workspace.BaseSemantics));
+		Set(1, WithOtherLanguages(SemanticStatus(workspace.Semantics), oldSide: false));
+		Set(2, WithOtherLanguages(SemanticStatus(workspace.BaseSemantics), oldSide: true));
 		Set(3, workspace.ChangeMapComputed
 			? ($"{workspace.ChangeMap.Count} member(s)", true)
 			: workspace.Semantics is { State: SemanticState.Failed }

@@ -1,3 +1,5 @@
+using System.Runtime.InteropServices;
+
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
@@ -152,11 +154,29 @@ public class App : Application
 		return Task.CompletedTask;
 	}
 
+	/// <summary>
+	/// Held for the process's lifetime so the registrations stay alive. A language server is
+	/// a child process that outlives an unclean exit: it is told to leave when the window
+	/// closes, and this is the other way out - a terminal that sends SIGINT, a session
+	/// manager that sends SIGTERM.
+	/// </summary>
+	static readonly List<IDisposable> signalHandlers = [];
+
 	public override void OnFrameworkInitializationCompleted()
 	{
 		if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
 		{
 			desktop.MainWindow = new MainWindow();
+			desktop.ShutdownRequested += (_, _) => Workspace?.Shutdown();
+			foreach (var signal in new[] { PosixSignal.SIGTERM, PosixSignal.SIGINT, PosixSignal.SIGHUP })
+			{
+				signalHandlers.Add(PosixSignalRegistration.Create(signal, context => {
+					// Not cancelled: the process is still going to end, and holding it open
+					// to finish tidying is how a kill becomes a kill -9.
+					Workspace?.Shutdown();
+					CliLog.Write("app", $"{context.Signal}: stopped the review's servers");
+				}));
+			}
 			if (Program.AutoOpenPr is { } pr)
 			{
 				// --pr N means "open guided": land the wizard on Triage like Open Guided does.

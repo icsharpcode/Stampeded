@@ -1104,6 +1104,18 @@ public sealed class RoslynWorkspaceService : ISemanticProvider, IDecompileTarget
 		return new DecompileTarget(assemblyPath, reflectionName, original.MetadataToken, topType.Name);
 	}
 
+	/// <summary>
+	/// Both are pure functions of the text on screen: a syntax-only parse, no workspace, no
+	/// compilation. That is what lets the Structure pane and the folds answer about a
+	/// revision this workspace never loaded, and answer without waiting.
+	/// </summary>
+	public Task<IReadOnlyList<OutlineNode>> GetOutlineAsync(string relPath, string sideText, CancellationToken ct)
+		=> Task.FromResult(DocumentOutline.Compute(sideText));
+
+	public Task<IReadOnlyList<MemberFoldRegion>> GetFoldRegionsAsync(
+		string relPath, string sideText, CancellationToken ct)
+		=> Task.FromResult(MemberFolding.Compute(sideText));
+
 	#endregion
 
 	public void Dispose()

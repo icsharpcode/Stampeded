@@ -878,11 +878,21 @@ public partial class DiffDocumentView : UserControl, IReviewDocumentView
 		if (contextGaps is not null)
 			ContextGapFoldingMargin.Install(Editor.TextArea, foldingManager, contextGaps.HasBar);
 		structuralRanges = [];
-		if (viewModel is { } vm && vm.File.Path.EndsWith(".cs", StringComparison.OrdinalIgnoreCase))
+		if (viewModel is { } vm && App.Workspace is { } workspace)
 		{
 			bool oldSide = vm.File.Kind == Core.Diff.FileChangeKind.Deleted;
+			string relPath = oldSide ? vm.File.OldPath : vm.File.Path;
 			var (sideText, sideToDocLine) = m.GetSideText(oldSide);
-			structuralRanges.AddRange(DiffFolding.Members(sideText, sideToDocLine));
+			var regions = workspace.SemanticsFor(oldSide, relPath)
+				?.GetFoldRegionsAsync(relPath, sideText, CancellationToken.None);
+			// A parser in this process has the answer before it is asked; a language server
+			// has to be asked. Folds and the gaps cut around them are installed together,
+			// so the first case stays exactly as immediate as it was and the second
+			// re-installs both when the answer arrives.
+			if (regions is { IsCompletedSuccessfully: true })
+				structuralRanges.AddRange(DiffFolding.Members(regions.Result, sideToDocLine));
+			else if (regions is not null)
+				InstallFoldsWhenAnsweredAsync(m, regions, sideToDocLine).HandleExceptions();
 		}
 		// The same ranges the folds use say where each declaration begins and ends, which is
 		// what the gaps need to cut a run around the header of whatever a change is inside. A
@@ -890,6 +900,19 @@ public partial class DiffDocumentView : UserControl, IReviewDocumentView
 		// swallow are the commit message and the per-file headers that say what follows them.
 		bool gaps = m.Hunks.Count > 0 && viewModel is not { IsPatch: true };
 		contextGaps?.Install(m.Tags, gaps, structuralRanges);
+		RefreshFoldings();
+	}
+
+	/// <summary>Re-installs folds and gaps once a language server has answered, unless the
+	/// document moved on in the meantime.</summary>
+	async Task InstallFoldsWhenAnsweredAsync(
+		DiffDocumentModel m, Task<IReadOnlyList<MemberFoldRegion>> regions, IReadOnlyList<int> sideToDocLine)
+	{
+		var answered = await regions;
+		if (model != m || answered.Count == 0)
+			return;
+		structuralRanges = [.. DiffFolding.Members(answered, sideToDocLine)];
+		contextGaps?.Install(m.Tags, m.Hunks.Count > 0 && viewModel is not { IsPatch: true }, structuralRanges);
 		RefreshFoldings();
 	}
 

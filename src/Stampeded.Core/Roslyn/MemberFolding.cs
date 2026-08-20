@@ -5,13 +5,6 @@ using Microsoft.CodeAnalysis.Text;
 
 namespace Stampeded.Core.Roslyn;
 
-/// <summary>A foldable member region, 1-based inclusive source lines.
-/// <paramref name="HeaderEndLine"/> is the last line of the declaration itself - the one
-/// carrying the "{" or "=>" that opens the body - which is where a signature stops being
-/// readable on its own. It equals the start line for a single-line header and for a
-/// #region marker.</summary>
-public sealed record MemberFoldRegion(int StartLine, int EndLine, int HeaderEndLine);
-
 /// <summary>
 /// Computes IDE-style folding regions (types, methods and friends, properties,
 /// indexers, events, #region blocks) from C# source via a syntax-only parse.

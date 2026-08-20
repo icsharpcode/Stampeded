@@ -1756,7 +1756,35 @@ public sealed class ReviewWorkspace(string repoPath)
 			if (language.Extensions.Contains(extension))
 				return oldSide ? language.Base : language.Head;
 		}
-		return SemanticsFor(oldSide);
+		return CSharpExtensions.Contains(extension) ? SemanticsFor(oldSide) : null;
+	}
+
+	/// <summary>
+	/// What the primary provider is about. Without this a .json or a .md would be handed to
+	/// Roslyn, which answers nothing about it - the same silence as "still loading", and the
+	/// reader is told the wrong one of the two.
+	/// </summary>
+	static readonly IReadOnlySet<string> CSharpExtensions =
+		new HashSet<string>(StringComparer.OrdinalIgnoreCase) { ".cs", ".csx" };
+
+	/// <summary>The servers answering for languages other than the primary one, for a status
+	/// line that would otherwise call a review ready while one of them is still starting.</summary>
+	public IEnumerable<(string Name, ISemanticProvider Provider)> OtherLanguageProviders(bool oldSide)
+		=> languages
+			.Select(l => oldSide ? l.Base : l.Head)
+			.OfType<ISemanticProvider>()
+			.Select(p => (p.StateDetail.Split(':')[0], p));
+
+	/// <summary>Why a file cannot be asked about at all: no server here reads its language,
+	/// or one does and this side of the review has no checkout for it.</summary>
+	string NoProviderMessage(string relPath, bool oldSide)
+	{
+		string extension = Path.GetExtension(relPath);
+		bool hasHead = languages.Any(l => l.Extensions.Contains(extension))
+			|| CSharpExtensions.Contains(extension);
+		return hasHead && oldSide
+			? $"Nothing reads the base side of {extension} files in this review."
+			: $"Nothing here reads {(extension.Length > 0 ? extension : Path.GetFileName(relPath))} files.";
 	}
 
 	/// <summary>One language's pair of providers, head and base.</summary>
@@ -1894,6 +1922,11 @@ public sealed class ReviewWorkspace(string repoPath)
 	async Task<SymbolRef?> SymbolAtAsync(bool oldSide, string relPath, int line, int column)
 	{
 		var sem = SemanticsFor(oldSide, relPath);
+		if (sem is null)
+		{
+			StatusMessage?.Invoke(NoProviderMessage(relPath, oldSide));
+			return null;
+		}
 		if (!IsReady(sem))
 		{
 			StatusMessage?.Invoke(oldSide
@@ -1997,6 +2030,11 @@ public sealed class ReviewWorkspace(string repoPath)
 	public async Task RequestCallGraphAsync(string relPath, int line, int column, bool oldSide)
 	{
 		var sem = SemanticsFor(oldSide, relPath);
+		if (sem is null)
+		{
+			CallGraphFailed?.Invoke(NoProviderMessage(relPath, oldSide));
+			return;
+		}
 		if (!IsReady(sem))
 		{
 			CallGraphFailed?.Invoke("Semantics are not loaded yet, so calls cannot be resolved.");

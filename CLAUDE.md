@@ -73,6 +73,12 @@ Environment switches, both off by default:
 Decompiling a definition without source is not something a language server can answer, so it
 is a capability a provider may also have (`IDecompileTargets`), not part of the interface.
 
+The Structure pane and the structural folds go through the provider too, so a Python file
+gets both. They pass the text on screen, not just a path: one side of a diff is another
+revision, and a provider that only knows the revision it holds answers with nothing rather
+than with a tree at the wrong lines. A parser in this process answers before it is asked -
+`Task.IsCompletedSuccessfully` - and the views keep their synchronous path for that case.
+
 ## Invariants worth knowing
 
 - **`GitService` reads never touch the user's working tree or index.** They come from the object

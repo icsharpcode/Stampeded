@@ -76,6 +76,16 @@ public sealed record SymbolRef(
 	bool IsType,
 	SymbolRef? ContainingType);
 
+/// <summary>A node of a document's structure outline; lines are 1-based source lines.</summary>
+public sealed record OutlineNode(string Kind, string Title, int StartLine, int EndLine, IReadOnlyList<OutlineNode> Children);
+
+/// <summary>A foldable member region, 1-based inclusive source lines.
+/// <paramref name="HeaderEndLine"/> is the last line of the declaration itself - the one
+/// carrying the "{" or "=>" that opens the body - which is where a signature stops being
+/// readable on its own. It equals the start line for a single-line header, and for anything
+/// whose declaration a provider cannot see inside.</summary>
+public sealed record MemberFoldRegion(int StartLine, int EndLine, int HeaderEndLine);
+
 /// <summary>What a symbol without source needs to be decompiled: the assembly it came from
 /// and the type to read out of it.</summary>
 public sealed record DecompileTarget(string AssemblyPath, string ReflectionName, int MetadataToken, string TypeName);

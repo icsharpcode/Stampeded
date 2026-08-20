@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text.Json;
 
 using Stampeded.Core.Infra;
@@ -129,6 +130,7 @@ sealed class RoslynLspServer : IDisposable
 
 	async Task<object> InitializeAsync(JsonElement parameters, CancellationToken ct)
 	{
+		WatchParent(parameters);
 		rootPath = parameters.TryGetProperty("rootUri", out var uri)
 			&& LspUri.ToPath(uri.GetString() ?? "") is { } path
 			? path
@@ -169,6 +171,39 @@ sealed class RoslynLspServer : IDisposable
 			},
 			serverInfo = new { name = "Stampeded Roslyn", version = "1" },
 		};
+	}
+
+	/// <summary>
+	/// Ends this process when the client that asked for it is gone. The protocol sends the
+	/// client's process id at initialize for exactly this: a client killed with a signal
+	/// never gets to send shutdown, and a language server nobody can see is a solution's
+	/// worth of memory left behind.
+	/// </summary>
+	void WatchParent(JsonElement parameters)
+	{
+		if (!parameters.TryGetProperty("processId", out var reported)
+			|| !reported.TryGetInt32(out int processId))
+		{
+			return;
+		}
+		_ = Task.Run(async () => {
+			while (!shuttingDown)
+			{
+				await Task.Delay(TimeSpan.FromSeconds(3));
+				try
+				{
+					using var parent = Process.GetProcessById(processId);
+					if (!parent.HasExited)
+						continue;
+				}
+				catch (ArgumentException)
+				{
+					// No such process: it is gone, which is the answer we were waiting for.
+				}
+				CliLog.Write("roslyn-lsp", $"client {processId} is gone; stopping");
+				Environment.Exit(0);
+			}
+		});
 	}
 
 	void ReportState()

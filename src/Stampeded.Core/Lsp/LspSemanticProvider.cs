@@ -20,6 +20,7 @@ public sealed class LspSemanticProvider : ISemanticProvider, IDecompileTargets
 	readonly string rootPath;
 	readonly string name;
 	readonly Dictionary<string, TextIndex> openDocuments = new(StringComparer.Ordinal);
+	readonly Dictionary<string, IReadOnlyList<FlatSymbol>> symbolsByPath = new(StringComparer.Ordinal);
 	readonly Dictionary<string, string> overlay = new(StringComparer.Ordinal);
 	readonly string[] tokenTypes;
 	SemanticState state = SemanticState.Loading;
@@ -170,6 +171,7 @@ public sealed class LspSemanticProvider : ISemanticProvider, IDecompileTargets
 		if (text is null || !openDocuments.ContainsKey(relPath))
 			return;
 		openDocuments[relPath] = new TextIndex(text);
+		symbolsByPath.Remove(relPath);
 		connection.Notify("textDocument/didChange", new {
 			textDocument = new { uri = Uri(relPath), version = 2 },
 			contentChanges = new[] { new { text } },
@@ -361,8 +363,7 @@ public sealed class LspSemanticProvider : ISemanticProvider, IDecompileTargets
 	/// </summary>
 	public Task<IReadOnlyList<SemanticToken>> GetSemanticTokensForTextAsync(
 		string relPath, string text, CancellationToken ct)
-		=> string.Equals(Open(relPath)?.Text.ReplaceLineEndings("\n").TrimEnd('\n'),
-			text.ReplaceLineEndings("\n").TrimEnd('\n'), StringComparison.Ordinal)
+		=> Holds(relPath, text)
 			? GetSemanticTokensAsync(relPath, ct)
 			: Task.FromResult<IReadOnlyList<SemanticToken>>([]);
 
@@ -457,8 +458,9 @@ public sealed class LspSemanticProvider : ISemanticProvider, IDecompileTargets
 					sites.Add(new CallSite(sitePath, siteLine, LineTextOf(sitePath, siteLine)));
 				}
 			}
+			string name = other.TryGetProperty("name", out var callName) ? callName.GetString() ?? "" : "";
 			nodes.Add(new CallNode(
-				other.TryGetProperty("name", out var callName) ? callName.GetString() ?? "" : "",
+				await DisplayOfAsync(path, line, name, ct),
 				other.TryGetProperty("detail", out var detail) ? detail.GetString() ?? "" : "",
 				path, line, column, sites));
 		}
@@ -466,6 +468,63 @@ public sealed class LspSemanticProvider : ISemanticProvider, IDecompileTargets
 	}
 
 	#endregion
+
+	/// <summary>
+	/// The outline as the server sees the file. A server holds one revision, so a side text
+	/// that is not the one it holds gets nothing rather than a tree drawn at lines that mean
+	/// something else.
+	/// </summary>
+	public async Task<IReadOnlyList<OutlineNode>> GetOutlineAsync(
+		string relPath, string sideText, CancellationToken ct)
+	{
+		if (!Holds(relPath, sideText))
+			return [];
+		var result = await connection.RequestAsync("textDocument/documentSymbol", new {
+			textDocument = new { uri = Uri(relPath) },
+		}, ct);
+		return result.ValueKind == JsonValueKind.Array
+			? [.. result.EnumerateArray().Select(s => ToOutline(s, parentKind: 0)).OfType<OutlineNode>()]
+			: [];
+	}
+
+	static OutlineNode? ToOutline(JsonElement symbol, int parentKind)
+	{
+		if (Flatten(symbol, "", []) is not { } flat)
+			return null;
+		// A server reports what a function declares, which includes its parameters and every
+		// local in its body. An outline is for finding a place to jump to, and a list of
+		// locals is a list of places nobody looks for.
+		if (LspSymbolKinds.IsCallable(parentKind) && LspSymbolKinds.IsVariable(flat.Kind))
+			return null;
+		var children = symbol.TryGetProperty("children", out var kids) && kids.ValueKind == JsonValueKind.Array
+			? kids.EnumerateArray().Select(c => ToOutline(c, flat.Kind)).OfType<OutlineNode>().ToList()
+			: [];
+		return new OutlineNode(LspSymbolKinds.OutlineKindOf(flat.Kind), flat.Name, flat.StartLine, flat.EndLine, children);
+	}
+
+	/// <summary>
+	/// One fold per declaration. The header ends where the declaration's own name is, which is
+	/// all a document symbol says about the shape of a signature: a server reports the range
+	/// of the thing and the range of its name, and nothing about the brace or colon between.
+	/// </summary>
+	public async Task<IReadOnlyList<MemberFoldRegion>> GetFoldRegionsAsync(
+		string relPath, string sideText, CancellationToken ct)
+	{
+		if (!Holds(relPath, sideText))
+			return [];
+		var symbols = await DocumentSymbolsAsync(relPath, ct);
+		return [.. symbols
+			.Where(s => s.EndLine > s.StartLine)
+			.Select(s => new MemberFoldRegion(s.StartLine, s.EndLine, Math.Max(s.StartLine, s.SelectionLine)))];
+	}
+
+	/// <summary>Whether the text on screen is the one the server was told about; comparing
+	/// line endings and a trailing newline apart, which no server preserves faithfully.</summary>
+	bool Holds(string relPath, string sideText)
+		=> string.Equals(
+			Open(relPath)?.Text.ReplaceLineEndings("\n").TrimEnd('\n'),
+			sideText.ReplaceLineEndings("\n").TrimEnd('\n'),
+			StringComparison.Ordinal);
 
 	#region Document symbols
 
@@ -476,6 +535,8 @@ public sealed class LspSemanticProvider : ISemanticProvider, IDecompileTargets
 
 	async Task<IReadOnlyList<FlatSymbol>> DocumentSymbolsAsync(string relPath, CancellationToken ct)
 	{
+		if (symbolsByPath.TryGetValue(relPath, out var known))
+			return known;
 		if (Open(relPath) is null)
 			return [];
 		var result = await connection.RequestAsync("textDocument/documentSymbol", new {
@@ -486,10 +547,27 @@ public sealed class LspSemanticProvider : ISemanticProvider, IDecompileTargets
 		var flat = new List<FlatSymbol>();
 		foreach (var symbol in result.EnumerateArray())
 			Flatten(symbol, "", flat);
+		// Kept until the file's text is replaced: the outline, the folds, the change map and
+		// the call graph all ask this same question about the same file.
+		symbolsByPath[relPath] = flat;
 		return flat;
 	}
 
-	static void Flatten(JsonElement symbol, string container, List<FlatSymbol> into)
+	/// <summary>
+	/// A call-hierarchy item names a member the way the server feels like naming it - "greet",
+	/// where the change map calls the same member "Greeter.greet". They are compared against
+	/// each other to tint the calls a review touches, so the name is taken from the same
+	/// place the change map takes it: the declarations of the file the member is in.
+	/// </summary>
+	async Task<string> DisplayOfAsync(string? absolutePath, int line, string fallback, CancellationToken ct)
+	{
+		if (absolutePath is null || ToRelativePath(absolutePath) is not { } rel)
+			return fallback;
+		var symbols = await DocumentSymbolsAsync(rel, ct);
+		return Innermost(symbols, line)?.Display ?? fallback;
+	}
+
+	static FlatSymbol? Flatten(JsonElement symbol, string container, List<FlatSymbol> into)
 	{
 		string name = symbol.TryGetProperty("name", out var symbolName) ? symbolName.GetString() ?? "" : "";
 		int kind = symbol.TryGetProperty("kind", out var symbolKind) ? symbolKind.GetInt32() : 0;
@@ -499,7 +577,7 @@ public sealed class LspSemanticProvider : ISemanticProvider, IDecompileTargets
 			: symbol.TryGetProperty("location", out var location) ? location.GetProperty("range")
 			: default;
 		if (range.ValueKind != JsonValueKind.Object)
-			return;
+			return null;
 		var (startLine, _, _) = RangeOf(range);
 		int endLine = range.TryGetProperty("end", out var end) && end.TryGetProperty("line", out var endLineValue)
 			? endLineValue.GetInt32() + 1
@@ -508,12 +586,14 @@ public sealed class LspSemanticProvider : ISemanticProvider, IDecompileTargets
 			? RangeOf(selection)
 			: (startLine, 1, 0);
 		string display = container.Length > 0 ? container + "." + name : name;
-		into.Add(new FlatSymbol(name, display, kind, startLine, endLine, selectionLine, selectionColumn));
+		var flat = new FlatSymbol(name, display, kind, startLine, endLine, selectionLine, selectionColumn);
+		into.Add(flat);
 		if (symbol.TryGetProperty("children", out var children) && children.ValueKind == JsonValueKind.Array)
 		{
 			foreach (var child in children.EnumerateArray())
 				Flatten(child, display, into);
 		}
+		return flat;
 	}
 
 	/// <summary>The narrowest declaration containing a line - the member it belongs to rather

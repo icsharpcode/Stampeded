@@ -516,13 +516,19 @@ public partial class SideBySideDocumentView : UserControl, IReviewDocumentView
 		var tags = vm.Pair.LeftTags;
 		bool hasChanges = tags.Any(t => t.Kind != DiffLineKind.Context);
 		var ranges = structuralRanges = [];
-		if (vm.File.Path.EndsWith(".cs", StringComparison.OrdinalIgnoreCase))
+		if (App.Workspace is { } workspace)
 		{
 			// Member regions come from the side the file still has, and are applied to both
 			// panes: corresponding lines share a row, so the range holds on either side.
 			bool oldSide = vm.File.Kind == FileChangeKind.Deleted;
+			string relPath = oldSide ? vm.File.OldPath : vm.File.Path;
 			var (sideText, sideToDocLine) = vm.Pair.GetSideText(oldSide);
-			ranges.AddRange(DiffFolding.Members(sideText, sideToDocLine));
+			var regions = workspace.SemanticsFor(oldSide, relPath)
+				?.GetFoldRegionsAsync(relPath, sideText, CancellationToken.None);
+			// Only what is already known: this view rebuilds its folds whenever the document
+			// or the gaps change, and a server's answer arrives with the next rebuild.
+			if (regions is { IsCompletedSuccessfully: true })
+				ranges.AddRange(DiffFolding.Members(regions.Result, sideToDocLine));
 		}
 		contextGaps.Install(tags, hasChanges, ranges);
 		RefreshFoldings();

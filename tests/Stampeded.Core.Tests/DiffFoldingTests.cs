@@ -1,6 +1,7 @@
 using NUnit.Framework;
 
 using Stampeded.Core.Diff;
+using Stampeded.Core.Roslyn;
 
 namespace Stampeded.Core.Tests;
 
@@ -38,7 +39,7 @@ public class DiffFoldingTests
 		// interleaved between them.
 		var sideToDoc = Enumerable.Range(1, 7).Select(i => i * 2).ToList();
 
-		var ranges = DiffFolding.Members(source, sideToDoc);
+		var ranges = DiffFolding.Members(MemberFolding.Compute(source), sideToDoc);
 
 		Assert.That(ranges, Is.Not.Empty);
 		Assert.That(ranges, Has.All.Matches<FoldRange>(r => r.FromHeaderEnd && !r.DefaultClosed));
@@ -53,6 +54,6 @@ public class DiffFoldingTests
 	[Test]
 	public void IgnoresMemberRegionsThatFallOutsideTheMap()
 	{
-		Assert.That(DiffFolding.Members("class C\n{\n\tvoid M()\n\t{\n\t}\n}", []), Is.Empty);
+		Assert.That(DiffFolding.Members(MemberFolding.Compute("class C\n{\n\tvoid M()\n\t{\n\t}\n}"), []), Is.Empty);
 	}
 }

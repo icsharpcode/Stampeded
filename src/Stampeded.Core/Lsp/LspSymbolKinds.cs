@@ -20,6 +20,27 @@ static class LspSymbolKinds
 
 	public static bool IsType(int kind) => NameOf(kind) is "Class" or "Interface" or "Enum" or "Struct" or "Module";
 
+	public static bool IsCallable(int kind) => NameOf(kind) is "Method" or "Function" or "Constructor";
+
+	public static bool IsVariable(int kind) => NameOf(kind) is "Variable" or "Constant";
+
+	/// <summary>The kind names the outline's icons are keyed on, which are C# keywords for
+	/// types and role names for members - a Python def reads as a method, which is what it
+	/// is to a reader looking for where to jump.</summary>
+	public static string OutlineKindOf(int kind) => NameOf(kind) switch {
+		"Class" => "class",
+		"Interface" => "interface",
+		"Struct" => "struct",
+		"Enum" => "enum",
+		"Constructor" => "ctor",
+		"Property" => "property",
+		"Field" or "Variable" or "Constant" => "field",
+		"Event" => "event",
+		"Operator" => "operator",
+		"Module" or "Namespace" or "Package" => "class",
+		_ => "method",
+	};
+
 	/// <summary>
 	/// The classification a semantic token colours as, or null for a token type the review
 	/// has no colour for - keywords, strings and comments among them, which the grammar
