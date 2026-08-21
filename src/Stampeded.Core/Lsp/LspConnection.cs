@@ -43,6 +43,7 @@ public sealed class LspConnection : IDisposable
 	readonly SemaphoreSlim writeLock = new(1, 1);
 	readonly ConcurrentDictionary<int, TaskCompletionSource<JsonElement>> pending = new();
 	readonly CancellationTokenSource stopping = new();
+	Func<string, object?> settings = _ => null;
 	int nextId;
 	bool disposed;
 
@@ -64,8 +65,14 @@ public sealed class LspConnection : IDisposable
 	/// Throws <see cref="ToolFailedException"/> when the executable cannot be started, which
 	/// is the common case - a server nobody installed.
 	/// </summary>
+	/// <param name="initializationOptions">Server-specific configuration for servers that take
+	/// it at initialize rather than by asking for it later.</param>
+	/// <param name="settings">Answers <c>workspace/configuration</c>, section by section, for
+	/// the servers that ask. Both carry the same thing where a server accepts both: which of
+	/// the two a server reads is not something a client can know.</param>
 	public static async Task<LspConnection> StartAsync(
-		LspServerSpec spec, string rootPath, CancellationToken ct)
+		LspServerSpec spec, string rootPath, CancellationToken ct,
+		object? initializationOptions = null, Func<string, object?>? settings = null)
 	{
 		var startInfo = new ProcessStartInfo(spec.Executable) {
 			WorkingDirectory = rootPath,
@@ -94,6 +101,8 @@ public sealed class LspConnection : IDisposable
 		CliLog.Write(spec.Name, $"{string.Join(' ', spec.Arguments)} -> started (pid {process.Id})");
 
 		var connection = new LspConnection(spec, process);
+		if (settings is not null)
+			connection.settings = settings;
 		connection.PumpStdErrAsync().HandleFailure(spec.Name);
 		connection.ReadLoopAsync().HandleFailure(spec.Name);
 
@@ -101,6 +110,7 @@ public sealed class LspConnection : IDisposable
 			processId = Environment.ProcessId,
 			rootUri = LspUri.FromPath(rootPath),
 			capabilities = ClientCapabilities,
+			initializationOptions,
 			workspaceFolders = new[] { new { uri = LspUri.FromPath(rootPath), name = Path.GetFileName(rootPath) } },
 		}, ct);
 		connection.Capabilities = initialize.TryGetProperty("capabilities", out var capabilities)
@@ -241,18 +251,32 @@ public sealed class LspConnection : IDisposable
 	void AnswerServerRequest(JsonElement id, string method, JsonElement parameters)
 	{
 		object? result = method switch {
-			// One entry per item asked about, in the order asked: a server that gets fewer
-			// than it asked for cannot tell which setting it was told about.
-			"workspace/configuration" => Enumerable
-				.Repeat(new object(), parameters.ValueKind == JsonValueKind.Object
-					&& parameters.TryGetProperty("items", out var items)
-					&& items.ValueKind == JsonValueKind.Array
-					? items.GetArrayLength()
-					: 1)
-				.ToArray(),
+			"workspace/configuration" => Configuration(parameters),
 			_ => null,
 		};
 		SendResponseAsync(id, result).HandleFailure(spec.Name);
+	}
+
+	/// <summary>
+	/// One entry per item asked about, in the order asked - a server that gets fewer than it
+	/// asked for cannot tell which setting it was told about - and an empty object for a
+	/// section we have nothing to say about, which is most of them.
+	/// </summary>
+	object[] Configuration(JsonElement parameters)
+	{
+		if (parameters.ValueKind != JsonValueKind.Object
+			|| !parameters.TryGetProperty("items", out var items)
+			|| items.ValueKind != JsonValueKind.Array)
+		{
+			return [new object()];
+		}
+		var answers = new List<object>();
+		foreach (var item in items.EnumerateArray())
+		{
+			string section = item.TryGetProperty("section", out var named) ? named.GetString() ?? "" : "";
+			answers.Add(settings(section) ?? new object());
+		}
+		return [.. answers];
 	}
 
 	async Task SendResponseAsync(JsonElement id, object? result)

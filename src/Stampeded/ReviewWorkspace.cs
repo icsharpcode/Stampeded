@@ -1846,7 +1846,10 @@ public sealed class ReviewWorkspace(string repoPath)
 		using var busy = Busy.Begin("Starting the Roslyn language server");
 		try
 		{
-			var connection = await LspConnection.StartAsync(spec, WorktreePath!, ct);
+			// The solution the reader picked for this repository, which the server would
+			// otherwise choose for itself and possibly differently.
+			var connection = await LspConnection.StartAsync(spec, WorktreePath!, ct,
+				initializationOptions: new { solution = BuildSolutionPreference.For(RepoPath) });
 			var head = new LspSemanticProvider(connection, WorktreePath!, spec.Name);
 			head.StateChanged += () => SemanticsChanged?.Invoke();
 			Semantics = head;
@@ -1881,8 +1884,15 @@ public sealed class ReviewWorkspace(string repoPath)
 		using var busy = Busy.Begin($"Starting {spec.Name}");
 		try
 		{
+			// Resolved against the repository rather than the worktree: a virtual environment
+			// is not committed, so the checkout under review never has one, and the reader's
+			// own does.
+			string? interpreter = PythonEnvironment.InterpreterFor(RepoPath);
+			var options = PythonEnvironment.InitializationOptions(interpreter);
+			object? Settings(string section) => PythonEnvironment.SettingsFor(section, interpreter);
 			var head = new LspSemanticProvider(
-				await LspConnection.StartAsync(spec, WorktreePath!, ct), WorktreePath!, spec.Name);
+				await LspConnection.StartAsync(spec, WorktreePath!, ct, options, Settings),
+				WorktreePath!, spec.Name);
 			head.StateChanged += () => SemanticsChanged?.Invoke();
 			// The base side is a second server on a checkout of the base revision: a language
 			// server holds one text per file, so the two revisions cannot be one process.
@@ -1890,7 +1900,8 @@ public sealed class ReviewWorkspace(string repoPath)
 			if (await EnsureBaseWorktreeAsync(ct) is { } baseTree)
 			{
 				baseSide = new LspSemanticProvider(
-					await LspConnection.StartAsync(spec, baseTree, ct), baseTree, spec.Name + " (base)");
+					await LspConnection.StartAsync(spec, baseTree, ct, options, Settings),
+					baseTree, spec.Name + " (base)");
 			}
 			languages.Add(new LanguageProviders(python, head, baseSide));
 			SemanticsChanged?.Invoke();
@@ -1956,10 +1967,51 @@ public sealed class ReviewWorkspace(string repoPath)
 		}
 		string? targetRel = sem.ToRelativePath(location.FilePath);
 		if (targetRel is null)
+		{
+			OpenDefinitionOutsideTheTree(location, symbol, origin);
 			return;
+		}
 		CliLog.Write("action", $"goto definition: {targetRel}:{location.Line}{(oldSide ? " (base)" : "")}");
 		RecordOrigin(origin);
 		await NavigateToFileLineAsync(targetRel, location.Line, oldSide, record: true);
+	}
+
+	/// <summary>
+	/// A definition in a file the review does not contain: a package in the environment the
+	/// project is analysed against, a generated file kept elsewhere. It is opened read-only,
+	/// as a decompiled type is, because the alternative was pressing F12 on a call into a
+	/// dependency and having nothing at all happen.
+	/// </summary>
+	void OpenDefinitionOutsideTheTree(SymbolLocation location, SymbolRef symbol, NavEntryOrigin origin)
+	{
+		if (!File.Exists(location.FilePath))
+		{
+			StatusMessage?.Invoke($"'{symbol.Name}' is defined in {location.FilePath}, which is not part of this review.");
+			return;
+		}
+		string text;
+		try
+		{
+			text = File.ReadAllText(location.FilePath);
+		}
+		catch (IOException ex)
+		{
+			StatusMessage?.Invoke($"{location.FilePath} could not be read: {ex.Message}");
+			return;
+		}
+		string id = "source:" + location.FilePath;
+		var vm = ShowDocument(id, () => {
+			var doc = DiffDocumentViewModel.ForSource(location.FilePath, text);
+			doc.Title = Path.GetFileName(location.FilePath);
+			doc.TabTooltipOverride = location.FilePath;
+			return doc;
+		});
+		if (vm is null)
+			return;
+		CliLog.Write("action", $"goto definition: {location.FilePath}:{location.Line} (outside the review)");
+		RecordOrigin(origin);
+		history.Record(new NavEntry(id, location.Line, false));
+		vm.RequestCaret(location.Line);
 	}
 
 	/// <summary>Definition view for a symbol without source: decompile its top-level

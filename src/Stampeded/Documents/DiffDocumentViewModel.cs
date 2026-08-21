@@ -11,7 +11,11 @@ public class DiffDocumentViewModel(FileDiff file, DiffDocumentModel model) : Doc
 	/// <summary>The tab shows a file name, which is all that fits and not always enough to tell
 	/// two apart - a repository has many a Program.cs. Its path is the answer, on hovering the
 	/// tab rather than in it.</summary>
-	public string TabTooltip => File.Path;
+	public string TabTooltip => TabTooltipOverride ?? File.Path;
+
+	/// <summary>What the tab says on hover when the document is not one of the review's files
+	/// - a dependency's source, opened where its definition actually lives.</summary>
+	public string? TabTooltipOverride { get; set; }
 
 	/// <summary>The diff as built from the blobs, without synthetic thread lines; the
 	/// base every comment-thread re-splice starts from.</summary>

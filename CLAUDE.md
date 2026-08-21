@@ -64,11 +64,23 @@ a checkout of the base revision - a language server holds one text per file, so 
 cannot be one process. Only our own Roslyn server derives one side from the other, which is
 what `?side=base` on a document URI means.
 
-Environment switches, both off by default:
+A Python server resolves imports against an interpreter, and the worktree has none: a virtual
+environment is not committed. `PythonEnvironment` answers with one from the reader's own
+clone - an interpreter path does not have to be inside the workspace - in the order
+`STAMPEDED_PYTHON_PATH`, an activated `VIRTUAL_ENV`/`CONDA_PREFIX`, `.venv`/`venv`/`env` in
+the repository, then `python3` on PATH. It is offered both at initialize and through
+`workspace/configuration`, because servers disagree about which they read.
+
+A definition that lands outside the review - a package in that environment - opens read-only,
+the way a decompiled type does. It used to do nothing at all.
+
+Environment switches, all optional:
 
 - `STAMPEDED_SEMANTICS=lsp` reads C# through `Stampeded.RoslynLsp` instead of in process.
 - `STAMPEDED_PYTHON_LSP` / `STAMPEDED_CSHARP_LSP` name a server command line to use instead
   of the search (PATH first, then npx for pyright).
+- `STAMPEDED_PYTHON_PATH` names the interpreter, for an environment none of the usual places
+  would find.
 
 Decompiling a definition without source is not something a language server can answer, so it
 is a capability a provider may also have (`IDecompileTargets`), not part of the interface.
