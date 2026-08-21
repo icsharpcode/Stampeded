@@ -402,13 +402,27 @@ public static class LspUri
 {
 	public static string FromPath(string absolutePath) => new Uri(absolutePath).AbsoluteUri;
 
-	/// <summary>The local path a server named, or null for a URI that is not a local file
-	/// (a decompiled or generated document a server invented).</summary>
+	/// <summary>
+	/// The local path a server named, or null for a URI that is not a local file (a decompiled
+	/// or generated document a server invented).
+	///
+	/// A server that names a Windows path writes the drive colon as an escape - pyright and
+	/// everything else built on vscode-uri produce <c>file:///d%3A/src/app.py</c> - and a URI
+	/// in that form is not recognised as naming a drive, so what comes back is a path with a
+	/// leading separator that matches nothing in the review. Unescaped first and stripped of
+	/// that separator, it is the path the rest of the tool is holding.
+	/// </summary>
 	public static string? ToPath(string uri)
 	{
-		if (!Uri.TryCreate(uri, UriKind.Absolute, out var parsed) || !parsed.IsFile)
+		if (!Uri.TryCreate(uri.Replace("%3A", ":").Replace("%3a", ":"), UriKind.Absolute, out var parsed)
+			|| !parsed.IsFile)
+		{
 			return null;
-		return parsed.LocalPath;
+		}
+		string path = parsed.LocalPath;
+		return path.Length > 2 && path[0] is '/' or '\\' && char.IsAsciiLetter(path[1]) && path[2] == ':'
+			? path[1..]
+			: path;
 	}
 }
 

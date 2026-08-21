@@ -40,3 +40,34 @@ public class LanguageServerLookupTests
 			Is.EqualTo(new[] { "/usr/bin/pylsp" }));
 	}
 }
+
+/// <summary>
+/// The paths a server names. Everything built on vscode-uri - pyright included - writes a
+/// Windows drive as an escape, and a review that cannot turn that back into a path answers
+/// go-to-definition with nothing at all.
+/// </summary>
+public class LspUriTests
+{
+	[Test]
+	public void ADriveWrittenAsAnEscapeIsStillADrive()
+	{
+		string? path = LspUri.ToPath("file:///d%3A/Projects/master/app.py");
+
+		Assert.That(path, Is.Not.Null);
+		Assert.That(path, Does.StartWith("d:"), "not a rooted path with the drive buried in it");
+		Assert.That(path, Does.EndWith("app.py"));
+	}
+
+	[Test]
+	public void APosixPathIsUntouched()
+	{
+		Assert.That(LspUri.ToPath("file:///home/reader/app.py"), Is.EqualTo("/home/reader/app.py"));
+	}
+
+	[Test]
+	public void WhatIsNotAFileIsNotAPath()
+	{
+		Assert.That(LspUri.ToPath("untitled:Untitled-1"), Is.Null);
+		Assert.That(LspUri.ToPath("not a uri"), Is.Null);
+	}
+}

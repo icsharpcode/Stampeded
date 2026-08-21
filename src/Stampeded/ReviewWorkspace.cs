@@ -1978,8 +1978,18 @@ public sealed class ReviewWorkspace(string repoPath)
 		}
 		int? position = await sem!.GetPositionAsync(relPath, line, column, CancellationToken.None);
 		if (position is null)
+		{
+			CliLog.Write("semantics", $"{relPath}:{line},{column} is not a position "
+				+ $"{sem.StateDetail} has a file for");
 			return null;
-		return await sem.GetSymbolAtAsync(relPath, position.Value, CancellationToken.None);
+		}
+		var symbol = await sem.GetSymbolAtAsync(relPath, position.Value, CancellationToken.None);
+		// A command that answers nothing has to say which nothing it was: no symbol under the
+		// caret reads exactly like a definition that could not be found, and a reader deciding
+		// whether their tool is broken cannot tell those apart from silence.
+		if (symbol is null)
+			CliLog.Write("semantics", $"nothing to resolve at {relPath}:{line},{column}");
+		return symbol;
 	}
 
 	/// <summary>Go to definition of the symbol at a blob (line, column). For removed lines
