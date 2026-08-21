@@ -71,6 +71,11 @@ clone - an interpreter path does not have to be inside the workspace - in the or
 the repository, then `python3` on PATH. It is offered both at initialize and through
 `workspace/configuration`, because servers disagree about which they read.
 
+A project's own pyright configuration - `pyrightconfig.json`, or `[tool.pyright]` in
+`pyproject.toml` - is committed, so the worktree has it and the server reads it. Its relative
+`venvPath` resolves against that checkout, where there is no environment; the interpreter
+supplied above wins over it, which is what keeps such a project readable (`PythonProjectConfigTests`).
+
 A definition that lands outside the review - a package in that environment - opens read-only,
 the way a decompiled type does. It used to do nothing at all.
 
