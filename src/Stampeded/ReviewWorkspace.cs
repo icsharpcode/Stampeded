@@ -1913,9 +1913,13 @@ public sealed class ReviewWorkspace(string repoPath)
 		}
 		catch (ToolFailedException ex)
 		{
-			StatusMessage?.Invoke($"{spec.Name} did not start: {ex.Message}");
+			StatusMessage?.Invoke($"{spec.Name} did not start: {ex.Message} - see the Log pane");
 			CliLog.Write(spec.Name, $"did not start: {ex.Message}. Command was: "
 				+ $"{spec.Executable} {string.Join(' ', spec.Arguments)}");
+			// A status line says that it failed; the reason is the several lines above it in
+			// the log - which server was picked, which interpreter, and what was passed over.
+			// Nothing else in a windowed run shows them, so the pane is brought forward.
+			Avalonia.Threading.Dispatcher.UIThread.Post(() => Factory?.ShowPane("Log"));
 		}
 	}
 

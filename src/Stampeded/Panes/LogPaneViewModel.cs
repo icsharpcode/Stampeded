@@ -9,8 +9,10 @@ using Stampeded.Core.Infra;
 namespace Stampeded.Panes;
 
 /// <summary>
-/// Live log of external commands (git / gh / dotnet, with exit codes and timing) and
-/// workspace actions. Capped ring buffer; newest at the bottom.
+/// Live log of external commands (git / gh / dotnet, with exit codes and timing), language
+/// servers and workspace actions. Capped ring buffer; newest at the bottom. This is the only
+/// place any of it is visible: the console the same lines go to is not there at all in a
+/// windowed run on Windows.
 /// </summary>
 public class LogPaneViewModel : Tool
 {
@@ -20,8 +22,9 @@ public class LogPaneViewModel : Tool
 
 	public LogPaneViewModel()
 	{
+		// Setting the sink replays what was written before this pane existed - the start of
+		// this run, and everything logged under a repository opened earlier in it.
 		CliLog.Sink = line => Dispatcher.UIThread.Post(() => Append(line));
-		CliLog.Write("app", "log started");
 	}
 
 	void Append(string line)
