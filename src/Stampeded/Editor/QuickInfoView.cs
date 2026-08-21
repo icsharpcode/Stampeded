@@ -2,7 +2,6 @@ using Avalonia.Controls;
 using Avalonia.Controls.Documents;
 using Avalonia.Media;
 
-using AvaloniaEdit.Document;
 using AvaloniaEdit.Highlighting;
 
 namespace Stampeded.Editor;
@@ -76,31 +75,32 @@ static class QuickInfoView
 			FontFamily = codeFont,
 			TextWrapping = TextWrapping.Wrap,
 		};
-		if (HighlightingService.GetByExtension(Path.GetExtension(relPath)) is not { } definition)
+		var lines = signature.Split('\n');
+		var spans = SyntaxPainter.For(relPath)?.Paint(signature).ToLookup(s => s.Line);
+		if (spans is null)
 		{
 			block.Text = signature;
 			return block;
 		}
-		var document = new TextDocument(signature);
-		using var highlighter = new DocumentHighlighter(document, definition);
-		highlighter.BeginHighlighting();
-		for (int number = 1; number <= document.LineCount; number++)
+		for (int number = 1; number <= lines.Length; number++)
 		{
-			var line = document.GetLineByNumber(number);
-			int at = line.Offset;
-			foreach (var section in highlighter.HighlightLine(number).Sections)
+			string line = lines[number - 1];
+			int at = 0;
+			foreach (var span in spans[number].OrderBy(s => s.Start))
 			{
-				if (section.Offset > at)
-					block.Inlines!.Add(Run(document.GetText(at, section.Offset - at), null));
-				block.Inlines!.Add(Run(document.GetText(section.Offset, section.Length), section.Color));
-				at = section.Offset + section.Length;
+				int length = Math.Min(span.Length, line.Length - span.Start);
+				if (span.Start < at || length <= 0)
+					continue;
+				if (span.Start > at)
+					block.Inlines!.Add(Run(line[at..span.Start], null));
+				block.Inlines!.Add(Run(line.Substring(span.Start, length), span.Color));
+				at = span.Start + length;
 			}
-			if (at < line.EndOffset)
-				block.Inlines!.Add(Run(document.GetText(at, line.EndOffset - at), null));
-			if (number < document.LineCount)
+			if (at < line.Length)
+				block.Inlines!.Add(Run(line[at..], null));
+			if (number < lines.Length)
 				block.Inlines!.Add(new LineBreak());
 		}
-		highlighter.EndHighlighting();
 		return block;
 	}
 

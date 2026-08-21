@@ -53,7 +53,7 @@ public partial class DiffDocumentView : UserControl, IReviewDocumentView
 	DiffDocumentViewModel? viewModel;
 	RichTextColorizer? semanticColorizer;
 	RichTextColorizer? syntaxColorizer;
-	IHighlightingDefinition? highlighting;
+	Stampeded.Editor.SyntaxPainter? painter;
 	bool semanticsRefreshQueued;
 
 	public DiffDocumentView()
@@ -657,9 +657,9 @@ public partial class DiffDocumentView : UserControl, IReviewDocumentView
 		if (syntaxColorizer is not null)
 			Editor.TextArea.TextView.LineTransformers.Remove(syntaxColorizer);
 		syntaxColorizer = null;
-		if (highlighting is null || model is null)
+		if (painter is null || model is null)
 			return;
-		syntaxColorizer = new RichTextColorizer(DiffSyntaxColors.Build(highlighting, model, Editor.Document));
+		syntaxColorizer = new RichTextColorizer(DiffSyntaxColors.Build(painter, model, Editor.Document));
 		Editor.TextArea.TextView.LineTransformers.Insert(0, syntaxColorizer);
 		Editor.TextArea.TextView.Redraw();
 	}
@@ -678,7 +678,7 @@ public partial class DiffDocumentView : UserControl, IReviewDocumentView
 		model = vm.Model;
 		// One side's text, not the document's: the unified diff interleaves the two, and no
 		// format parses as itself with the lines it used to have spliced back into it.
-		highlighting = HighlightingService.GetForFile(
+		painter = Stampeded.Editor.SyntaxPainter.For(
 			vm.File.Path,
 			() => vm.Model.GetSideText(oldSide: vm.File.Kind == Core.Diff.FileChangeKind.Deleted).Text);
 		Editor.Text = vm.Model.Text;
