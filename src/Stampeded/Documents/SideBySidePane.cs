@@ -147,7 +147,8 @@ sealed class SideBySidePane
 			return;
 		}
 		HoverLog($"hover({side}): {relPath}:{blobLine},{position.Column} -> {text.Split('\n')[0]}");
-		Avalonia.Controls.ToolTip.SetTip(editor, text);
+		Avalonia.Controls.ToolTip.SetTip(editor,
+			Stampeded.Editor.QuickInfoView.For(text, relPath, editor.FontFamily));
 		Avalonia.Controls.ToolTip.SetIsOpen(editor, true);
 	}
 

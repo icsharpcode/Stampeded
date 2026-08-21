@@ -1180,7 +1180,7 @@ public partial class DiffDocumentView : UserControl, IReviewDocumentView
 			return;
 		}
 		HoverLog($"hover: {relPath}:{blobLine},{position.Value.Column} -> {text.Split('\n')[0]}");
-		ToolTip.SetTip(Editor, text);
+		ToolTip.SetTip(Editor, Stampeded.Editor.QuickInfoView.For(text, relPath, Editor.FontFamily));
 		ToolTip.SetIsOpen(Editor, true);
 	}
 
