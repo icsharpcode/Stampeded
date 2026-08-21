@@ -295,11 +295,13 @@ public sealed class LspSemanticProvider : ISemanticProvider, IDecompileTargets
 		return occurrences.DistinctBy(t => (t.Line, t.Column)).OrderBy(t => t.Line).ThenBy(t => t.Column).ToList();
 	}
 
+	/// <summary>
+	/// What a tooltip shows: everything the server said about the symbol, not just the line
+	/// that names it. A signature alone is the one thing a reader can already see on screen;
+	/// the documentation under it is the part they came to the tooltip for.
+	/// </summary>
 	public async Task<string?> GetQuickInfoAsync(string relPath, int position, CancellationToken ct)
-	{
-		string? hover = await GetHoverTextAsync(relPath, position, ct);
-		return hover?.Split('\n').FirstOrDefault(l => l.Trim().Length > 0)?.Trim();
-	}
+		=> await GetHoverTextAsync(relPath, position, ct);
 
 	public async Task<string?> GetHoverTextAsync(string relPath, int position, CancellationToken ct)
 	{
