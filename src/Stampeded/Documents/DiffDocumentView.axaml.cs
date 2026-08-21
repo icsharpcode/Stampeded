@@ -45,6 +45,7 @@ public partial class DiffDocumentView : UserControl, IReviewDocumentView
 	Dictionary<string, ThreadData>? threadsByKey;
 	CommentThreadBox? threadBoxes;
 	Avalonia.Point lastPointerPosition;
+	AvaloniaEdit.Document.TextLocation? lastHoverAt;
 	FoldingManager? foldingManager;
 	ContextGapView? contextGaps;
 	List<FoldRange> structuralRanges = [];
@@ -1102,9 +1103,9 @@ public partial class DiffDocumentView : UserControl, IReviewDocumentView
 	{
 		var point = e.GetPosition(Editor);
 		UpdateTextCursor(e);
-		// Only a pointer that went somewhere closes what is open: the tooltip appearing under
-		// it is a pointer event too, and acting on that one never lets a tooltip be read.
-		if (!Stampeded.Editor.HoverPointer.Moved(lastPointerPosition, point))
+		// Only a pointer now over different text closes what is open: the tooltip appearing
+		// under it is a pointer event too, and acting on that one never lets a tooltip be read.
+		if (!Stampeded.Editor.HoverPointer.PointsElsewhere(Editor, point, ref lastHoverAt))
 			return;
 		lastPointerPosition = point;
 		ToolTip.SetIsOpen(Editor, false);
