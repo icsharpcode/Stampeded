@@ -30,6 +30,7 @@ sealed class SideBySidePane
 
 	readonly Avalonia.Threading.DispatcherTimer hoverTimer = new() { Interval = TimeSpan.FromMilliseconds(400) };
 	Point lastPointerPosition;
+	AvaloniaEdit.Document.TextLocation? lastHoverAt;
 
 	RichTextColorizer? colorizer;
 	IReadOnlyList<DiffLineTag> tags = [];
@@ -76,9 +77,9 @@ sealed class SideBySidePane
 	{
 		var point = e.GetPosition(editor);
 		UpdateTextCursor(e);
-		// Only a pointer that went somewhere closes what is open: the tooltip appearing under
-		// it is a pointer event too, and acting on that one never lets a tooltip be read.
-		if (!Stampeded.Editor.HoverPointer.Moved(lastPointerPosition, point))
+		// Only a pointer now over different text closes what is open: the tooltip appearing
+		// under it is a pointer event too, and acting on that one never lets a tooltip be read.
+		if (!Stampeded.Editor.HoverPointer.PointsElsewhere(editor, point, ref lastHoverAt))
 			return;
 		lastPointerPosition = point;
 		Avalonia.Controls.ToolTip.SetIsOpen(editor, false);
