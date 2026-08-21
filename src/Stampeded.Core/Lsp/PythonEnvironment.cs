@@ -59,7 +59,7 @@ public static class PythonEnvironment
 		foreach (string name in new[] { ".venv", "venv", "env" })
 			yield return ($"{name} in the repository", InEnvironment(Path.Combine(repoPath, name)));
 		foreach (string executable in new[] { "python3", "python" })
-			yield return ("PATH", OnPath(executable));
+			yield return ("PATH", LanguageServers.OnPath(executable));
 	}
 
 	/// <summary>The interpreter inside an environment directory, however this platform lays
@@ -68,20 +68,6 @@ public static class PythonEnvironment
 		=> OperatingSystem.IsWindows()
 			? Path.Combine(root, "Scripts", "python.exe")
 			: Path.Combine(root, "bin", "python");
-
-	static string? OnPath(string executable)
-	{
-		foreach (string directory in (Environment.GetEnvironmentVariable("PATH") ?? "")
-			.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries))
-		{
-			string candidate = Path.Combine(directory, executable);
-			if (File.Exists(candidate))
-				return candidate;
-			if (OperatingSystem.IsWindows() && File.Exists(candidate + ".exe"))
-				return candidate + ".exe";
-		}
-		return null;
-	}
 
 	/// <summary>
 	/// The settings a server asks for by section. Servers disagree about where the interpreter

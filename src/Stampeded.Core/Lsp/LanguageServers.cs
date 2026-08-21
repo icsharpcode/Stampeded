@@ -97,17 +97,42 @@ public static class LanguageServers
 
 	/// <summary>The full path of an executable on PATH, or null. Resolved here rather than
 	/// left to the process start so the log can say which one was picked.</summary>
-	static string? OnPath(string executable)
+	public static string? OnPath(string executable)
 	{
 		foreach (string directory in (Environment.GetEnvironmentVariable("PATH") ?? "")
 			.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries))
 		{
-			string candidate = Path.Combine(directory, executable);
-			if (File.Exists(candidate))
-				return candidate;
-			if (OperatingSystem.IsWindows() && File.Exists(candidate + ".exe"))
-				return candidate + ".exe";
+			foreach (string candidate in ExecutableNames(Path.Combine(directory, executable),
+				OperatingSystem.IsWindows(), Environment.GetEnvironmentVariable("PATHEXT")))
+			{
+				if (File.Exists(candidate))
+					return candidate;
+			}
 		}
 		return null;
+	}
+
+	/// <summary>
+	/// What a bare command name can actually be started as. Everywhere but Windows that is the
+	/// name itself; on Windows it is the name plus one of PATHEXT's extensions, and only those.
+	///
+	/// npm installs a command twice into the same directory - a POSIX shell script under the
+	/// bare name, and the <c>.cmd</c> that Windows runs - so a search that stops at the first
+	/// existing file finds <c>npx</c>, hands it to CreateProcess and gets "The specified
+	/// executable is not a valid application for this OS platform".
+	///
+	/// The platform and the extension list are arguments rather than read here, so the machine
+	/// this matters on does not have to be the machine that runs the test.
+	/// </summary>
+	public static IEnumerable<string> ExecutableNames(string path, bool windows, string? pathExt)
+	{
+		if (!windows || Path.GetExtension(path).Length > 0)
+		{
+			yield return path;
+			yield break;
+		}
+		foreach (string extension in (pathExt ?? ".COM;.EXE;.BAT;.CMD")
+			.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+			yield return path + extension;
 	}
 }
