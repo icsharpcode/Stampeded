@@ -8,6 +8,8 @@
     <PackageReference Include="Avalonia.Desktop" />
     <PackageReference Include="Avalonia.Themes.Simple" />
     <PackageReference Include="Avalonia.AvaloniaEdit" />
+    <PackageReference Include="TextMateSharp" />
+    <PackageReference Include="TextMateSharp.Grammars" />
     <PackageReference Include="Dock.Avalonia" />
     <PackageReference Include="Markdown.Avalonia" />
     <PackageReference Include="Dock.Avalonia.Themes.Simple" />

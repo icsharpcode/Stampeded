@@ -16,6 +16,11 @@ results and coverage, in one Avalonia window. See `README.md` for the pitch.
   `Document` for panes and documents.
 - **Roslyn** (`Microsoft.CodeAnalysis.*`) for source semantics: two workspaces per review, head
   and merge base, so removed code stays navigable.
+- **TextMateSharp** for syntax colours: VS Code's grammars and themes, so a review colours a
+  language nobody wrote an editor grammar for. Painted per side and transferred onto the
+  document rows (`SyntaxPainter`, `DiffSyntaxColors`) - a grammar is a state machine over
+  consecutive lines, and a unified diff is consecutive on neither side. The editor's own xshd
+  definitions answer for what the bundle does not carry, which is ILAsm.
 - **CliWrap** for every external process.
 - Target framework `net10.0`. Nullable enabled, implicit usings, `TreatWarningsAsErrors`,
   central package management (a new `PackageReference` needs a `PackageVersion` in

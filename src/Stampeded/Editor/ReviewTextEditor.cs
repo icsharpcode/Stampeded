@@ -34,12 +34,10 @@ namespace Stampeded.Editor
 	/// <summary>
 	/// <see cref="TextEditor"/> subclass carrying the shared code-view look, so every surface
 	/// showing code (diff views, source viewers) renders identically:
-	/// (a) overrides <see cref="TextEditor.CreateColorizer"/> so syntax highlighting goes
-	///     through <see cref="ThemeAwareHighlightingColorizer"/> and adapts to the active theme;
-	/// (b) listens for <see cref="ThemeManager.ThemeChanged"/> and forces a TextView redraw
+	/// (a) listens for <see cref="ThemeManager.ThemeChanged"/> and forces a TextView redraw
 	///     so an already-rendered editor picks up the new palette without needing the user
 	///     to scroll or reselect;
-	/// (c) uses the themed editor background and selection highlight.
+	/// (b) uses the themed editor background and selection highlight.
 	/// </summary>
 	public class ReviewTextEditor : TextEditor
 	{
@@ -62,12 +60,6 @@ namespace Stampeded.Editor
 			TextArea.SelectionCornerRadius = 0;
 			TextArea.Bind(TextArea.SelectionBrushProperty, this.GetResourceObservable("Stampeded.EditorSelectionBrush"));
 			this.Bind(BackgroundProperty, this.GetResourceObservable("Stampeded.EditorBackground"));
-		}
-
-		protected override IVisualLineTransformer CreateColorizer(IHighlightingDefinition highlightingDefinition)
-		{
-			ArgumentNullException.ThrowIfNull(highlightingDefinition);
-			return new ThemeAwareHighlightingColorizer(highlightingDefinition);
 		}
 
 		void OnThemeChanged(object? sender, EventArgs e)

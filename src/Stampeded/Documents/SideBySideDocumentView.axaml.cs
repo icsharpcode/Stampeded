@@ -261,6 +261,9 @@ public partial class SideBySideDocumentView : UserControl, IReviewDocumentView
 	bool syncing;
 	bool scrollWired;
 	int wireAttempts;
+	Stampeded.Editor.SyntaxPainter? painter;
+	AvaloniaEdit.Highlighting.RichTextColorizer? leftColorizer;
+	AvaloniaEdit.Highlighting.RichTextColorizer? rightColorizer;
 
 	public SideBySideDocumentView()
 	{
@@ -325,6 +328,9 @@ public partial class SideBySideDocumentView : UserControl, IReviewDocumentView
 			ws.SemanticsChanged += OnSemanticsChanged;
 			ws.Comments.Changed += OnCommentsChanged;
 		}
+		// The colours are built once per text and carry the theme they were built in, so a
+		// theme changed while a file is open has to build them again.
+		Themes.ThemeManager.Current.ThemeChanged += OnThemeChangedForColors;
 		RefreshSemantics();
 		RebuildThreads();
 	}
@@ -337,6 +343,7 @@ public partial class SideBySideDocumentView : UserControl, IReviewDocumentView
 			ws.SemanticsChanged -= OnSemanticsChanged;
 			ws.Comments.Changed -= OnCommentsChanged;
 		}
+		Themes.ThemeManager.Current.ThemeChanged -= OnThemeChangedForColors;
 		base.OnDetachedFromVisualTree(e);
 	}
 
@@ -417,11 +424,9 @@ public partial class SideBySideDocumentView : UserControl, IReviewDocumentView
 		ReviewViews.Register(this);
 		// The side the file still has: a pane's own text carries the filler rows that keep the
 		// two in step, and those are not part of any format.
-		var highlighting = HighlightingService.GetForFile(
+		painter = Stampeded.Editor.SyntaxPainter.For(
 			vm.File.Path,
 			() => vm.Pair.GetSideText(oldSide: vm.File.Kind == FileChangeKind.Deleted).Text);
-		Left.SyntaxHighlighting = highlighting;
-		Right.SyntaxHighlighting = highlighting;
 		rowHeights.Clear();
 		ApplyPair(vm);
 		RebuildThreads();
@@ -447,8 +452,37 @@ public partial class SideBySideDocumentView : UserControl, IReviewDocumentView
 		InstallFoldings(vm);
 		leftPane?.SetDocument(vm);
 		rightPane?.SetDocument(vm);
+		ApplySyntaxColors();
 		RefreshSemantics();
 	}
+
+	/// <summary>
+	/// Installs the syntax colours as a colorizer over each pane's own text, rather than
+	/// letting the editor highlight the document. The colours come from a TextMate grammar,
+	/// which the editor cannot be handed as a highlighting definition - and the text on screen
+	/// changes under a pane whenever a comment thread reserves a row, so the colours are built
+	/// where the text is set.
+	/// </summary>
+	void ApplySyntaxColors()
+	{
+		Apply(Left, ref leftColorizer);
+		Apply(Right, ref rightColorizer);
+
+		void Apply(ReviewTextEditor editor, ref AvaloniaEdit.Highlighting.RichTextColorizer? colorizer)
+		{
+			if (colorizer is not null)
+				editor.TextArea.TextView.LineTransformers.Remove(colorizer);
+			colorizer = null;
+			if (painter is null)
+				return;
+			colorizer = new AvaloniaEdit.Highlighting.RichTextColorizer(
+				Stampeded.Editor.DiffSyntaxColors.Whole(painter, editor.Document));
+			editor.TextArea.TextView.LineTransformers.Insert(0, colorizer);
+			editor.TextArea.TextView.Redraw();
+		}
+	}
+
+	void OnThemeChangedForColors(object? sender, EventArgs e) => ApplySyntaxColors();
 
 	void OnCommentsChanged() => Dispatcher.UIThread.Post(RebuildThreads);
 

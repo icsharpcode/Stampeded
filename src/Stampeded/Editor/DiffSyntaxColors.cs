@@ -18,47 +18,54 @@ namespace Stampeded.Editor;
 /// </summary>
 static class DiffSyntaxColors
 {
-	public static RichTextModel Build(
-		IHighlightingDefinition definition, DiffDocumentModel model, TextDocument document)
+	public static RichTextModel Build(SyntaxPainter painter, DiffDocumentModel model, TextDocument document)
 	{
 		var rich = new RichTextModel();
-		AddSide(rich, definition, model, document, oldSide: false);
+		AddSide(rich, painter, model, document, oldSide: false);
 		if (model.Tags.Any(t => t.Kind == DiffLineKind.Removed))
-			AddSide(rich, definition, model, document, oldSide: true);
+			AddSide(rich, painter, model, document, oldSide: true);
 		return rich;
 	}
 
-	static void AddSide(RichTextModel rich, IHighlightingDefinition definition,
+	/// <summary>One text painted onto itself, for a view that shows one revision whole - each
+	/// pane of the side-by-side layout, where a side is not interleaved with anything.</summary>
+	public static RichTextModel Whole(SyntaxPainter painter, TextDocument document)
+	{
+		var rich = new RichTextModel();
+		foreach (var span in painter.Paint(document.Text))
+		{
+			if (span.Line > document.LineCount)
+				break;
+			var line = document.GetLineByNumber(span.Line);
+			int length = Math.Min(span.Length, line.Length - span.Start);
+			if (span.Start >= 0 && length > 0)
+				rich.ApplyHighlighting(line.Offset + span.Start, length, span.Color);
+		}
+		return rich;
+	}
+
+	static void AddSide(RichTextModel rich, SyntaxPainter painter,
 		DiffDocumentModel model, TextDocument document, bool oldSide)
 	{
 		var (text, sideToDoc) = model.GetSideText(oldSide);
 		if (text.Length == 0)
 			return;
-		var sideDocument = new TextDocument(text);
-		using var highlighter = new DocumentHighlighter(sideDocument, definition);
-		highlighter.BeginHighlighting();
-		for (int i = 0; i < sideToDoc.Count && i < sideDocument.LineCount; i++)
+		foreach (var span in painter.Paint(text))
 		{
-			int docLineNumber = sideToDoc[i];
+			int index = span.Line - 1;
+			if (index >= sideToDoc.Count)
+				break;
+			int docLineNumber = sideToDoc[index];
 			if (docLineNumber > document.LineCount || docLineNumber > model.Tags.Count)
 				break;
-			// A context line is the same line on both sides; it is coloured once, from the
-			// new side, so the old side's pass does not paint over it with the same thing.
+			// The old side is painted onto the rows that are only its own: a context row shows
+			// the same text on both sides and is already painted by the new one.
 			if (oldSide && model.Tags[docLineNumber - 1].Kind != DiffLineKind.Removed)
 				continue;
-			var sideLine = sideDocument.GetLineByNumber(i + 1);
 			var docLine = document.GetLineByNumber(docLineNumber);
-			// Nested sections - a keyword inside a span - arrive outermost first, and merging
-			// is what the editor's own colorizer does with them: the inner colour overrides
-			// only the attributes it sets.
-			foreach (var section in highlighter.HighlightLine(i + 1).Sections)
-			{
-				int start = section.Offset - sideLine.Offset;
-				int length = Math.Min(section.Length, docLine.Length - start);
-				if (start >= 0 && length > 0)
-					rich.ApplyHighlighting(docLine.Offset + start, length, section.Color);
-			}
+			int length = Math.Min(span.Length, docLine.Length - span.Start);
+			if (span.Start >= 0 && length > 0)
+				rich.ApplyHighlighting(docLine.Offset + span.Start, length, span.Color);
 		}
-		highlighter.EndHighlighting();
 	}
 }
