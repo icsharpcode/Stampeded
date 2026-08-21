@@ -1123,8 +1123,13 @@ public partial class DiffDocumentView : UserControl, IReviewDocumentView
 
 	void OnPointerMovedForHover(object? sender, PointerEventArgs e)
 	{
-		lastPointerPosition = e.GetPosition(Editor);
+		var point = e.GetPosition(Editor);
 		UpdateTextCursor(e);
+		// Only a pointer that went somewhere closes what is open: the tooltip appearing under
+		// it is a pointer event too, and acting on that one never lets a tooltip be read.
+		if (!Stampeded.Editor.HoverPointer.Moved(lastPointerPosition, point))
+			return;
+		lastPointerPosition = point;
 		ToolTip.SetIsOpen(Editor, false);
 		hoverTimer.Stop();
 		hoverTimer.Start();
