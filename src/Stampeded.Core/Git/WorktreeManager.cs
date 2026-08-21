@@ -8,20 +8,7 @@ namespace Stampeded.Core.Git;
 /// </summary>
 public sealed class WorktreeManager(string repoPath)
 {
-	// XDG_CACHE_HOME with the standard fallbacks; SpecialFolder has no reliable cache
-	// mapping across environments (it can resolve to an empty string, which would turn
-	// the cache path relative).
-	static string CacheRoot {
-		get {
-			string? xdg = Environment.GetEnvironmentVariable("XDG_CACHE_HOME");
-			string root = !string.IsNullOrEmpty(xdg)
-				? xdg
-				: OperatingSystem.IsWindows()
-					? Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData)
-					: Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".cache");
-			return Path.Combine(root, "stampeded", "worktrees");
-		}
-	}
+	static string CacheRoot => CachePath.For("worktrees");
 
 	/// <summary>Deletes cached worktrees of this repo except those for the given SHAs,
 	/// then prunes git's registrations. Returns the number of directories removed.</summary>

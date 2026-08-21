@@ -64,6 +64,15 @@ a checkout of the base revision - a language server holds one text per file, so 
 cannot be one process. Only our own Roslyn server derives one side from the other, which is
 what `?side=base` on a document URI means.
 
+Nobody has to install a language server first. The search is `STAMPEDED_PYTHON_LSP`, then
+PATH, then one this tool installed for itself, then npx - and when none of that runs, the
+review installs one: a virtual environment under `~/.cache/stampeded/python-lsp` with
+basedpyright in it, which is pyright plus a node of its own in the wheel, so a machine with
+Python and no node still reads Python. Nothing is added to the reader's Python or PATH, every
+step is a command in the log, and deleting the directory undoes it. On Windows a bare command
+name is not enough to start anything: npm writes both a POSIX shell script and the `.cmd` next
+to each other, so PATH lookup offers only what PATHEXT allows (`LanguageServerLookupTests`).
+
 A Python server resolves imports against an interpreter, and the worktree has none: a virtual
 environment is not committed. `PythonEnvironment` answers with one from the reader's own
 clone - an interpreter path does not have to be inside the workspace - in the order
@@ -83,7 +92,7 @@ Environment switches, all optional:
 
 - `STAMPEDED_SEMANTICS=lsp` reads C# through `Stampeded.RoslynLsp` instead of in process.
 - `STAMPEDED_PYTHON_LSP` / `STAMPEDED_CSHARP_LSP` name a server command line to use instead
-  of the search (PATH first, then npx for pyright).
+  of the search described above.
 - `STAMPEDED_PYTHON_PATH` names the interpreter, for an environment none of the usual places
   would find.
 - `STAMPEDED_LSP_TRACE=1` logs every request with what came back, and asks the server for its

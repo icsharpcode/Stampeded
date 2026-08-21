@@ -1884,8 +1884,31 @@ public sealed class ReviewWorkspace(string repoPath)
 				+ $"{Files.Count} changed file(s): {string.Join(", ", extensions.Order())}), so no Python server");
 			return;
 		}
-		if (LanguageServers.Python() is not { } spec)
+		var spec = LanguageServers.Python();
+		if (spec is not null && await TryStartPythonAsync(spec, python, ct))
 			return;
+		// Either there was nothing to start or what there was did not run; both leave the
+		// review unable to read its own Python, so a server is installed rather than asked
+		// for. It goes into this tool's cache, which is also where it is looked for next time.
+		using (Busy.Begin("Installing a Python language server"))
+		{
+			if (await LanguageServers.InstallPythonAsync(RepoPath, ct) is { } installed
+				&& await TryStartPythonAsync(installed, python, ct))
+			{
+				return;
+			}
+		}
+		StatusMessage?.Invoke("No Python semantics for this review - see the Log pane");
+		Avalonia.Threading.Dispatcher.UIThread.Post(() => Factory?.ShowPane("Log"));
+	}
+
+	/// <summary>
+	/// Starts one Python server per side and hangs both on the review. False when the server
+	/// did not run, which is a thing to try another server about rather than to fail on.
+	/// </summary>
+	async Task<bool> TryStartPythonAsync(LspServerSpec spec, IReadOnlySet<string> extensions,
+		CancellationToken ct)
+	{
 		using var busy = Busy.Begin($"Starting {spec.Name}");
 		try
 		{
@@ -1908,18 +1931,15 @@ public sealed class ReviewWorkspace(string repoPath)
 					await LspConnection.StartAsync(spec, baseTree, ct, options, Settings),
 					baseTree, spec.Name + " (base)");
 			}
-			languages.Add(new LanguageProviders(python, head, baseSide));
+			languages.Add(new LanguageProviders(extensions, head, baseSide));
 			SemanticsChanged?.Invoke();
+			return true;
 		}
 		catch (ToolFailedException ex)
 		{
-			StatusMessage?.Invoke($"{spec.Name} did not start: {ex.Message} - see the Log pane");
 			CliLog.Write(spec.Name, $"did not start: {ex.Message}. Command was: "
 				+ $"{spec.Executable} {string.Join(' ', spec.Arguments)}");
-			// A status line says that it failed; the reason is the several lines above it in
-			// the log - which server was picked, which interpreter, and what was passed over.
-			// Nothing else in a windowed run shows them, so the pane is brought forward.
-			Avalonia.Threading.Dispatcher.UIThread.Post(() => Factory?.ShowPane("Log"));
+			return false;
 		}
 	}
 

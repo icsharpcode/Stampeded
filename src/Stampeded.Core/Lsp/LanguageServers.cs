@@ -41,6 +41,11 @@ public static class LanguageServers
 				return new LspServerSpec(Path.GetFileNameWithoutExtension(found), found, arguments);
 			}
 		}
+		if (Installed() is { } ours)
+		{
+			CliLog.Write("basedpyright", $"server: {ours.Executable} (installed by this tool)");
+			return ours;
+		}
 		if (OnPath("npx") is { } npx)
 		{
 			CliLog.Write("pyright", "no Python language server on PATH; running it through npx "
@@ -53,9 +58,67 @@ public static class LanguageServers
 			CliLog.Write("pyright", $"server: {npx} {string.Join(' ', throughNpx.Arguments)}");
 			return throughNpx;
 		}
-		CliLog.Write("pyright", "no Python language server found: install pyright, "
-			+ "or name one in STAMPEDED_PYTHON_LSP");
+		CliLog.Write("pyright", "no Python language server found yet; one can be installed "
+			+ "into this tool's own cache");
 		return null;
+	}
+
+	/// <summary>Where a server this tool installed for itself lives: a virtual environment of
+	/// its own, so nothing is added to the reader's Python or to their PATH, and deleting the
+	/// directory undoes all of it.</summary>
+	static string OwnServerRoot => CachePath.For("python-lsp");
+
+	/// <summary>That server, if the install is there and finished.</summary>
+	static LspServerSpec? Installed()
+	{
+		string executable = Path.Combine(OwnServerRoot, OperatingSystem.IsWindows() ? "Scripts" : "bin",
+			OperatingSystem.IsWindows() ? "basedpyright-langserver.exe" : "basedpyright-langserver");
+		return File.Exists(executable) ? new LspServerSpec("basedpyright", executable, ["--stdio"]) : null;
+	}
+
+	/// <summary>
+	/// Installs a Python language server, so that reading Python does not first require the
+	/// reader to have installed anything themselves.
+	///
+	/// basedpyright rather than pyright because it is published as a wheel that carries its
+	/// own node, so a Python interpreter is the only thing this needs to find - a machine with
+	/// Python but no node gets a working server, which is the case npx cannot serve. It is
+	/// pyright underneath, so the review reads the same as it does through any of the others.
+	///
+	/// Everything it does is a command in the log, and it lands in this tool's cache and
+	/// nowhere else, because installing software on someone's machine is exactly the kind of
+	/// thing they must be able to see afterwards and undo.
+	/// </summary>
+	public static async Task<LspServerSpec?> InstallPythonAsync(string repoPath, CancellationToken ct)
+	{
+		if (Installed() is { } already)
+			return already;
+		if (PythonEnvironment.InterpreterFor(repoPath) is not { } python)
+		{
+			CliLog.Write("basedpyright", "no Python interpreter to build a server environment with, "
+				+ "so none was installed");
+			return null;
+		}
+		try
+		{
+			CliLog.Write("basedpyright", $"installing a Python language server into {OwnServerRoot} - "
+				+ "once per machine, a few hundred MB, and it brings its own node");
+			await ExternalTool.RunAsync(python, ["-m", "venv", OwnServerRoot], repoPath, ct);
+			string venvPython = Path.Combine(OwnServerRoot, OperatingSystem.IsWindows() ? "Scripts" : "bin",
+				OperatingSystem.IsWindows() ? "python.exe" : "python");
+			await ExternalTool.RunAsync(venvPython,
+				["-m", "pip", "install", "--disable-pip-version-check", "basedpyright"], repoPath, ct);
+		}
+		catch (ToolFailedException ex)
+		{
+			CliLog.Write("basedpyright", $"install failed: {ex.Message}");
+			return null;
+		}
+		var installed = Installed();
+		CliLog.Write("basedpyright", installed is null
+			? $"install finished but there is no server in {OwnServerRoot}"
+			: $"installed: {installed.Executable}");
+		return installed;
 	}
 
 	/// <summary>The Roslyn server built beside the application, for reviewing C# out of
