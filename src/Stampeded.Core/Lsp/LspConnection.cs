@@ -80,6 +80,12 @@ public sealed class LspConnection : IDisposable
 			RedirectStandardOutput = true,
 			RedirectStandardError = true,
 			UseShellExecute = false,
+			// Windows gives a console process its own console window when the process starting
+			// it has none, which a desktop application does not. A language server is a console
+			// process that lives as long as the review, and npx reaches it through cmd, so
+			// without this the reader gets black windows in their face while they read.
+			// Ignored everywhere else.
+			CreateNoWindow = true,
 		};
 		foreach (var argument in spec.Arguments)
 			startInfo.ArgumentList.Add(argument);
