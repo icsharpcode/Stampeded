@@ -41,7 +41,7 @@ public sealed class LspConnection : IDisposable
 	readonly Process process;
 	readonly Stream toServer;
 	readonly SemaphoreSlim writeLock = new(1, 1);
-	readonly ConcurrentDictionary<int, TaskCompletionSource<JsonElement>> pending = new();
+	readonly ConcurrentDictionary<int, (TaskCompletionSource<JsonElement> Completion, string Method)> pending = new();
 	readonly CancellationTokenSource stopping = new();
 	Func<string, object?> settings = _ => null;
 	int nextId;
@@ -110,15 +110,66 @@ public sealed class LspConnection : IDisposable
 			processId = Environment.ProcessId,
 			rootUri = LspUri.FromPath(rootPath),
 			capabilities = ClientCapabilities,
+			trace = Tracing ? "verbose" : "off",
 			initializationOptions,
 			workspaceFolders = new[] { new { uri = LspUri.FromPath(rootPath), name = Path.GetFileName(rootPath) } },
 		}, ct);
 		connection.Capabilities = initialize.TryGetProperty("capabilities", out var capabilities)
 			? capabilities.Clone()
 			: default;
+		connection.ReportWhatItCanDo(initialize);
 		connection.Notify("initialized", new { });
 		return connection;
 	}
+
+	/// <summary>
+	/// Whether every request and its answer is logged. Off, a review logs what a reader would
+	/// have to explain; on, it logs enough to work out why a server that starts fine answers
+	/// nothing - which is a question that only comes up on someone else's machine.
+	/// </summary>
+	internal static bool Tracing
+		=> Environment.GetEnvironmentVariable("STAMPEDED_LSP_TRACE") is { Length: > 0 } value
+			&& value != "0";
+
+	/// <summary>
+	/// Which server this turned out to be, and which of the things the review asks for it
+	/// says it cannot do. A server missing a capability answers those requests with nothing
+	/// forever, and that is indistinguishable from a broken setup unless it is said once.
+	/// </summary>
+	void ReportWhatItCanDo(JsonElement initialize)
+	{
+		// A server need not name itself, and pyright does not; then it is called what it was
+		// started as, which is what a reader would call it anyway.
+		string name = initialize.TryGetProperty("serverInfo", out var info)
+			&& info.TryGetProperty("name", out var serverName)
+			? serverName.GetString() + (info.TryGetProperty("version", out var version)
+				? " " + version.GetString()
+				: "")
+			: spec.Name;
+		var missing = new[] {
+			"definitionProvider", "referencesProvider", "hoverProvider", "documentHighlightProvider",
+			"documentSymbolProvider", "workspaceSymbolProvider", "callHierarchyProvider",
+			"semanticTokensProvider",
+		}.Where(c => !Advertises(c)).ToList();
+		CliLog.Write(spec.Name, $"initialized: {name}"
+			+ (missing.Count > 0 ? $"; does not provide {string.Join(", ", missing)}" : "; provides everything asked for"));
+	}
+
+	bool Advertises(string capability)
+		=> Capabilities.ValueKind == JsonValueKind.Object
+			&& Capabilities.TryGetProperty(capability, out var value)
+			&& value.ValueKind is not (JsonValueKind.False or JsonValueKind.Null or JsonValueKind.Undefined);
+
+	/// <summary>An answer as one line: what it is and how much of it there is, which is what
+	/// tells "found nothing" from "never asked".</summary>
+	static string Summarize(JsonElement result) => result.ValueKind switch {
+		JsonValueKind.Undefined or JsonValueKind.Null => "no result",
+		JsonValueKind.Array => $"{result.GetArrayLength()} item(s)",
+		JsonValueKind.Object => Truncate(result.ToString()),
+		_ => result.ToString(),
+	};
+
+	static string Truncate(string text) => text.Length <= 200 ? text : text[..200] + "...";
 
 	/// <summary>
 	/// What this client understands. Deliberately small: the features the review actually
@@ -153,15 +204,18 @@ public sealed class LspConnection : IDisposable
 			return default;
 		int id = Interlocked.Increment(ref nextId);
 		var completion = new TaskCompletionSource<JsonElement>(TaskCreationOptions.RunContinuationsAsynchronously);
-		pending[id] = completion;
+		pending[id] = (completion, method);
 		var watch = Stopwatch.StartNew();
 		try
 		{
 			await SendAsync(new { jsonrpc = "2.0", id, method, @params = parameters }, ct);
 			using var registration = ct.Register(() => completion.TrySetCanceled(ct));
 			var result = await completion.Task;
-			// Only what a reader would want explained: a request nobody noticed is noise.
-			if (watch.ElapsedMilliseconds > 500)
+			// Normally only what a reader would want explained - a request nobody noticed is
+			// noise - and everything, with what came back, while tracing.
+			if (Tracing)
+				CliLog.Write(spec.Name, $"{method} -> {watch.ElapsedMilliseconds} ms, {Summarize(result)}");
+			else if (watch.ElapsedMilliseconds > 500)
 				CliLog.Write(spec.Name, $"{method} -> {watch.ElapsedMilliseconds} ms");
 			return result;
 		}
@@ -215,16 +269,18 @@ public sealed class LspConnection : IDisposable
 		bool hasMethod = message.TryGetProperty("method", out var method);
 		if (hasId && !hasMethod)
 		{
-			if (!id.TryGetInt32(out int requestId) || !pending.TryRemove(requestId, out var completion))
+			if (!id.TryGetInt32(out int requestId) || !pending.TryRemove(requestId, out var waiting))
 				return;
 			if (message.TryGetProperty("error", out var error))
 			{
-				CliLog.Write(spec.Name, $"request {requestId} FAILED: "
+				// Named by the request it answers: "request 7 failed" says nothing to someone
+				// working out why go-to-definition is silent.
+				CliLog.Write(spec.Name, $"{waiting.Method} FAILED: "
 					+ (error.TryGetProperty("message", out var text) ? text.GetString() : error.ToString()));
-				completion.TrySetResult(default);
+				waiting.Completion.TrySetResult(default);
 				return;
 			}
-			completion.TrySetResult(message.TryGetProperty("result", out var result) ? result : default);
+			waiting.Completion.TrySetResult(message.TryGetProperty("result", out var result) ? result : default);
 			return;
 		}
 		if (!hasMethod)
@@ -271,11 +327,17 @@ public sealed class LspConnection : IDisposable
 			return [new object()];
 		}
 		var answers = new List<object>();
+		var described = new List<string>();
 		foreach (var item in items.EnumerateArray())
 		{
 			string section = item.TryGetProperty("section", out var named) ? named.GetString() ?? "" : "";
-			answers.Add(settings(section) ?? new object());
+			object answer = settings(section) ?? new object();
+			answers.Add(answer);
+			described.Add($"{(section.Length > 0 ? section : "(none)")}={JsonSerializer.Serialize(answer, Json)}");
 		}
+		// What the server was told about itself, which is the other half of every question
+		// about why it resolves imports the way it does.
+		CliLog.Write(spec.Name, "configuration: " + string.Join(" ", described));
 		return [.. answers];
 	}
 

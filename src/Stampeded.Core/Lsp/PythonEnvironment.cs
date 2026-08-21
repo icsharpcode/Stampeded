@@ -22,15 +22,28 @@ public static class PythonEnvironment
 	/// having to explain when an import does not resolve.</summary>
 	public static string? InterpreterFor(string repoPath)
 	{
+		var passed = new List<string>();
 		foreach (var (reason, candidate) in Candidates(repoPath))
 		{
-			if (candidate is null || !File.Exists(candidate))
+			if (candidate is null)
+			{
+				passed.Add($"{reason}: not set");
 				continue;
+			}
+			if (!File.Exists(candidate))
+			{
+				passed.Add($"{reason}: {candidate} does not exist");
+				continue;
+			}
 			CliLog.Write("pyright", $"interpreter: {candidate} ({reason})");
+			// The ones that lost, in order: on another machine the question is never "which
+			// did it pick" but "why not mine", and that is answered by what it looked at.
+			if (passed.Count > 0)
+				CliLog.Write("pyright", "interpreter, passed over: " + string.Join("; ", passed));
 			return candidate;
 		}
-		CliLog.Write("pyright", "no interpreter found; the server will resolve imports against "
-			+ "whatever it finds itself");
+		CliLog.Write("pyright", "no interpreter found, so imports resolve against whatever the "
+			+ "server finds itself. Looked at: " + string.Join("; ", passed));
 		return null;
 	}
 
@@ -77,9 +90,22 @@ public static class PythonEnvironment
 	/// not recognise a key ignores it.
 	/// </summary>
 	public static object SettingsFor(string section, string? interpreter) => section switch {
-		"python" => new { pythonPath = interpreter, defaultInterpreterPath = interpreter },
-		"python.analysis" or "basedpyright.analysis" => new { autoSearchPaths = true, useLibraryCodeForTypes = true },
+		// Asked for as one section or as two depending on the server and its version, so the
+		// analysis settings are nested inside the python answer as well as standing alone.
+		"python" => new { pythonPath = interpreter, defaultInterpreterPath = interpreter, analysis = Analysis },
+		"python.analysis" or "basedpyright.analysis" => Analysis,
 		_ => new { },
+	};
+
+	/// <summary>
+	/// Trace makes pyright report the interpreter it settled on and every path it searches for
+	/// imports, into this tool's own log - which is the whole answer to "why is this import
+	/// unresolved on that machine".
+	/// </summary>
+	static object Analysis => new {
+		autoSearchPaths = true,
+		useLibraryCodeForTypes = true,
+		logLevel = LspConnection.Tracing ? "Trace" : "Information",
 	};
 
 	/// <summary>The same answer for a server that takes its configuration at initialize.</summary>

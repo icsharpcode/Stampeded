@@ -36,7 +36,10 @@ public static class LanguageServers
 		})
 		{
 			if (OnPath(executable) is { } found)
-				return new LspServerSpec("pyright", found, arguments);
+			{
+				CliLog.Write("pyright", $"server: {found} {string.Join(' ', arguments)} (on PATH)");
+				return new LspServerSpec(Path.GetFileNameWithoutExtension(found), found, arguments);
+			}
 		}
 		if (OnPath("npx") is { } npx)
 		{
@@ -45,7 +48,10 @@ public static class LanguageServers
 			// The executable is pyright-langserver, which lives in the pyright package -
 			// npx cannot infer the one from the other, and asking it to guess installs
 			// nothing and fails with a 404.
-			return new LspServerSpec("pyright", npx, ["--yes", "--package", "pyright", "--", "pyright-langserver", "--stdio"]);
+			var throughNpx = new LspServerSpec("pyright", npx,
+				["--yes", "--package", "pyright", "--", "pyright-langserver", "--stdio"]);
+			CliLog.Write("pyright", $"server: {npx} {string.Join(' ', throughNpx.Arguments)}");
+			return throughNpx;
 		}
 		CliLog.Write("pyright", "no Python language server found: install pyright, "
 			+ "or name one in STAMPEDED_PYTHON_LSP");
@@ -58,6 +64,7 @@ public static class LanguageServers
 	{
 		if (FromEnvironment("STAMPEDED_CSHARP_LSP") is { } configured)
 			return configured;
+		CliLog.Write("roslyn-lsp", $"looking for the server beside {AppContext.BaseDirectory}");
 		string directory = AppContext.BaseDirectory;
 		string executable = Path.Combine(directory,
 			OperatingSystem.IsWindows() ? "Stampeded.RoslynLsp.exe" : "Stampeded.RoslynLsp");
@@ -82,7 +89,10 @@ public static class LanguageServers
 			return null;
 		var parts = command.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 		string executable = OnPath(parts[0]) ?? parts[0];
-		return new LspServerSpec(Path.GetFileNameWithoutExtension(parts[0]), executable, parts[1..]);
+		string name = Path.GetFileNameWithoutExtension(parts[0]);
+		CliLog.Write(name, $"server: {executable} {string.Join(' ', parts[1..])} (from {variable})"
+			+ (File.Exists(executable) ? "" : " - WHICH DOES NOT EXIST"));
+		return new LspServerSpec(name, executable, parts[1..]);
 	}
 
 	/// <summary>The full path of an executable on PATH, or null. Resolved here rather than

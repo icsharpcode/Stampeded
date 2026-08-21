@@ -112,6 +112,9 @@ public sealed class LspSemanticProvider : ISemanticProvider, IDecompileTargets
 			return null;
 		var index = new TextIndex(text);
 		openDocuments[relPath] = index;
+		// A server answers about the files it was handed and no others, so which ones those
+		// were is the first thing to check when it answers nothing.
+		CliLog.Write(name, $"opened {relPath} ({LanguageIdOf(relPath)}, {index.LineCount} line(s))");
 		connection.Notify("textDocument/didOpen", new {
 			textDocument = new {
 				uri = Uri(relPath),

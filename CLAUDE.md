@@ -86,6 +86,10 @@ Environment switches, all optional:
   of the search (PATH first, then npx for pyright).
 - `STAMPEDED_PYTHON_PATH` names the interpreter, for an environment none of the usual places
   would find.
+- `STAMPEDED_LSP_TRACE=1` logs every request with what came back, and asks the server for its
+  own trace-level logging - pyright then reports the interpreter it settled on and every path
+  it searches for imports, into the Log pane. This is the thing to turn on when a review
+  reads a language on one machine and not on another.
 
 Decompiling a definition without source is not something a language server can answer, so it
 is a capability a provider may also have (`IDecompileTargets`), not part of the interface.

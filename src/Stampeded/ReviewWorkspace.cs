@@ -1876,11 +1876,16 @@ public sealed class ReviewWorkspace(string repoPath)
 	{
 		var extensions = Files.Select(f => Path.GetExtension(f.Path)).ToHashSet(StringComparer.OrdinalIgnoreCase);
 		if (!LanguageServers.ExtensionsByLanguage.TryGetValue("python", out var python)
-			|| !extensions.Overlaps(python)
-			|| LanguageServers.Python() is not { } spec)
+			|| !extensions.Overlaps(python))
 		{
+			// Said out loud, because the alternative is a reader wondering why a tool that
+			// claims to read Python is not reading theirs.
+			CliLog.Write("semantics", "no Python in this review ("
+				+ $"{Files.Count} changed file(s): {string.Join(", ", extensions.Order())}), so no Python server");
 			return;
 		}
+		if (LanguageServers.Python() is not { } spec)
+			return;
 		using var busy = Busy.Begin($"Starting {spec.Name}");
 		try
 		{
@@ -1909,6 +1914,8 @@ public sealed class ReviewWorkspace(string repoPath)
 		catch (ToolFailedException ex)
 		{
 			StatusMessage?.Invoke($"{spec.Name} did not start: {ex.Message}");
+			CliLog.Write(spec.Name, $"did not start: {ex.Message}. Command was: "
+				+ $"{spec.Executable} {string.Join(' ', spec.Arguments)}");
 		}
 	}
 
@@ -1962,6 +1969,8 @@ public sealed class ReviewWorkspace(string repoPath)
 		var location = await sem!.GetDefinitionAsync(symbol, CancellationToken.None);
 		if (location is null)
 		{
+			CliLog.Write("action", $"goto definition: nothing for '{symbol.Name}' at "
+				+ $"{relPath}:{line},{column}{(oldSide ? " (base)" : "")}");
 			await OpenDecompiledDefinitionAsync(sem, symbol, origin);
 			return;
 		}
