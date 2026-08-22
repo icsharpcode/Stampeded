@@ -24,4 +24,22 @@
     <AvaloniaResource Include="Assets/**/*.svg" />
     <EmbeddedResource Include="Editor/ILAsm-Mode.xshd" />
   </ItemGroup>
+  <!-- macOS runs an application out of a .app directory, not a loose folder of files. The
+       bundle is assembled here, on the publish target, so a plain
+       `dotnet publish -r osx-arm64` reproduces what CI ships, with nothing that exists only in
+       the workflow. The file list is taken before the bundle directory is created, so the
+       bundle never copies itself. No CFBundleIconFile: there is no .icns yet. -->
+  <Target Name="BuildMacAppBundle" AfterTargets="Publish" Condition="$(RuntimeIdentifier.StartsWith('osx-'))">
+    <PropertyGroup>
+      <_MacBundleContents>$(PublishDir)$(AssemblyName).app/Contents</_MacBundleContents>
+    </PropertyGroup>
+    <ItemGroup>
+      <_MacPublishFiles Include="$(PublishDir)**/*" Exclude="$(PublishDir)$(AssemblyName).app/**" />
+    </ItemGroup>
+    <RemoveDir Directories="$(PublishDir)$(AssemblyName).app" />
+    <Copy SourceFiles="@(_MacPublishFiles)" DestinationFiles="@(_MacPublishFiles->'$(_MacBundleContents)/MacOS/%(RecursiveDir)%(Filename)%(Extension)')" />
+    <Copy SourceFiles="$(MSBuildProjectDirectory)/Assets/macos/Info.plist" DestinationFolder="$(_MacBundleContents)" />
+    <Exec Command="chmod +x &quot;$(_MacBundleContents)/MacOS/$(AssemblyName)&quot;" Condition="!$([MSBuild]::IsOSPlatform('Windows'))" />
+    <Message Importance="high" Text="macOS bundle written to $(PublishDir)$(AssemblyName).app" />
+  </Target>
 </Project>
