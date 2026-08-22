@@ -5,7 +5,15 @@
              xmlns:controls="using:Stampeded.Controls"
              xmlns:local="using:Stampeded"
              x:Class="Stampeded.App"
+             Name="Stampeded"
              RequestedThemeVariant="Default">
+  <!-- The bold app-named menu macOS puts next to the Apple logo. Empty on purpose: Avalonia
+       synthesises one headed "About Avalonia" for an application that declares none, and then
+       appends the Services / Hide / Quit block to whichever it ends up with. Inert everywhere
+       else. -->
+  <NativeMenu.Menu>
+    <NativeMenu />
+  </NativeMenu.Menu>
   <Application.Resources>
     <ResourceDictionary>
       <ResourceDictionary.ThemeDictionaries>
@@ -98,6 +106,13 @@
          outranks the theme's ControlTheme, the way ILSpy paints the same part. -->
     <Style Selector="dockControls|DocumentControl:active /template/ Panel#PART_DocumentSeperator">
       <Setter Property="Background" Value="{x:Static local:ScopePalette.Accent}" />
+    </Style>
+    <!-- Why a command is unavailable is the question a greyed-out item raises, and its tooltip
+         is the answer - but a NativeMenuItem carries only the text, not that flag, so it is set
+         for every menu item at once. Concerns the in-window menu bar; macOS shows a native menu
+         item's tooltip either way. -->
+    <Style Selector="MenuItem">
+      <Setter Property="ToolTip.ShowOnDisabled" Value="True" />
     </Style>
     <Style Selector="OverlayPopupHost">
       <Setter Property="RenderTransformOrigin" Value="0%,0%" />

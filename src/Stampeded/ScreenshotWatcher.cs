@@ -256,17 +256,17 @@ static class ScreenshotWatcher
 				foreach (var command in lines.Where(l => l.StartsWith("menu:", StringComparison.Ordinal)))
 				{
 					string header = command["menu:".Length..].Trim();
-					// The logical tree, not the visual one: a submenu's items are not realized
-					// until the menu is opened, and this has to work without opening it.
-					if (Avalonia.LogicalTree.LogicalExtensions.GetLogicalDescendants(window).OfType<MenuItem>()
-						.FirstOrDefault(m => m.Header as string == header) is { } item)
-					{
-						item.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
-					}
+					// The menu model, not the window's tree: on macOS the menu is not in the
+					// window at all, and the bar drawn inside one builds its items only once a
+					// submenu opens. The model is the one place all three platforms share - and
+					// the items that are filled when a menu opens have to be filled first, since
+					// nothing is being opened here.
+					if (window is MainWindow main)
+						main.RefreshMenus();
+					if (MainWindow.FindMenuItem(NativeMenu.GetMenu(window), i => i.Header == header) is { } item)
+						((INativeMenuItemExporterEventsImplBridge)item).RaiseClicked();
 					else
-					{
 						CliLog.Write("action", $"menu: no item headed '{header}'");
-					}
 				}
 				// click:<name or label> - presses a button, for commands that have no gesture to
 				// raise and no view model the watcher can reach. The name wins over the label,

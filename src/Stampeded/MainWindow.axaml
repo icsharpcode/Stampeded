@@ -11,6 +11,198 @@
   <Window.DataTemplates>
     <local:ViewLocator />
   </Window.DataTemplates>
+  <!-- The menu bar is this app's index of what can be done, so it holds every command a
+       reviewer has - including the ones whose fast path is a pane button or a context menu.
+       The order is the order of the work: pick the change and decide about it, walk it,
+       check it, look at it.
+
+       A NativeMenu rather than a Menu, because a menu bar is not the same object everywhere:
+       macOS puts it in the system bar next to the Apple logo, Windows and Linux draw it inside
+       the window. Declared once here, the NativeMenuBar below decides which of the two it is at
+       runtime and hides itself when the platform took the menu.
+
+       Gestures stay written into the headers instead of becoming a Gesture: the window handles
+       them so they keep working from any pane, and on macOS a Gesture is a real AppKit key
+       equivalent, which fires before the focused text box sees the key - a "v" typed into a
+       comment would mark the file viewed, and Option+Left would navigate instead of moving the
+       caret.
+
+       What a command needs is bound to IsEnabled rather than left to fail: "Close Review"
+       offered with no review open reads as a broken command, not an unavailable one. -->
+  <NativeMenu.Menu>
+    <NativeMenu>
+      <NativeMenuItem Header="_Review">
+        <NativeMenu>
+          <NativeMenuItem Header="Open Repository..." Click="OnOpenRepository" />
+          <NativeMenuItem Header="Open from URL..." Click="OnOpenFromUrl" />
+          <NativeMenuItem Header="Recent Repositories" CommandParameter="RecentMenu">
+            <NativeMenu />
+          </NativeMenuItem>
+          <NativeMenuItemSeparator />
+          <NativeMenuItem Header="Reload Review  ( F5 )" Click="OnReloadReview" IsEnabled="{Binding HasReview}" />
+          <NativeMenuItem Header="Close Review" Click="OnCloseReview" IsEnabled="{Binding HasReview}" />
+          <NativeMenuItemSeparator />
+          <!-- Reading scope: what the file list below means. Radio rather than three commands,
+               because they are one setting with three values and the reader has to be able to
+               see which one they are in. -->
+          <NativeMenuItem Header="Whole Change" Click="OnExitCommitScope" ToggleType="Radio"
+                          IsChecked="{Binding WholeChangeActive, Mode=OneWay}" IsEnabled="{Binding InScope}" />
+          <NativeMenuItem Header="Commit by Commit" Click="OnEnterCommitScope" ToggleType="Radio"
+                          IsChecked="{Binding InCommitScope, Mode=OneWay}" IsEnabled="{Binding CanEnterCommitScope}"
+                          ToolTip="{Binding CommitScopeTip}" />
+          <NativeMenuItem Header="Since Last Pass" Click="OnSinceLastPass" ToggleType="Radio"
+                          IsChecked="{Binding InSinceLastPassScope, Mode=OneWay}"
+                          IsEnabled="{Binding CanEnterSinceLastPass}"
+                          ToolTip="{Binding SinceLastPassTip}" />
+          <!-- What "last pass" is measured from. A separate group from the scope above: it says
+               where the scope starts, not which scope is on, and choosing one enters it. -->
+          <NativeMenuItem Header="Last Pass Was" IsEnabled="{Binding HasReview}">
+            <NativeMenu>
+              <NativeMenuItem Header="The Last File You Ticked Off" Click="OnPassFromMarked" ToggleType="Radio"
+                              IsChecked="{Binding PassFromMarked, Mode=OneWay}"
+                              ToolTip="{Binding PassFromMarkedTip}"
+                              IsEnabled="{Binding HasPassFromMarked}" />
+              <NativeMenuItem Header="Your Last Submitted Review" Click="OnPassFromSubmitted" ToggleType="Radio"
+                              IsChecked="{Binding PassFromSubmitted, Mode=OneWay}"
+                              ToolTip="{Binding PassFromSubmittedTip}"
+                              IsEnabled="{Binding HasPassFromSubmitted}" />
+              <NativeMenuItem Header="The Last Time You Opened It" Click="OnPassFromOpened" ToggleType="Radio"
+                              IsChecked="{Binding PassFromOpened, Mode=OneWay}"
+                              ToolTip="{Binding PassFromOpenedTip}"
+                              IsEnabled="{Binding HasPassFromOpened}" />
+            </NativeMenu>
+          </NativeMenuItem>
+          <NativeMenuItemSeparator />
+          <NativeMenuItem Header="Mark Viewed + Advance  ( v )" Click="OnToggleViewed" IsEnabled="{Binding HasReview}" />
+          <NativeMenuItem Header="Comment Here  ( c )" Click="OnCommentAtCaret" IsEnabled="{Binding CanComment}" />
+          <NativeMenuItemSeparator />
+          <!-- Both of these open the Review tab rather than acting: a verdict needs a body and a
+               merge needs a method, and both are typed there. Two entries for one document
+               because they are the two names a reviewer looks for. -->
+          <NativeMenuItem Header="Approve / Request Changes..." Click="OnOpenReviewDocument"
+                          IsEnabled="{Binding HasReview}" />
+          <NativeMenuItem Header="Merge Pull Request..." Click="OnOpenReviewDocument"
+                          IsEnabled="{Binding HasPullRequest}" />
+          <NativeMenuItem Header="Rebase PR onto Target Branch" Click="OnRebasePr"
+                          IsEnabled="{Binding HasPullRequest}" />
+          <NativeMenuItemSeparator />
+          <!-- Both are hidden on macOS, where quitting is the app menu's job. -->
+          <NativeMenuItem Header="Exit" CommandParameter="ExitItem" Click="OnExit" />
+        </NativeMenu>
+      </NativeMenuItem>
+      <NativeMenuItem Header="_Navigate">
+        <NativeMenu>
+          <!-- The motions act on the diff in front; with no diff open there is nothing to move
+               through, and that is a state the menu can see only when it opens. -->
+          <NativeMenuItem Header="Next Hunk  ( n / Ctrl+Down )" CommandParameter="NextHunkItem" Click="OnNextHunk" />
+          <NativeMenuItem Header="Previous Hunk  ( p / Ctrl+Up )" CommandParameter="PrevHunkItem" Click="OnPrevHunk" />
+          <NativeMenuItem Header="Next File  ( ] )" Click="OnNextFile" IsEnabled="{Binding HasReview}" />
+          <NativeMenuItem Header="Previous File  ( [ )" Click="OnPrevFile" IsEnabled="{Binding HasReview}" />
+          <NativeMenuItem Header="Next Uncovered Added Line  ( u )" CommandParameter="NextUncoveredItem" Click="OnNextUncovered" />
+          <NativeMenuItem Header="Go to...  ( Ctrl+G )" Click="OnGoTo" />
+          <NativeMenuItemSeparator />
+          <NativeMenuItem Header="Next Commit  ( Ctrl+] )" Click="OnNextCommit" IsEnabled="{Binding InCommitScope}" />
+          <NativeMenuItem Header="Previous Commit  ( Ctrl+[ )" Click="OnPreviousCommit"
+                          IsEnabled="{Binding InCommitScope}" />
+          <NativeMenuItemSeparator />
+          <!-- Disabled until semantics are loaded: these are the commands that need a
+               compilation, and the window opens as soon as the diff is read. -->
+          <NativeMenuItem Header="Go to Definition  ( F12 )" Click="OnGoToDefinition"
+                          IsEnabled="{Binding SemanticsReady}" />
+          <NativeMenuItem Header="Find References  ( Shift+F12 )" Click="OnFindReferences"
+                          IsEnabled="{Binding SemanticsReady}" />
+          <NativeMenuItem Header="Highlight Occurrences (click; Esc clears)" Click="OnHighlightOccurrences"
+                          IsEnabled="{Binding SemanticsReady}" />
+          <NativeMenuItem Header="Call Graph from Caret" Click="OnCallGraph" IsEnabled="{Binding SemanticsReady}" />
+          <NativeMenuItemSeparator />
+          <!-- Enabled by what history actually holds, worked out as the menu opens: the extra
+               mouse buttons and Alt+arrow drive the same two commands, and an entry offered with
+               nothing behind it says the reader has run out of history when they have not. -->
+          <NativeMenuItem Header="Back  ( Alt+Left )" CommandParameter="BackItem" Click="OnBack" />
+          <NativeMenuItem Header="Forward  ( Alt+Right )" CommandParameter="ForwardItem" Click="OnForward" />
+          <NativeMenuItemSeparator />
+          <NativeMenuItem Header="Overview / Back to File  ( o )" Click="OnToggleOverview"
+                          IsEnabled="{Binding HasReview}" />
+          <NativeMenuItem Header="History of Selection" CommandParameter="HistoryOfSelectionItem" Click="OnHistoryOfSelection" />
+        </NativeMenu>
+      </NativeMenuItem>
+      <NativeMenuItem Header="_Tools">
+        <NativeMenu>
+          <!-- Each of these shows its pane first: output that lands behind whichever pane is in
+               front is output nobody reads. -->
+          <NativeMenuItem Header="Run Tests" Click="OnRunTests" IsEnabled="{Binding HasReview}" />
+          <NativeMenuItem Header="Run + Coverage" Click="OnRunTestsWithCoverage" IsEnabled="{Binding HasReview}" />
+          <NativeMenuItem Header="Run A/B (base vs head)" Click="OnRunTestsAB" IsEnabled="{Binding HasReview}" />
+          <NativeMenuItem Header="Impacted Test Filter" Click="OnImpactedTestFilter" IsEnabled="{Binding HasReview}" />
+          <NativeMenuItemSeparator />
+          <!-- Filled when the menu opens, from the solutions the checkout actually has. -->
+          <NativeMenuItem Header="Solution to Build" CommandParameter="BuildSolutionMenu" IsEnabled="{Binding HasReview}"
+                          ToolTip="Which solution the test runs and the generated-sources build are for. Automatic prefers a cross-platform filter off Windows, else the repository's largest solution.">
+            <NativeMenu />
+          </NativeMenuItem>
+          <NativeMenuItemSeparator />
+          <NativeMenuItem Header="Run Application" Click="OnRunApplication" />
+          <NativeMenuItem Header="Refresh Checks" Click="OnRefreshChecks" IsEnabled="{Binding HasPullRequest}" />
+          <NativeMenuItemSeparator />
+          <NativeMenuItem Header="Open Head Worktree in VS Code" Click="OnOpenVsCode" IsEnabled="{Binding HasReview}" />
+          <NativeMenuItem Header="Debug Here in VS Code" CommandParameter="DebugHereItem" Click="OnDebugHere" />
+          <NativeMenuItem Header="Open PR on GitHub" Click="OnOpenOnGitHub" IsEnabled="{Binding HasPullRequest}" />
+          <NativeMenuItem Header="Open Affected Fixtures in ILSpy" Click="OnOpenFixtures"
+                          IsEnabled="{Binding HasDecompilerTestCases}" />
+        </NativeMenu>
+      </NativeMenuItem>
+      <NativeMenuItem Header="_View">
+        <NativeMenu>
+          <NativeMenuItem Header="Start Page" Click="OnOpenStart" />
+          <NativeMenuItem Header="Close Document  ( Ctrl+W )" Click="OnCloseDocument" />
+          <NativeMenuItemSeparator />
+          <!-- A way of reading rather than a property of a file: what is set here is what every
+               file opens as, and each is one tab either way. -->
+          <NativeMenuItem Header="Side-by-Side Layout" CommandParameter="SideBySideItem" Click="OnSideBySide"
+                          ToggleType="CheckBox"
+                          ToolTip="Read every change as two panes instead of one interleaved document" />
+          <NativeMenuItem Header="Blame Margin  ( b )" CommandParameter="BlameItem" Click="OnToggleBlame" ToggleType="CheckBox" />
+          <NativeMenuItem Header="Document Tabs in Several Rows" CommandParameter="MultiRowTabsItem"
+                          Click="OnToggleMultiRowTabs" ToggleType="CheckBox" />
+          <!-- Hidden outside a debug build, where the renderer behind it does not exist. -->
+          <NativeMenuItem Header="DEBUG - Pointer Cross-Hair" CommandParameter="PointerCrossHairItem" IsVisible="False"
+                          Click="OnTogglePointerCrossHair" ToggleType="CheckBox"
+                          ToolTip="Draw where the app thinks the pointer is, with the document position it resolves to" />
+          <NativeMenuItemSeparator />
+          <NativeMenuItem Header="Panes">
+            <NativeMenu>
+              <NativeMenuItem Header="Explorer" CommandParameter="Explorer" Click="OnShowPane" />
+              <NativeMenuItem Header="Change Map" CommandParameter="Map" Click="OnShowPane" />
+              <NativeMenuItem Header="Structure" CommandParameter="Structure" Click="OnShowPane" />
+              <NativeMenuItem Header="References" CommandParameter="References" Click="OnShowPane" />
+              <NativeMenuItem Header="Call Graph" CommandParameter="CallGraph" Click="OnShowPane" />
+              <NativeMenuItem Header="Comments" CommandParameter="Comments" Click="OnShowPane" />
+              <NativeMenuItem Header="Checks" CommandParameter="Checks" Click="OnShowPane" />
+              <NativeMenuItem Header="Tests" CommandParameter="Tests" Click="OnShowPane" />
+              <NativeMenuItem Header="Commits" CommandParameter="Commits" Click="OnShowPane" />
+              <NativeMenuItem Header="History" CommandParameter="History" Click="OnShowPane" />
+              <NativeMenuItem Header="Run" CommandParameter="Run" Click="OnShowPane" />
+              <NativeMenuItem Header="Log" CommandParameter="Log" Click="OnShowPane" />
+            </NativeMenu>
+          </NativeMenuItem>
+          <NativeMenuItemSeparator />
+          <NativeMenuItem Header="Zoom In  ( Ctrl++ )" Click="OnZoomIn" />
+          <NativeMenuItem Header="Zoom Out  ( Ctrl+- )" Click="OnZoomOut" />
+          <NativeMenuItem Header="Reset Zoom  ( Ctrl+0 )" Click="OnZoomReset" />
+        </NativeMenu>
+      </NativeMenuItem>
+      <NativeMenuItem Header="_Help">
+        <NativeMenu>
+          <NativeMenuItem Header="Keyboard Shortcuts" Click="OnKeyboardShortcuts" />
+          <NativeMenuItemSeparator />
+          <!-- What the tool did and why it is slow: the questions Help is opened with. -->
+          <NativeMenuItem Header="Log Pane" CommandParameter="Log" Click="OnShowPane" />
+          <NativeMenuItem Header="Semantic Load Log" Click="OnShowSemanticLog" />
+          <NativeMenuItem Header="Prune Worktree Cache" Click="OnPruneWorktrees" />
+        </NativeMenu>
+      </NativeMenuItem>
+    </NativeMenu>
+  </NativeMenu.Menu>
   <!-- LayoutTransformControl rather than a RenderTransform: this one re-runs layout at the
        new scale, so text is laid out and rendered at that size instead of a fixed layout
        being magnified. -->
@@ -19,174 +211,9 @@
       <ScaleTransform ScaleX="{Binding Zoom}" ScaleY="{Binding Zoom}" />
     </LayoutTransformControl.LayoutTransform>
   <DockPanel>
-    <!-- The menu bar is this app's index of what can be done, so it holds every command a
-         reviewer has - including the ones whose fast path is a pane button or a context menu.
-         The order is the order of the work: pick the change and decide about it, walk it,
-         check it, look at it.
-
-         Single-letter gestures stay written into the headers instead of becoming an
-         InputGesture: the window handles them so they keep working from any pane, and a menu
-         gesture would swallow a "v" typed into a comment. Real modifier gestures are real
-         InputGestures.
-
-         What a command needs is bound to IsEnabled rather than left to fail: "Close Review"
-         offered with no review open reads as a broken command, not an unavailable one. -->
-    <Menu DockPanel.Dock="Top">
-      <MenuItem Header="_Review" SubmenuOpened="OnMenuOpening">
-        <MenuItem Header="Open Repository..." Click="OnOpenRepository" />
-        <MenuItem Header="Open from URL..." Click="OnOpenFromUrl" />
-        <MenuItem Header="Recent Repositories" x:Name="RecentMenu" ItemsSource="{Binding Recent}" />
-        <Separator />
-        <MenuItem Header="Reload Review  ( F5 )" Click="OnReloadReview" IsEnabled="{Binding HasReview}" />
-        <MenuItem Header="Close Review" Click="OnCloseReview" IsEnabled="{Binding HasReview}" />
-        <Separator />
-        <!-- Reading scope: what the file list below means. Radio rather than three commands,
-             because they are one setting with three values and the reader has to be able to
-             see which one they are in. -->
-        <MenuItem Header="Whole Change" Click="OnExitCommitScope" ToggleType="Radio" GroupName="scope"
-                  IsChecked="{Binding WholeChangeActive, Mode=OneWay}" IsEnabled="{Binding InScope}" />
-        <MenuItem Header="Commit by Commit" Click="OnEnterCommitScope" ToggleType="Radio" GroupName="scope"
-                  IsChecked="{Binding InCommitScope, Mode=OneWay}" IsEnabled="{Binding CanEnterCommitScope}"
-                  ToolTip.ShowOnDisabled="True" ToolTip.Tip="{Binding CommitScopeTip}" />
-        <MenuItem Header="Since Last Pass" Click="OnSinceLastPass" ToggleType="Radio" GroupName="scope"
-                  IsChecked="{Binding InSinceLastPassScope, Mode=OneWay}"
-                  IsEnabled="{Binding CanEnterSinceLastPass}"
-                  ToolTip.ShowOnDisabled="True" ToolTip.Tip="{Binding SinceLastPassTip}" />
-        <!-- What "last pass" is measured from. A separate group from the scope above: it says
-             where the scope starts, not which scope is on, and choosing one enters it. -->
-        <MenuItem Header="Last Pass Was" IsEnabled="{Binding HasReview}">
-          <MenuItem Header="The Last File You Ticked Off" Click="OnPassFromMarked" ToggleType="Radio"
-                    GroupName="passbaseline" IsChecked="{Binding PassFromMarked, Mode=OneWay}"
-                    ToolTip.ShowOnDisabled="True" ToolTip.Tip="{Binding PassFromMarkedTip}"
-                    IsEnabled="{Binding HasPassFromMarked}" />
-          <MenuItem Header="Your Last Submitted Review" Click="OnPassFromSubmitted" ToggleType="Radio"
-                    GroupName="passbaseline" IsChecked="{Binding PassFromSubmitted, Mode=OneWay}"
-                    ToolTip.ShowOnDisabled="True" ToolTip.Tip="{Binding PassFromSubmittedTip}"
-                    IsEnabled="{Binding HasPassFromSubmitted}" />
-          <MenuItem Header="The Last Time You Opened It" Click="OnPassFromOpened" ToggleType="Radio"
-                    GroupName="passbaseline" IsChecked="{Binding PassFromOpened, Mode=OneWay}"
-                    ToolTip.ShowOnDisabled="True" ToolTip.Tip="{Binding PassFromOpenedTip}"
-                    IsEnabled="{Binding HasPassFromOpened}" />
-        </MenuItem>
-        <Separator />
-        <MenuItem Header="Mark Viewed + Advance  ( v )" Click="OnToggleViewed" IsEnabled="{Binding HasReview}" />
-        <MenuItem Header="Comment Here  ( c )" Click="OnCommentAtCaret" IsEnabled="{Binding CanComment}" />
-        <Separator />
-        <!-- Both of these open the Review tab rather than acting: a verdict needs a body and a
-             merge needs a method, and both are typed there. Two entries for one document
-             because they are the two names a reviewer looks for. -->
-        <MenuItem Header="Approve / Request Changes..." Click="OnOpenReviewDocument"
-                  IsEnabled="{Binding HasReview}" />
-        <MenuItem Header="Merge Pull Request..." Click="OnOpenReviewDocument"
-                  IsEnabled="{Binding HasPullRequest}" />
-        <MenuItem Header="Rebase PR onto Target Branch" Click="OnRebasePr"
-                  IsEnabled="{Binding HasPullRequest}" />
-        <Separator />
-        <MenuItem Header="Exit" Click="OnExit" />
-      </MenuItem>
-      <MenuItem Header="_Navigate" SubmenuOpened="OnMenuOpening">
-        <!-- The motions act on the diff in front; with no diff open there is nothing to move
-             through, and that is a state the menu can see only when it opens. -->
-        <MenuItem Header="Next Hunk  ( n / Ctrl+Down )" x:Name="NextHunkItem" Click="OnNextHunk" />
-        <MenuItem Header="Previous Hunk  ( p / Ctrl+Up )" x:Name="PrevHunkItem" Click="OnPrevHunk" />
-        <MenuItem Header="Next File  ( ] )" Click="OnNextFile" IsEnabled="{Binding HasReview}" />
-        <MenuItem Header="Previous File  ( [ )" Click="OnPrevFile" IsEnabled="{Binding HasReview}" />
-        <MenuItem Header="Next Uncovered Added Line  ( u )" x:Name="NextUncoveredItem" Click="OnNextUncovered" />
-        <MenuItem Header="Go to...  ( Ctrl+G )" Click="OnGoTo" />
-        <Separator />
-        <MenuItem Header="Next Commit  ( Ctrl+] )" Click="OnNextCommit" IsEnabled="{Binding InCommitScope}" />
-        <MenuItem Header="Previous Commit  ( Ctrl+[ )" Click="OnPreviousCommit"
-                  IsEnabled="{Binding InCommitScope}" />
-        <Separator />
-        <!-- Disabled until semantics are loaded: these are the commands that need a
-             compilation, and the window opens as soon as the diff is read. -->
-        <MenuItem Header="Go to Definition" InputGesture="F12" Click="OnGoToDefinition"
-                  IsEnabled="{Binding SemanticsReady}" />
-        <MenuItem Header="Find References" InputGesture="Shift+F12" Click="OnFindReferences"
-                  IsEnabled="{Binding SemanticsReady}" />
-        <MenuItem Header="Highlight Occurrences (click; Esc clears)" Click="OnHighlightOccurrences"
-                  IsEnabled="{Binding SemanticsReady}" />
-        <MenuItem Header="Call Graph from Caret" Click="OnCallGraph" IsEnabled="{Binding SemanticsReady}" />
-        <Separator />
-        <!-- Enabled by what history actually holds, worked out as the menu opens: the extra
-             mouse buttons and Alt+arrow drive the same two commands, and an entry offered with
-             nothing behind it says the reader has run out of history when they have not. -->
-        <MenuItem Header="Back" InputGesture="Alt+Left" Click="OnBack" x:Name="BackItem" />
-        <MenuItem Header="Forward" InputGesture="Alt+Right" Click="OnForward" x:Name="ForwardItem" />
-        <Separator />
-        <MenuItem Header="Overview / Back to File  ( o )" Click="OnToggleOverview"
-                  IsEnabled="{Binding HasReview}" />
-        <MenuItem Header="History of Selection" x:Name="HistoryOfSelectionItem" Click="OnHistoryOfSelection" />
-      </MenuItem>
-      <MenuItem Header="_Tools" SubmenuOpened="OnMenuOpening">
-        <!-- Each of these shows its pane first: output that lands behind whichever pane is in
-             front is output nobody reads. -->
-        <MenuItem Header="Run Tests" Click="OnRunTests" IsEnabled="{Binding HasReview}" />
-        <MenuItem Header="Run + Coverage" Click="OnRunTestsWithCoverage" IsEnabled="{Binding HasReview}" />
-        <MenuItem Header="Run A/B (base vs head)" Click="OnRunTestsAB" IsEnabled="{Binding HasReview}" />
-        <MenuItem Header="Impacted Test Filter" Click="OnImpactedTestFilter" IsEnabled="{Binding HasReview}" />
-        <Separator />
-        <!-- Filled when the menu opens, from the solutions the checkout actually has. -->
-        <MenuItem Header="Solution to Build" x:Name="BuildSolutionMenu" IsEnabled="{Binding HasReview}"
-                  ToolTip.Tip="Which solution the test runs and the generated-sources build are for. Automatic prefers a cross-platform filter off Windows, else the repository's largest solution." />
-        <Separator />
-        <MenuItem Header="Run Application" Click="OnRunApplication" />
-        <MenuItem Header="Refresh Checks" Click="OnRefreshChecks" IsEnabled="{Binding HasPullRequest}" />
-        <Separator />
-        <MenuItem Header="Open Head Worktree in VS Code" Click="OnOpenVsCode" IsEnabled="{Binding HasReview}" />
-        <MenuItem Header="Debug Here in VS Code" x:Name="DebugHereItem" Click="OnDebugHere" />
-        <MenuItem Header="Open PR on GitHub" Click="OnOpenOnGitHub" IsEnabled="{Binding HasPullRequest}" />
-        <MenuItem Header="Open Affected Fixtures in ILSpy" Click="OnOpenFixtures"
-                  IsEnabled="{Binding HasDecompilerTestCases}" />
-      </MenuItem>
-      <MenuItem Header="_View" SubmenuOpened="OnMenuOpening">
-        <MenuItem Header="Start Page" Click="OnOpenStart" />
-        <MenuItem Header="Close Document  ( Ctrl+W )" Click="OnCloseDocument" />
-        <Separator />
-        <!-- A way of reading rather than a property of a file: what is set here is what every
-             file opens as, and each is one tab either way. -->
-        <MenuItem Header="Side-by-Side Layout" x:Name="SideBySideItem" Click="OnSideBySide"
-                  ToggleType="CheckBox"
-                  ToolTip.Tip="Read every change as two panes instead of one interleaved document" />
-        <MenuItem Header="Blame Margin  ( b )" x:Name="BlameItem" Click="OnToggleBlame" ToggleType="CheckBox" />
-        <MenuItem Header="Document Tabs in Several Rows" x:Name="MultiRowTabsItem"
-                  Click="OnToggleMultiRowTabs" ToggleType="CheckBox" />
-        <!-- Hidden outside a debug build, where the renderer behind it does not exist. -->
-        <MenuItem Header="DEBUG - Pointer Cross-Hair" x:Name="PointerCrossHairItem" IsVisible="False"
-                  Click="OnTogglePointerCrossHair" ToggleType="CheckBox"
-                  ToolTip.Tip="Draw where the app thinks the pointer is, with the document position it resolves to" />
-        <Separator />
-        <MenuItem Header="Panes">
-          <MenuItem Header="Explorer" Tag="Explorer" Click="OnShowPane" />
-          <MenuItem Header="Change Map" Tag="Map" Click="OnShowPane" />
-          <MenuItem Header="Structure" Tag="Structure" Click="OnShowPane" />
-          <MenuItem Header="References" Tag="References" Click="OnShowPane" />
-          <MenuItem Header="Call Graph" Tag="CallGraph" Click="OnShowPane" />
-          <MenuItem Header="Comments" Tag="Comments" Click="OnShowPane" />
-          <MenuItem Header="Checks" Tag="Checks" Click="OnShowPane" />
-          <MenuItem Header="Tests" Tag="Tests" Click="OnShowPane" />
-          <MenuItem Header="Commits" Tag="Commits" Click="OnShowPane" />
-          <MenuItem Header="History" Tag="History" Click="OnShowPane" />
-          <MenuItem Header="Run" Tag="Run" Click="OnShowPane" />
-          <MenuItem Header="Log" Tag="Log" Click="OnShowPane" />
-        </MenuItem>
-        <Separator />
-        <!-- The gestures live in the headers, not as InputGesture: the window handles them so
-             they keep working while a text box has focus, and a menu gesture would take them
-             first. "Ctrl+Plus" is also not a gesture Avalonia can parse - Plus is no Key. -->
-        <MenuItem Header="Zoom In  ( Ctrl++ )" Click="OnZoomIn" />
-        <MenuItem Header="Zoom Out  ( Ctrl+- )" Click="OnZoomOut" />
-        <MenuItem Header="Reset Zoom  ( Ctrl+0 )" Click="OnZoomReset" />
-      </MenuItem>
-      <MenuItem Header="_Help">
-        <MenuItem Header="Keyboard Shortcuts" Click="OnKeyboardShortcuts" />
-        <Separator />
-        <!-- What the tool did and why it is slow: the questions Help is opened with. -->
-        <MenuItem Header="Log Pane" Tag="Log" Click="OnShowPane" />
-        <MenuItem Header="Semantic Load Log" Click="OnShowSemanticLog" />
-        <MenuItem Header="Prune Worktree Cache" Click="OnPruneWorktrees" />
-      </MenuItem>
-    </Menu>
+    <!-- Empty and zero-height on macOS, where the platform took the menu; the bar the menu is
+         drawn in on Windows and Linux. -->
+    <NativeMenuBar DockPanel.Dock="Top" />
     <Border DockPanel.Dock="Bottom" Padding="8,3" IsVisible="{Binding Busy.IsBusy}">
       <StackPanel Orientation="Horizontal" Spacing="8">
         <TextBlock Text="{Binding Busy.SpinnerFrame}" FontFamily="monospace" />

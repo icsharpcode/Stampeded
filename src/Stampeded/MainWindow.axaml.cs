@@ -9,13 +9,45 @@ namespace Stampeded;
 
 public partial class MainWindow : Window
 {
+	// The menu items this file has to reach: the ones whose state is not a binding away, and the
+	// two whose submenu is built when it opens. A menu item is a model object rather than a
+	// control, so it cannot carry an x:Name and Avalonia generates no field for one - what names
+	// them instead is the key each carries as its CommandParameter.
+	readonly NativeMenuItem recentMenu, buildSolutionMenu, exitItem,
+		nextHunkItem, prevHunkItem, nextUncoveredItem, historyOfSelectionItem,
+		backItem, forwardItem,
+		sideBySideItem, blameItem, multiRowTabsItem, pointerCrossHairItem, debugHereItem;
+
 	public MainWindow()
 	{
 		InitializeComponent();
+		var menu = NativeMenu.GetMenu(this);
+		NativeMenuItem Named(string key) => FindMenuItem(menu, i => key.Equals(i.CommandParameter))
+			?? throw new InvalidOperationException($"no menu item is keyed {key}");
+		recentMenu = Named("RecentMenu");
+		buildSolutionMenu = Named("BuildSolutionMenu");
+		exitItem = Named("ExitItem");
+		nextHunkItem = Named("NextHunkItem");
+		prevHunkItem = Named("PrevHunkItem");
+		nextUncoveredItem = Named("NextUncoveredItem");
+		historyOfSelectionItem = Named("HistoryOfSelectionItem");
+		backItem = Named("BackItem");
+		forwardItem = Named("ForwardItem");
+		sideBySideItem = Named("SideBySideItem");
+		blameItem = Named("BlameItem");
+		multiRowTabsItem = Named("MultiRowTabsItem");
+		pointerCrossHairItem = Named("PointerCrossHairItem");
+		debugHereItem = Named("DebugHereItem");
 		WindowPlacement.Attach(this);
 		DataContext = new MainViewModel();
 		ScreenshotWatcher.Attach(this);
-		RecentMenu.AddHandler(MenuItem.ClickEvent, OnRecentRepoClick);
+		// A menu about to be shown is the only moment its per-document state is not stale, and
+		// each platform says so differently: the exported macOS menu asks the model for an
+		// update, while the bar drawn inside the window raises a routed event from the item that
+		// opened. Both lead to the same refresh.
+		foreach (var top in menu!.Items.OfType<NativeMenuItem>())
+			top.Menu!.NeedsUpdate += OnMenuOpening;
+		AddHandler(MenuItem.SubmenuOpenedEvent, OnSubmenuOpened, RoutingStrategies.Bubble);
 		// The extra mouse buttons, the way every browser and IDE reads them. The press is
 		// taken so nothing under the pointer acts on it, and the release does the navigating -
 		// handledEventsToo because the editors handle pointer events for their own gestures
@@ -23,6 +55,17 @@ public partial class MainWindow : Window
 		AddHandler(PointerPressedEvent, OnNavigationPointerPressed, RoutingStrategies.Tunnel);
 		AddHandler(PointerReleasedEvent, OnNavigationPointerReleased,
 			RoutingStrategies.Bubble, handledEventsToo: true);
+		// Quitting is the app menu's job on macOS, where every application has that item in the
+		// same place; a second one under Review would be the odd one out. Taken out of the model
+		// rather than hidden, so the separator that introduced it goes with it instead of ending
+		// the menu on a rule with nothing under it.
+		if (OperatingSystem.IsMacOS() && exitItem.Parent is { } review)
+		{
+			int index = review.Items.IndexOf(exitItem);
+			review.Items.RemoveAt(index);
+			if (index > 0 && review.Items[index - 1] is NativeMenuItemSeparator separator)
+				review.Items.Remove(separator);
+		}
 	}
 
 	void OnNavigationPointerPressed(object? sender, PointerPressedEventArgs e)
@@ -52,13 +95,36 @@ public partial class MainWindow : Window
 		e.Handled = true;
 	}
 
+	/// <summary>The in-window menu bar's stand-in for a menu that is about to be shown. Only the
+	/// top row counts: the submenus this rebuilds are nested ones, and rebuilding a submenu while
+	/// it is opening takes away what the pointer is already over.</summary>
+	void OnSubmenuOpened(object? s, RoutedEventArgs e)
+	{
+		if (e.Source is MenuItem { Parent: Menu })
+			OnMenuOpening(s, e);
+	}
+
+	/// <summary>The first item anywhere under a menu that answers to the predicate: how an item is
+	/// picked out of a menu that has no controls in it to look up.</summary>
+	internal static NativeMenuItem? FindMenuItem(NativeMenu? menu, Func<NativeMenuItem, bool> match)
+	{
+		foreach (var item in menu?.Items.OfType<NativeMenuItem>() ?? Enumerable.Empty<NativeMenuItem>())
+		{
+			if (match(item))
+				return item;
+			if (FindMenuItem(item.Menu, match) is { } nested)
+				return nested;
+		}
+		return null;
+	}
+
 	MainViewModel? Vm => DataContext as MainViewModel;
 
-	void OnZoomIn(object? s, RoutedEventArgs e) => Vm?.ZoomIn();
+	void OnZoomIn(object? s, EventArgs e) => Vm?.ZoomIn();
 
-	void OnZoomOut(object? s, RoutedEventArgs e) => Vm?.ZoomOut();
+	void OnZoomOut(object? s, EventArgs e) => Vm?.ZoomOut();
 
-	void OnZoomReset(object? s, RoutedEventArgs e) => Vm?.ZoomReset();
+	void OnZoomReset(object? s, EventArgs e) => Vm?.ZoomReset();
 
 	/// <summary>
 	/// The zoom gestures. They are handled here rather than as InputGesture on the menu items
@@ -160,13 +226,7 @@ public partial class MainWindow : Window
 		e.Handled = true;
 	}
 
-	void OnRecentRepoClick(object? sender, RoutedEventArgs e)
-	{
-		if (e.Source is MenuItem { Header: string path } item && item != RecentMenu)
-			App.OpenRepositoryAsync(path).HandleExceptions();
-	}
-
-	void OnOpenRepository(object? s, RoutedEventArgs e) => PickRepositoryAsync().HandleExceptions();
+	void OnOpenRepository(object? s, EventArgs e) => PickRepositoryAsync().HandleExceptions();
 
 	async Task PickRepositoryAsync()
 	{
@@ -178,7 +238,7 @@ public partial class MainWindow : Window
 			await App.OpenRepositoryAsync(picks[0].Path.LocalPath);
 	}
 
-	void OnGoTo(object? s, RoutedEventArgs e) => GoToAsync().HandleExceptions();
+	void OnGoTo(object? s, EventArgs e) => GoToAsync().HandleExceptions();
 
 	/// <summary>The one dialog for both halves of "go to": which file, and where in it. A file
 	/// without a line opens it where it was left; a line without a file moves within the
@@ -199,7 +259,7 @@ public partial class MainWindow : Window
 		await workspace.NavigateToFileLineAsync(path, target.Line ?? 1, oldSide: false, record: true);
 	}
 
-	void OnOpenFromUrl(object? s, RoutedEventArgs e) => PromptUrlAsync().HandleExceptions();
+	void OnOpenFromUrl(object? s, EventArgs e) => PromptUrlAsync().HandleExceptions();
 
 	async Task PromptUrlAsync()
 	{
@@ -219,27 +279,42 @@ public partial class MainWindow : Window
 	/// what this layout has not got.</summary>
 	static bool Has(ReviewCommands command) => View?.Supported.HasFlag(command) == true;
 
-	void OnNextHunk(object? s, RoutedEventArgs e) => View?.JumpToHunkCommand(1);
-	void OnPrevHunk(object? s, RoutedEventArgs e) => View?.JumpToHunkCommand(-1);
-	void OnNextFile(object? s, RoutedEventArgs e) => App.Workspace?.OpenAdjacentFileAsync(1).HandleExceptions();
-	void OnPrevFile(object? s, RoutedEventArgs e) => App.Workspace?.OpenAdjacentFileAsync(-1).HandleExceptions();
-	void OnToggleViewed(object? s, RoutedEventArgs e) => App.Workspace?.ToggleViewedAndAdvanceAsync().HandleExceptions();
-	void OnToggleOverview(object? s, RoutedEventArgs e) => App.Workspace?.ToggleOverviewAsync().HandleExceptions();
-	void OnToggleBlame(object? s, RoutedEventArgs e) => View?.ToggleBlameCommand();
-	void OnCommentAtCaret(object? s, RoutedEventArgs e) => View?.CommentAtCaretCommand();
-	void OnGoToDefinition(object? s, RoutedEventArgs e) => View?.GoToDefinitionCommand();
-	void OnFindReferences(object? s, RoutedEventArgs e) => View?.FindReferencesCommand();
-	void OnHighlightOccurrences(object? s, RoutedEventArgs e) => View?.HighlightOccurrencesCommand();
-	void OnSideBySide(object? s, RoutedEventArgs e)
+	void OnNextHunk(object? s, EventArgs e) => View?.JumpToHunkCommand(1);
+	void OnPrevHunk(object? s, EventArgs e) => View?.JumpToHunkCommand(-1);
+	void OnNextFile(object? s, EventArgs e) => App.Workspace?.OpenAdjacentFileAsync(1).HandleExceptions();
+	void OnPrevFile(object? s, EventArgs e) => App.Workspace?.OpenAdjacentFileAsync(-1).HandleExceptions();
+	void OnToggleViewed(object? s, EventArgs e) => App.Workspace?.ToggleViewedAndAdvanceAsync().HandleExceptions();
+	void OnToggleOverview(object? s, EventArgs e) => App.Workspace?.ToggleOverviewAsync().HandleExceptions();
+	void OnToggleBlame(object? s, EventArgs e) => View?.ToggleBlameCommand();
+	void OnCommentAtCaret(object? s, EventArgs e) => View?.CommentAtCaretCommand();
+	void OnGoToDefinition(object? s, EventArgs e) => View?.GoToDefinitionCommand();
+	void OnFindReferences(object? s, EventArgs e) => View?.FindReferencesCommand();
+	void OnHighlightOccurrences(object? s, EventArgs e) => View?.HighlightOccurrencesCommand();
+	void OnSideBySide(object? s, EventArgs e)
 		=> App.Workspace?.SetDiffLayoutAsync(!DiffLayoutPreference.SideBySide).HandleExceptions();
-	void OnCloseDocument(object? s, RoutedEventArgs e) => App.Workspace?.CloseActiveDocument();
+	void OnCloseDocument(object? s, EventArgs e) => App.Workspace?.CloseActiveDocument();
 
-	void OnShowPane(object? s, RoutedEventArgs e)
+	void OnShowPane(object? s, EventArgs e)
 	{
-		if (s is MenuItem { Tag: string id })
+		if (s is NativeMenuItem { CommandParameter: string id })
 			App.Workspace?.Factory?.ShowPane(id);
 	}
-	void OnPruneWorktrees(object? s, RoutedEventArgs e) => App.Workspace?.PruneWorktreeCacheAsync().HandleExceptions();
+	void OnPruneWorktrees(object? s, EventArgs e) => App.Workspace?.PruneWorktreeCacheAsync().HandleExceptions();
+
+	/// <summary>The repositories opened before. A menu item has no ItemsSource to bind the list
+	/// to, so it is built when the menu opens - which is also the moment it can have grown since
+	/// the window was created.</summary>
+	void FillRecentMenu()
+	{
+		var items = recentMenu.Menu!.Items;
+		items.Clear();
+		foreach (string path in Vm?.Recent ?? Enumerable.Empty<string>())
+		{
+			var item = new NativeMenuItem { Header = path };
+			item.Click += (_, _) => App.OpenRepositoryAsync(path).HandleExceptions();
+			items.Add(item);
+		}
+	}
 
 	/// <summary>
 	/// Lists the checkout's solutions so one can be named for builds, with what the automatic
@@ -248,22 +323,22 @@ public partial class MainWindow : Window
 	/// </summary>
 	void FillBuildSolutionMenu()
 	{
-		BuildSolutionMenu.Items.Clear();
+		var items = buildSolutionMenu.Menu!.Items;
+		items.Clear();
 		if (App.Workspace is not { } workspace)
 			return;
 		string root = workspace.RepoPath;
 		string? chosen = BuildSolutionPreference.For(root);
 		string automatic = Core.Infra.SolutionTarget.ForRoot(root) ?? "nothing to build";
-		BuildSolutionMenu.Items.Add(Option($"Automatic  ({automatic})", null, chosen is null));
+		items.Add(Option($"Automatic  ({automatic})", null, chosen is null));
 		foreach (string solution in Core.Infra.SolutionTarget.Candidates(root))
-			BuildSolutionMenu.Items.Add(Option(solution, solution, solution == chosen));
+			items.Add(Option(solution, solution, solution == chosen));
 
-		MenuItem Option(string header, string? solution, bool current)
+		NativeMenuItem Option(string header, string? solution, bool current)
 		{
-			var item = new MenuItem {
+			var item = new NativeMenuItem {
 				Header = header,
 				ToggleType = MenuItemToggleType.Radio,
-				GroupName = "build-solution",
 				IsChecked = current,
 			};
 			item.Click += (_, _) => {
@@ -280,24 +355,24 @@ public partial class MainWindow : Window
 		}
 	}
 
-	void OnRebasePr(object? s, RoutedEventArgs e) => App.Workspace?.RebaseCurrentPrOnTargetAsync().HandleExceptions();
+	void OnRebasePr(object? s, EventArgs e) => App.Workspace?.RebaseCurrentPrOnTargetAsync().HandleExceptions();
 
 	// The overview page's commands, so they are reachable without going back to that tab.
-	void OnEnterCommitScope(object? s, RoutedEventArgs e) => App.Workspace?.Scopes.EnterCommitAsync().HandleExceptions();
-	void OnNextCommit(object? s, RoutedEventArgs e) => App.Workspace?.Scopes.StepCommitAsync(1).HandleExceptions();
-	void OnPreviousCommit(object? s, RoutedEventArgs e) => App.Workspace?.Scopes.StepCommitAsync(-1).HandleExceptions();
-	void OnExitCommitScope(object? s, RoutedEventArgs e) => App.Workspace?.Scopes.ExitAsync().HandleExceptions();
-	void OnOpenVsCode(object? s, RoutedEventArgs e) => App.Workspace?.OpenInVsCodeAsync(oldSide: false).HandleExceptions();
-	void OnOpenFixtures(object? s, RoutedEventArgs e) => App.Workspace?.OpenAffectedFixturesInILSpyAsync().HandleExceptions();
+	void OnEnterCommitScope(object? s, EventArgs e) => App.Workspace?.Scopes.EnterCommitAsync().HandleExceptions();
+	void OnNextCommit(object? s, EventArgs e) => App.Workspace?.Scopes.StepCommitAsync(1).HandleExceptions();
+	void OnPreviousCommit(object? s, EventArgs e) => App.Workspace?.Scopes.StepCommitAsync(-1).HandleExceptions();
+	void OnExitCommitScope(object? s, EventArgs e) => App.Workspace?.Scopes.ExitAsync().HandleExceptions();
+	void OnOpenVsCode(object? s, EventArgs e) => App.Workspace?.OpenInVsCodeAsync(oldSide: false).HandleExceptions();
+	void OnOpenFixtures(object? s, EventArgs e) => App.Workspace?.OpenAffectedFixturesInILSpyAsync().HandleExceptions();
 
-	void OnSinceLastPass(object? s, RoutedEventArgs e) => App.Workspace?.Scopes.EnterSinceLastPassAsync().HandleExceptions();
+	void OnSinceLastPass(object? s, EventArgs e) => App.Workspace?.Scopes.EnterSinceLastPassAsync().HandleExceptions();
 
 	// Choosing where a pass starts also reads from there: the choice is only ever made to see
 	// that scope, and leaving the reader to press the scope entry afterwards is a second step
 	// for one intention.
-	void OnPassFromMarked(object? s, RoutedEventArgs e) => UsePassBaseline(PassBaselineKind.MarkedViewed);
-	void OnPassFromSubmitted(object? s, RoutedEventArgs e) => UsePassBaseline(PassBaselineKind.SubmittedReview);
-	void OnPassFromOpened(object? s, RoutedEventArgs e) => UsePassBaseline(PassBaselineKind.Opened);
+	void OnPassFromMarked(object? s, EventArgs e) => UsePassBaseline(PassBaselineKind.MarkedViewed);
+	void OnPassFromSubmitted(object? s, EventArgs e) => UsePassBaseline(PassBaselineKind.SubmittedReview);
+	void OnPassFromOpened(object? s, EventArgs e) => UsePassBaseline(PassBaselineKind.Opened);
 
 	static void UsePassBaseline(PassBaselineKind kind)
 	{
@@ -307,23 +382,23 @@ public partial class MainWindow : Window
 		workspace.Scopes.EnterSinceLastPassAsync().HandleExceptions();
 	}
 
-	void OnOpenStart(object? s, RoutedEventArgs e) => App.Workspace?.OpenStart();
+	void OnOpenStart(object? s, EventArgs e) => App.Workspace?.OpenStart();
 
-	void OnCloseReview(object? s, RoutedEventArgs e) => App.Workspace?.CloseReviewAsync().HandleExceptions();
+	void OnCloseReview(object? s, EventArgs e) => App.Workspace?.CloseReviewAsync().HandleExceptions();
 
-	void OnReloadReview(object? s, RoutedEventArgs e) => App.Workspace?.ReloadReviewAsync().HandleExceptions();
+	void OnReloadReview(object? s, EventArgs e) => App.Workspace?.ReloadReviewAsync().HandleExceptions();
 
-	void OnOpenOverview(object? s, RoutedEventArgs e) => App.Workspace?.OpenOverview();
+	void OnOpenOverview(object? s, EventArgs e) => App.Workspace?.OpenOverview();
 
 	void OnContinueFromPrepare(object? s, RoutedEventArgs e) => App.Workspace?.StartPage?.ContinueNow();
 
-	void OnOpenOnGitHub(object? s, RoutedEventArgs e)
+	void OnOpenOnGitHub(object? s, EventArgs e)
 	{
 		if (App.Workspace is { CurrentPr: { } pr } ws)
 			ws.OpenOnGitHubAsync(pr.Number).HandleExceptions();
 	}
 
-	void OnShowSemanticLog(object? s, RoutedEventArgs e)
+	void OnShowSemanticLog(object? s, EventArgs e)
 	{
 		if (App.Workspace is not { } ws)
 			return;
@@ -331,27 +406,27 @@ public partial class MainWindow : Window
 			$"== base workspace ({ws.BaseSemantics?.State.ToString() ?? "none"}) ==\n{ws.BaseSemantics?.LoadLog}";
 		ws.OpenTextDocument("semlog", "Semantic load log", log);
 	}
-	void OnBack(object? s, RoutedEventArgs e) => App.Workspace?.GoBackAsync().HandleExceptions();
-	void OnForward(object? s, RoutedEventArgs e) => App.Workspace?.GoForwardAsync().HandleExceptions();
+	void OnBack(object? s, EventArgs e) => App.Workspace?.GoBackAsync().HandleExceptions();
+	void OnForward(object? s, EventArgs e) => App.Workspace?.GoForwardAsync().HandleExceptions();
 
-	void OnNextUncovered(object? s, RoutedEventArgs e) => View?.JumpToUncoveredCommand();
+	void OnNextUncovered(object? s, EventArgs e) => View?.JumpToUncoveredCommand();
 
-	void OnCallGraph(object? s, RoutedEventArgs e) => View?.ShowCallGraphCommand();
+	void OnCallGraph(object? s, EventArgs e) => View?.ShowCallGraphCommand();
 
-	void OnHistoryOfSelection(object? s, RoutedEventArgs e) => View?.HistoryOfSelectionCommand();
+	void OnHistoryOfSelection(object? s, EventArgs e) => View?.HistoryOfSelectionCommand();
 
-	void OnDebugHere(object? s, RoutedEventArgs e) => View?.DebugHereCommand();
+	void OnDebugHere(object? s, EventArgs e) => View?.DebugHereCommand();
 
-	void OnOpenReviewDocument(object? s, RoutedEventArgs e) => App.Workspace?.OpenReviewDocument();
+	void OnOpenReviewDocument(object? s, EventArgs e) => App.Workspace?.OpenReviewDocument();
 
-	void OnExit(object? s, RoutedEventArgs e) => Close();
+	void OnExit(object? s, EventArgs e) => Close();
 
-	void OnToggleMultiRowTabs(object? s, RoutedEventArgs e) => TabRowsPreference.Set(!TabRowsPreference.MultiRow);
+	void OnToggleMultiRowTabs(object? s, EventArgs e) => TabRowsPreference.Set(!TabRowsPreference.MultiRow);
 
 	/// <summary>Switches the pointer cross-hair on every open view. A debug build only: what it
 	/// draws is a developer's answer to "where does the app think the pointer is", which is the
 	/// first question whenever a tooltip or popup opens somewhere unexpected.</summary>
-	void OnTogglePointerCrossHair(object? s, RoutedEventArgs e)
+	void OnTogglePointerCrossHair(object? s, EventArgs e)
 	{
 #if DEBUG
 		Editor.PointerCrossHairRenderer.IsEnabled = !Editor.PointerCrossHairRenderer.IsEnabled;
@@ -360,24 +435,24 @@ public partial class MainWindow : Window
 #endif
 	}
 
-	void OnKeyboardShortcuts(object? s, RoutedEventArgs e)
+	void OnKeyboardShortcuts(object? s, EventArgs e)
 		=> App.Workspace?.OpenTextDocument("keys", "Keyboard shortcuts", KeyboardShortcuts.Text);
 
 	// The pane commands: the pane comes forward first, because a run whose output lands behind
 	// whichever pane happens to be in front is a run nobody sees.
-	void OnRunTests(object? s, RoutedEventArgs e) => Pane<Panes.TestsPaneViewModel>("Tests")?.Run();
+	void OnRunTests(object? s, EventArgs e) => Pane<Panes.TestsPaneViewModel>("Tests")?.Run();
 
-	void OnRunTestsWithCoverage(object? s, RoutedEventArgs e)
+	void OnRunTestsWithCoverage(object? s, EventArgs e)
 		=> Pane<Panes.TestsPaneViewModel>("Tests")?.RunWithCoverage();
 
-	void OnRunTestsAB(object? s, RoutedEventArgs e) => Pane<Panes.TestsPaneViewModel>("Tests")?.RunAB();
+	void OnRunTestsAB(object? s, EventArgs e) => Pane<Panes.TestsPaneViewModel>("Tests")?.RunAB();
 
-	void OnImpactedTestFilter(object? s, RoutedEventArgs e)
+	void OnImpactedTestFilter(object? s, EventArgs e)
 		=> Pane<Panes.TestsPaneViewModel>("Tests")?.ApplyImpactedFilter();
 
-	void OnRunApplication(object? s, RoutedEventArgs e) => Pane<Panes.RunPaneViewModel>("Run")?.Run();
+	void OnRunApplication(object? s, EventArgs e) => Pane<Panes.RunPaneViewModel>("Run")?.Run();
 
-	void OnRefreshChecks(object? s, RoutedEventArgs e)
+	void OnRefreshChecks(object? s, EventArgs e)
 	{
 		App.Workspace?.Factory?.ShowPane("Checks");
 		App.Workspace?.RequestChecksRefresh();
@@ -391,31 +466,36 @@ public partial class MainWindow : Window
 		return factory.Pane<T>(id);
 	}
 
+	void OnMenuOpening(object? s, EventArgs e) => RefreshMenus();
+
 	/// <summary>
 	/// What the menu can offer that depends on the tab in front. The review's own state is
 	/// bound - it has events to change on - but which document is active, whether its blame
 	/// margin is showing and how deeply its file is meant to be read have none. Read when the
-	/// menu opens, which is the only moment it matters and the only one that cannot be stale.
+	/// menu opens, which is the only moment it matters and the only one that cannot be stale -
+	/// and by the screenshot watcher, which invokes an item straight out of the model without
+	/// opening anything, so nothing else would have filled the submenus it looks in.
 	/// </summary>
-	void OnMenuOpening(object? s, RoutedEventArgs e)
+	internal void RefreshMenus()
 	{
 		var view = View;
 		var file = App.Workspace?.CurrentFile;
-		MultiRowTabsItem.IsChecked = TabRowsPreference.MultiRow;
+		multiRowTabsItem.IsChecked = TabRowsPreference.MultiRow;
 #if DEBUG
-		PointerCrossHairItem.IsVisible = true;
-		PointerCrossHairItem.IsChecked = Editor.PointerCrossHairRenderer.IsEnabled;
+		pointerCrossHairItem.IsVisible = true;
+		pointerCrossHairItem.IsChecked = Editor.PointerCrossHairRenderer.IsEnabled;
 #endif
+		FillRecentMenu();
 		FillBuildSolutionMenu();
-		BackItem.IsEnabled = App.Workspace?.CanGoBack ?? false;
-		ForwardItem.IsEnabled = App.Workspace?.CanGoForward ?? false;
-		NextHunkItem.IsEnabled = Has(ReviewCommands.JumpToHunk);
-		PrevHunkItem.IsEnabled = Has(ReviewCommands.JumpToHunk);
-		NextUncoveredItem.IsEnabled = Has(ReviewCommands.JumpToUncovered);
-		SideBySideItem.IsChecked = DiffLayoutPreference.SideBySide;
-		BlameItem.IsEnabled = Has(ReviewCommands.ToggleBlame);
-		BlameItem.IsChecked = view?.BlameVisible ?? false;
-		DebugHereItem.IsEnabled = Has(ReviewCommands.DebugHere);
-		HistoryOfSelectionItem.IsEnabled = Has(ReviewCommands.HistoryOfSelection);
+		backItem.IsEnabled = App.Workspace?.CanGoBack ?? false;
+		forwardItem.IsEnabled = App.Workspace?.CanGoForward ?? false;
+		nextHunkItem.IsEnabled = Has(ReviewCommands.JumpToHunk);
+		prevHunkItem.IsEnabled = Has(ReviewCommands.JumpToHunk);
+		nextUncoveredItem.IsEnabled = Has(ReviewCommands.JumpToUncovered);
+		sideBySideItem.IsChecked = DiffLayoutPreference.SideBySide;
+		blameItem.IsEnabled = Has(ReviewCommands.ToggleBlame);
+		blameItem.IsChecked = view?.BlameVisible ?? false;
+		debugHereItem.IsEnabled = Has(ReviewCommands.DebugHere);
+		historyOfSelectionItem.IsEnabled = Has(ReviewCommands.HistoryOfSelection);
 	}
 }

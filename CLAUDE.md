@@ -21,6 +21,12 @@ results and coverage, in one Avalonia window. See `README.md` for the pitch.
   document rows (`SyntaxPainter`, `DiffSyntaxColors`) - a grammar is a state machine over
   consecutive lines, and a unified diff is consecutive on neither side. The editor's own xshd
   definitions answer for what the bundle does not carry, which is ILAsm.
+- The menu bar is a **NativeMenu**, not a `Menu`: macOS puts it in the system menu bar and
+  `NativeMenuBar` draws it inside the window everywhere else, hiding itself where the platform
+  took it. A menu item is a model object rather than a control, so it takes no `x:Name` (each
+  one the code-behind reaches carries a key as its `CommandParameter` instead), has no
+  `ItemsSource`, and shows a gesture only as text unless `Gesture` is set - which on macOS
+  registers a real key equivalent that fires before the focused text box sees the key.
 - **CliWrap** for every external process.
 - Target framework `net10.0`. Nullable enabled, implicit usings, `TreatWarningsAsErrors`,
   central package management (a new `PackageReference` needs a `PackageVersion` in
