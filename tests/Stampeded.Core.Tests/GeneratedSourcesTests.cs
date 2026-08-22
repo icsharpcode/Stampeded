@@ -19,13 +19,7 @@ public class GeneratedSourcesTests
 	{
 		foreach (var dir in temporaryDirectories)
 		{
-			try
-			{
-				Directory.Delete(dir, recursive: true);
-			}
-			catch (IOException)
-			{
-			}
+			TempDirectory.Delete(dir);
 		}
 		temporaryDirectories.Clear();
 	}

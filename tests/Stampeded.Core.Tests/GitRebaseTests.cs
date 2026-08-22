@@ -36,13 +36,7 @@ public class GitRebaseTests
 	{
 		foreach (var dir in temporaryDirectories)
 		{
-			try
-			{
-				Directory.Delete(dir, recursive: true);
-			}
-			catch (IOException)
-			{
-			}
+			TempDirectory.Delete(dir);
 		}
 		temporaryDirectories.Clear();
 	}
@@ -67,6 +61,7 @@ public class GitRebaseTests
 	{
 		string worktree = NewDirectory();
 		await Git(repo, "worktree", "add", "--quiet", worktree, "topic");
+		string worktreeAsGitReportsIt = await AsGitReports(worktree);
 
 		var git = new GitService(repo);
 		var result = await git.RebaseBranchAsync("topic", "main");
@@ -75,14 +70,14 @@ public class GitRebaseTests
 			"topic should now sit on top of main");
 		// The checkout that holds the branch has to move with it, or its index and working
 		// tree describe a commit the branch no longer points at.
-		Assert.That(result.Checkout, Is.EqualTo(worktree));
+		Assert.That(result.Checkout, Is.EqualTo(worktreeAsGitReportsIt));
 		Assert.That((await Git(worktree, "rev-parse", "HEAD")).Trim(), Is.EqualTo(await RevParse("topic")));
 		Assert.That((await Git(worktree, "status", "--porcelain")).Trim(), Is.Empty);
 		Assert.That(File.Exists(Path.Combine(worktree, "main.txt")), Is.True,
 			"the rebased checkout should have main's file");
 
 		// The recovery the UI offers has to work here, and git branch -f would be refused.
-		Assert.That(result.RecoveryCommand("topic"), Is.EqualTo($"git -C {worktree} reset --hard {result.Before[..9]}"));
+		Assert.That(result.RecoveryCommand("topic"), Is.EqualTo($"git -C {worktreeAsGitReportsIt} reset --hard {result.Before[..9]}"));
 		await Git(worktree, "reset", "--hard", result.Before);
 		Assert.That(await RevParse("topic"), Is.EqualTo(result.Before));
 	}
@@ -175,6 +170,11 @@ public class GitRebaseTests
 	}
 
 	Task<string> Git(string dir, params string[] args) => ExternalTool.RunAsync("git", args, dir);
+
+	/// <summary>The path in the form git prints it - forward slashes on Windows, symlinks
+	/// resolved on macOS - which is the form the service passes on unchanged.</summary>
+	static async Task<string> AsGitReports(string dir)
+		=> (await ExternalTool.RunAsync("git", ["rev-parse", "--show-toplevel"], dir)).Trim();
 
 	async Task<string> RevParse(string reference) => (await Git(repo, "rev-parse", reference)).Trim();
 

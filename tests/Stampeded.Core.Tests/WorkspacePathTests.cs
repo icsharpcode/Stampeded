@@ -31,7 +31,7 @@ public class WorkspacePathTests
 		}
 		finally
 		{
-			Directory.Delete(dir, recursive: true);
+			TempDirectory.Delete(dir);
 		}
 	}
 
@@ -53,8 +53,8 @@ public class WorkspacePathTests
 		}
 		finally
 		{
-			Directory.Delete(root, recursive: true);
-			Directory.Delete(sibling, recursive: true);
+			TempDirectory.Delete(root);
+			TempDirectory.Delete(sibling);
 		}
 	}
 }

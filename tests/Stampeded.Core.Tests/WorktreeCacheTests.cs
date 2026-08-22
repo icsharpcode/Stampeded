@@ -34,13 +34,7 @@ public class WorktreeCacheTests
 		Environment.SetEnvironmentVariable("XDG_CACHE_HOME", null);
 		foreach (var dir in temporaryDirectories)
 		{
-			try
-			{
-				Directory.Delete(dir, recursive: true);
-			}
-			catch (IOException)
-			{
-			}
+			TempDirectory.Delete(dir);
 		}
 		temporaryDirectories.Clear();
 	}
