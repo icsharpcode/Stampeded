@@ -187,6 +187,8 @@ public partial class SideBySideDocumentView : UserControl, IReviewDocumentView
 	void OnCommentTextChanged(object? sender, TextChangedEventArgs e)
 		=> CommentPopup.IsLightDismissEnabled = string.IsNullOrEmpty(CommentBox.Text);
 
+	void OnCommentSuggest(object? sender, RoutedEventArgs e) => Suggestion.Prefill(CommentBox, inlineCommentTarget);
+
 	void OnCommentSave(object? sender, RoutedEventArgs e) => SaveInlineCommentAsync().HandleExceptions();
 
 	async Task SaveInlineCommentAsync()
