@@ -23,6 +23,8 @@
           <StackPanel Orientation="Horizontal" Spacing="6" HorizontalAlignment="Right">
             <TextBlock FontSize="10" Opacity="0.6" VerticalAlignment="Center"
                        Text="Ctrl+Enter saves the draft, Esc closes" />
+            <Button Content="Suggest a change" Click="OnCommentSuggest"
+                    ToolTip.Tip="Suggest a change - a block the author can commit with one button, prefilled with this line" />
             <Button Content="Save draft" Click="OnCommentSave" FontWeight="SemiBold" />
             <Button Content="Cancel" Click="OnCommentCancel" />
           </StackPanel>

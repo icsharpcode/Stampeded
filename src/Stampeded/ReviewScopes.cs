@@ -256,6 +256,41 @@ public sealed class ReviewScopes(ReviewWorkspace workspace)
 
 	#region One commit at a time
 
+	/// <summary>The file the way a review was last read is remembered in, and the two things it
+	/// can say. Kept for the reader rather than for the review: someone who works through a series
+	/// commit by commit means it for the next branch too, and a mode that has to be chosen again
+	/// on every open is one nobody chooses twice.</summary>
+	const string PreferredScopeFile = "scope-mode.txt";
+	const string CommitMode = "commit";
+	const string WholeMode = "whole";
+
+	/// <summary>
+	/// Opens the review the way the last one was left. A change that cannot be read commit by
+	/// commit - a single commit, or none - opens as itself and says nothing about it: the reader
+	/// asked for a series where there is one, not for a refusal on every small branch.
+	/// </summary>
+	public async Task RestorePreferredAsync(CancellationToken ct = default)
+	{
+		if (workspace.HeadSha is null)
+			return;
+		// A reader quick enough to narrow the review while the log this needs was still being
+		// read is already where they mean to be; re-entering would send them back to the first
+		// commit of a series they have started stepping through.
+		if (InScope)
+			return;
+		if (UserData.Read(PreferredScopeFile) != CommitMode)
+			return;
+		// Asked for here rather than left to EnterCommitAsync: it announces why it will not
+		// narrow, which is worth saying to a reader who just pressed the button and not to one
+		// who set the mode on some other branch a week ago.
+		await GetRangeCommitsAsync(ct);
+		ct.ThrowIfCancellationRequested();
+		if (!CanEnterCommit)
+			return;
+		workspace.PostStatus("Reading commit by commit, the way you left the last review.");
+		await EnterCommitAsync();
+	}
+
 	/// <summary>Reads the review one commit at a time, starting at the oldest.</summary>
 	public async Task EnterCommitAsync(int index = 0)
 	{
@@ -282,6 +317,7 @@ public sealed class ReviewScopes(ReviewWorkspace workspace)
 			workspace.PostStatus(refusal);
 			return;
 		}
+		UserData.Write(PreferredScopeFile, CommitMode);
 		fullRange ??= range;
 		await ApplyCommitAsync(Math.Clamp(index, 0, Series.Count - 1));
 	}
@@ -412,6 +448,7 @@ public sealed class ReviewScopes(ReviewWorkspace workspace)
 	{
 		if (fullRange is not { } range)
 			return;
+		UserData.Write(PreferredScopeFile, WholeMode);
 		Commit = null;
 		SinceLastPassBase = null;
 		ScopeLine = "";

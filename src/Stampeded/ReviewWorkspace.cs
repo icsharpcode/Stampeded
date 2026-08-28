@@ -401,7 +401,7 @@ public sealed class ReviewWorkspace(string repoPath)
 		OpenOverview();
 		CloseStartPage();
 		LoadIssueUrlPrefixAsync(ct).HandleExceptions();
-		LoadSemanticsAsync(headSha, baseSha, ct).HandleExceptions();
+		LoadScopeThenSemanticsAsync(headSha, baseSha, ct).HandleExceptions();
 		LoadGeneratedSourcesAsync(ct).HandleExceptions();
 		Comments.ReattachDraftsAsync(ct).HandleExceptions();
 		if (detail is not null && prNumber is { } opened)
@@ -481,7 +481,7 @@ public sealed class ReviewWorkspace(string repoPath)
 		// a status line as well would say it twice on the page that shows both.
 		if (Offline && snapshot?.Checks is { } cachedChecks)
 			SetChecks(cachedChecks);
-		LoadSemanticsAsync(headSha, baseSha, ct).HandleExceptions();
+		LoadScopeThenSemanticsAsync(headSha, baseSha, ct).HandleExceptions();
 		LoadGeneratedSourcesAsync(ct).HandleExceptions();
 		Comments.ReattachDraftsAsync(ct).HandleExceptions();
 		Comments.LoadPostedAsync(number, ct).HandleExceptions();
@@ -515,6 +515,26 @@ public sealed class ReviewWorkspace(string repoPath)
 		// The description and the comment threads are rendered before this returns.
 		ReviewChanged?.Invoke();
 		Comments.Rerender();
+	}
+
+	/// <summary>
+	/// Puts the reader in the scope the last review was left in, then loads the semantic
+	/// workspaces onto what that scope shows.
+	///
+	/// The scope first, because it decides what the review IS: a log and a diff, seconds at
+	/// most, while the workspaces take as long as a solution takes to load. Arriving after
+	/// them, the restored mode rearranged a review that was already being read - which is a
+	/// change of scope, not the scope a review opened in.
+	///
+	/// Entering a scope overlays the text on screen onto the workspaces, and this load
+	/// replaces the workspaces it was put on, so the overlay is applied again at the end.
+	/// </summary>
+	async Task LoadScopeThenSemanticsAsync(string headSha, string baseSha, CancellationToken ct)
+	{
+		await Scopes.RestorePreferredAsync(ct);
+		await LoadSemanticsAsync(headSha, baseSha, ct);
+		if (Scopes.InScope)
+			await ApplyScopeSemanticsAsync();
 	}
 
 	async Task LoadSemanticsAsync(string headSha, string baseSha, CancellationToken ct)

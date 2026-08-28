@@ -488,6 +488,8 @@ public partial class DiffDocumentView : UserControl, IReviewDocumentView
 	void OnCommentTextChanged(object? sender, TextChangedEventArgs e)
 		=> CommentPopup.IsLightDismissEnabled = string.IsNullOrEmpty(CommentBox.Text);
 
+	void OnCommentSuggest(object? sender, RoutedEventArgs e) => Suggestion.Prefill(CommentBox, inlineCommentTarget);
+
 	void OnCommentSave(object? sender, RoutedEventArgs e) => SaveInlineCommentAsync().HandleExceptions();
 
 	async Task SaveInlineCommentAsync()
@@ -576,6 +578,15 @@ public partial class DiffDocumentView : UserControl, IReviewDocumentView
 	void OnCtxPrevHunk(object? s, RoutedEventArgs e) => JumpToHunk(-1);
 	void OnCtxToggleBlame(object? s, RoutedEventArgs e) => ToggleBlameCommand();
 	void OnCtxComment(object? s, RoutedEventArgs e) => CommentAtCaretCommand();
+
+	/// <summary>The comment editor, opened straight into a suggestion: the same editor the
+	/// button in it opens, for a reader who knows before they start that the remark is an edit.</summary>
+	void OnCtxSuggest(object? s, RoutedEventArgs e)
+	{
+		CommentAtCaretCommand();
+		if (CommentPopup.IsOpen)
+			Suggestion.Prefill(CommentBox, inlineCommentTarget);
+	}
 
 	void OnCtxNextUncovered(object? s, RoutedEventArgs e) => JumpToNextUncovered();
 
