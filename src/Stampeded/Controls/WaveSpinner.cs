@@ -7,8 +7,8 @@ namespace Stampeded.Controls;
 
 /// <summary>
 /// Eight squares with a brightness/size wave sweeping across, then a beat with all of
-/// them dim - the KDE Plasma loading idiom. Drawn directly; animates only while
-/// effectively visible.
+/// them dim - the KDE Plasma loading idiom. Drawn directly; the timer runs only while the
+/// control is really on screen, so a hidden one costs nothing.
 /// </summary>
 public sealed class WaveSpinner : Control
 {
@@ -33,6 +33,17 @@ public sealed class WaveSpinner : Control
 	public WaveSpinner()
 	{
 		timer.Tick += (_, _) => {
+			// Being in the visual tree is not being on screen: a spinner sits under a panel
+			// that is hidden until there is something to wait for, and hiding a control does
+			// not detach it. Running from attachment to detachment, every spinner in the
+			// window - two on the start page, one per step of the preparing overlay -
+			// invalidated itself twenty-five times a second for as long as the window was
+			// open, and the renderer redrew a page nobody had touched for hours.
+			if (!IsEffectivelyVisible)
+			{
+				timer.Stop();
+				return;
+			}
 			wavePhase = (wavePhase + 0.35) % (2 * Travel);
 			InvalidateVisual();
 		};
@@ -50,6 +61,7 @@ public sealed class WaveSpinner : Control
 		base.OnDetachedFromVisualTree(e);
 	}
 
+
 	protected override Size MeasureOverride(Size availableSize)
 	{
 		double size = SquareSize;
@@ -58,6 +70,11 @@ public sealed class WaveSpinner : Control
 
 	public override void Render(DrawingContext context)
 	{
+		// Where the animation learns it is back on screen. Avalonia offers no change
+		// notification for effective visibility, but it draws only what is visible, so being
+		// asked to draw is the notification.
+		if (!timer.IsEnabled)
+			timer.Start();
 		double size = SquareSize;
 		double step = size * 2;
 		double centerY = Bounds.Height / 2;
