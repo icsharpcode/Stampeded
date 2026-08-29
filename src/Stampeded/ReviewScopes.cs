@@ -28,6 +28,42 @@ public sealed class ReviewScopes(ReviewWorkspace workspace)
 
 	public int CommitIndex { get; private set; }
 
+	/// <summary>The commits of the series that have been on screen since it was entered. A
+	/// verdict given from inside the series has to say how much of it was read, and nothing
+	/// else knows: every commit keys its own viewed flags, so neither the whole change's flags
+	/// nor the one being read say anything about the others.</summary>
+	readonly HashSet<string> readCommits = [];
+
+	/// <summary>
+	/// Why an approval given from here would be an approval of unread code, or null when it
+	/// would not. Only while the series is what is on screen: a reader who has gone back to the
+	/// whole change is looking at all of it, whatever order they read it in before, and holding
+	/// a restored per-commit mode against them for the rest of the review would refuse the
+	/// approval of someone who did read everything.
+	/// </summary>
+	public string? UnreadSeries
+	{
+		get
+		{
+			int unread = Series.Count - readCommits.Count;
+			return Commit is null || Series.Count == 0 || unread <= 0
+				? null
+				: $"This change is being read one commit at a time, and {unread} of its {Series.Count} "
+					+ "commit(s) have not been on screen. Approving from here would approve what you have "
+					+ "not read: step through the rest, or press 'Whole change' to read it as one diff. "
+					+ "A comment or a change request can be submitted from here as it is.";
+		}
+	}
+
+	/// <summary>How much of the series has been read in this pass, for a verdict given from
+	/// inside it. Empty when the reader is not reading a series at all.</summary>
+	public string SeriesProgress
+		=> Commit is null || Series.Count == 0 ? ""
+			: readCommits.Count >= Series.Count
+				? $"You had read all {Series.Count} commit(s) of it."
+				: $"You had read {readCommits.Count} of its {Series.Count} commit(s) - "
+					+ $"{Series.Count - readCommits.Count} never came up on screen.";
+
 	/// <summary>
 	/// The tree the review is diffed against while only the work since the reader's last
 	/// pass is in scope: everything they already read, replayed onto the current base. A
@@ -146,6 +182,7 @@ public sealed class ReviewScopes(ReviewWorkspace workspace)
 		Commit = null;
 		Series = [];
 		CommitIndex = 0;
+		readCommits.Clear();
 		SinceLastPassBase = null;
 		ScopeLine = "";
 		sinceLastPassTree = null;
@@ -332,6 +369,7 @@ public sealed class ReviewScopes(ReviewWorkspace workspace)
 		var commit = Series[index];
 		CommitIndex = index;
 		Commit = commit;
+		readCommits.Add(commit.Sha);
 		string repoKey = Path.GetFileName(workspace.RepoPath);
 		if (commit.IsWorkingTree)
 		{
