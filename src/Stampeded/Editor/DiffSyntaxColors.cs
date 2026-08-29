@@ -18,20 +18,27 @@ namespace Stampeded.Editor;
 /// </summary>
 static class DiffSyntaxColors
 {
-	public static RichTextModel Build(SyntaxPainter painter, DiffDocumentModel model, TextDocument document)
+	/// <summary>
+	/// Paints the document into <paramref name="rich"/>, a span at a time: what comes back is
+	/// the work, not the result, so the caller decides how much of it to do before the view
+	/// draws. See <see cref="SlicedPaint"/> for why that is worth deciding.
+	/// </summary>
+	public static IEnumerable<int> Build(SyntaxPainter painter, DiffDocumentModel model,
+		TextDocument document, RichTextModel rich)
 	{
-		var rich = new RichTextModel();
-		AddSide(rich, painter, model, document, oldSide: false);
+		foreach (int line in AddSide(rich, painter, model, document, oldSide: false))
+			yield return line;
 		if (model.Tags.Any(t => t.Kind == DiffLineKind.Removed))
-			AddSide(rich, painter, model, document, oldSide: true);
-		return rich;
+		{
+			foreach (int line in AddSide(rich, painter, model, document, oldSide: true))
+				yield return line;
+		}
 	}
 
 	/// <summary>One text painted onto itself, for a view that shows one revision whole - each
 	/// pane of the side-by-side layout, where a side is not interleaved with anything.</summary>
-	public static RichTextModel Whole(SyntaxPainter painter, TextDocument document)
+	public static IEnumerable<int> Whole(SyntaxPainter painter, TextDocument document, RichTextModel rich)
 	{
-		var rich = new RichTextModel();
 		foreach (var span in painter.Paint(document.Text))
 		{
 			if (span.Line > document.LineCount)
@@ -40,16 +47,16 @@ static class DiffSyntaxColors
 			int length = Math.Min(span.Length, line.Length - span.Start);
 			if (span.Start >= 0 && length > 0)
 				rich.ApplyHighlighting(line.Offset + span.Start, length, span.Color);
+			yield return span.Line;
 		}
-		return rich;
 	}
 
-	static void AddSide(RichTextModel rich, SyntaxPainter painter,
+	static IEnumerable<int> AddSide(RichTextModel rich, SyntaxPainter painter,
 		DiffDocumentModel model, TextDocument document, bool oldSide)
 	{
 		var (text, sideToDoc) = model.GetSideText(oldSide);
 		if (text.Length == 0)
-			return;
+			yield break;
 		foreach (var span in painter.Paint(text))
 		{
 			int index = span.Line - 1;
@@ -66,6 +73,7 @@ static class DiffSyntaxColors
 			int length = Math.Min(span.Length, docLine.Length - span.Start);
 			if (span.Start >= 0 && length > 0)
 				rich.ApplyHighlighting(docLine.Offset + span.Start, length, span.Color);
+			yield return docLineNumber;
 		}
 	}
 }

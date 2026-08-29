@@ -266,6 +266,9 @@ public partial class SideBySideDocumentView : UserControl, IReviewDocumentView
 	bool scrollWired;
 	int wireAttempts;
 	Stampeded.Editor.SyntaxPainter? painter;
+	Stampeded.Editor.SlicedPaint? leftPaint;
+	Stampeded.Editor.SlicedPaint? rightPaint;
+
 	AvaloniaEdit.Highlighting.RichTextColorizer? leftColorizer;
 	AvaloniaEdit.Highlighting.RichTextColorizer? rightColorizer;
 
@@ -469,20 +472,27 @@ public partial class SideBySideDocumentView : UserControl, IReviewDocumentView
 	/// </summary>
 	void ApplySyntaxColors()
 	{
-		Apply(Left, ref leftColorizer);
-		Apply(Right, ref rightColorizer);
+		Apply(Left, ref leftColorizer, ref leftPaint);
+		Apply(Right, ref rightColorizer, ref rightPaint);
 
-		void Apply(ReviewTextEditor editor, ref AvaloniaEdit.Highlighting.RichTextColorizer? colorizer)
+		void Apply(ReviewTextEditor editor, ref AvaloniaEdit.Highlighting.RichTextColorizer? colorizer,
+			ref Stampeded.Editor.SlicedPaint? paint)
 		{
+			paint?.Cancel();
+			paint = null;
 			if (colorizer is not null)
 				editor.TextArea.TextView.LineTransformers.Remove(colorizer);
 			colorizer = null;
 			if (painter is null)
 				return;
-			colorizer = new AvaloniaEdit.Highlighting.RichTextColorizer(
-				Stampeded.Editor.DiffSyntaxColors.Whole(painter, editor.Document));
+			// The colours are handed to the pane before they have been worked out: the model
+			// is read as the rows are drawn, so painting it further only needs a redraw.
+			var colors = new AvaloniaEdit.Highlighting.RichTextModel();
+			colorizer = new AvaloniaEdit.Highlighting.RichTextColorizer(colors);
 			editor.TextArea.TextView.LineTransformers.Insert(0, colorizer);
-			editor.TextArea.TextView.Redraw();
+			paint = Stampeded.Editor.SlicedPaint.Start(
+				Stampeded.Editor.DiffSyntaxColors.Whole(painter, editor.Document, colors),
+				editor.TextArea.TextView.Redraw);
 		}
 	}
 

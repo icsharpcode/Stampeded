@@ -53,6 +53,7 @@ public partial class DiffDocumentView : UserControl, IReviewDocumentView
 	DiffDocumentViewModel? viewModel;
 	RichTextColorizer? semanticColorizer;
 	RichTextColorizer? syntaxColorizer;
+	Stampeded.Editor.SlicedPaint? syntaxPaint;
 	Stampeded.Editor.SyntaxPainter? painter;
 	bool semanticsRefreshQueued;
 
@@ -665,14 +666,21 @@ public partial class DiffDocumentView : UserControl, IReviewDocumentView
 	/// </summary>
 	void ApplySyntaxColors()
 	{
+		syntaxPaint?.Cancel();
+		syntaxPaint = null;
 		if (syntaxColorizer is not null)
 			Editor.TextArea.TextView.LineTransformers.Remove(syntaxColorizer);
 		syntaxColorizer = null;
 		if (painter is null || model is null)
 			return;
-		syntaxColorizer = new RichTextColorizer(DiffSyntaxColors.Build(painter, model, Editor.Document));
+		// The colours are handed to the view before they have been worked out: the model is
+		// read as the rows are drawn, so painting it further only needs a redraw to show.
+		var colors = new RichTextModel();
+		syntaxColorizer = new RichTextColorizer(colors);
 		Editor.TextArea.TextView.LineTransformers.Insert(0, syntaxColorizer);
-		Editor.TextArea.TextView.Redraw();
+		syntaxPaint = SlicedPaint.Start(
+			DiffSyntaxColors.Build(painter, model, Editor.Document, colors),
+			Editor.TextArea.TextView.Redraw);
 	}
 
 	protected override void OnDataContextChanged(EventArgs e)
