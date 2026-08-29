@@ -32,4 +32,16 @@ public class PrApprovalTests
 		Assert.That(Pr("APPROVED", ("me", "COMMENTED")).ApprovedByMe, Is.False);
 		Assert.That((Pr("APPROVED", ("me", "APPROVED")) with { ViewerLogin = null }).ApprovedByMe, Is.False);
 	}
+
+	[Test]
+	public void AReviewIsAskedOfTheReaderByNameOnly()
+	{
+		var asked = Pr(null) with { ReviewRequests = [new PrReviewRequest("me")] };
+		Assert.That(asked.ReviewRequestedFromMe, Is.True);
+		// A team the reader is in: gh names the team, and nobody in particular is being asked.
+		var team = Pr(null) with { ReviewRequests = [new PrReviewRequest(null), new PrReviewRequest("someone")] };
+		Assert.That(team.ReviewRequestedFromMe, Is.False);
+		Assert.That(Pr(null).ReviewRequestedFromMe, Is.False);
+		Assert.That((asked with { ViewerLogin = null }).ReviewRequestedFromMe, Is.False);
+	}
 }
