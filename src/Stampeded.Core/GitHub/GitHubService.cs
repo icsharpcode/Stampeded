@@ -12,6 +12,10 @@ public sealed record PrAuthor(string Login);
 /// <summary>One reviewer's last word on a pull request, as `latestReviews` hands it over.</summary>
 public sealed record PrLatestReview(PrAuthor? Author, string? State);
 
+/// <summary>Someone a review has been asked of. A team has no login, which is why this is
+/// not a <see cref="PrAuthor"/>: `reviewRequests` holds both.</summary>
+public sealed record PrReviewRequest(string? Login);
+
 public sealed record PrSummary(
 	int Number,
 	string Title,
@@ -26,7 +30,8 @@ public sealed record PrSummary(
 	int Additions = 0,
 	int Deletions = 0,
 	int ChangedFiles = 0,
-	IReadOnlyList<PrLatestReview>? LatestReviews = null)
+	IReadOnlyList<PrLatestReview>? LatestReviews = null,
+	IReadOnlyList<PrReviewRequest>? ReviewRequests = null)
 {
 	/// <summary>The login gh is authenticated as, stamped on after the list is read: only
 	/// that tells "approved" apart from "approved by the reader".</summary>
@@ -48,6 +53,12 @@ public sealed record PrSummary(
 	public bool ApprovedByMe => ViewerLogin is { Length: > 0 } me
 		&& LatestReviews?.Any(r => r.State == "APPROVED"
 			&& string.Equals(r.Author?.Login, me, StringComparison.OrdinalIgnoreCase)) == true;
+
+	/// <summary>A review has been asked of the reader by name. Only of them: a request sent
+	/// to a team they are in is a request nobody in particular has to answer, and gh names the
+	/// team rather than its members.</summary>
+	public bool ReviewRequestedFromMe => ViewerLogin is { Length: > 0 } me
+		&& ReviewRequests?.Any(r => string.Equals(r.Login, me, StringComparison.OrdinalIgnoreCase)) == true;
 
 	/// <summary>Approved, but not by the reader - so the two badges never both show.</summary>
 	public bool ApprovedByOthers => IsApproved && !ApprovedByMe;
@@ -330,7 +341,7 @@ public sealed class GitHubService(string repoPath)
 	public Task<IReadOnlyList<PrSummary>> ListOpenPrsAsync(CancellationToken ct = default)
 		=> JsonAsync<IReadOnlyList<PrSummary>>(ct,
 			"pr", "list",
-			"--json", "number,title,author,headRefName,baseRefName,isDraft,updatedAt,statusCheckRollup,headRefOid,reviewDecision,additions,deletions,changedFiles,latestReviews",
+			"--json", "number,title,author,headRefName,baseRefName,isDraft,updatedAt,statusCheckRollup,headRefOid,reviewDecision,additions,deletions,changedFiles,latestReviews,reviewRequests",
 			"--limit", "50");
 
 	public Task<PrDetail> GetPrAsync(int number, CancellationToken ct = default)

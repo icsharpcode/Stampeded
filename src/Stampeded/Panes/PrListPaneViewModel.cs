@@ -87,13 +87,16 @@ public class PrListPaneViewModel : Tool
 				// Without a login nothing can be attributed to the reader; the list is still
 				// worth showing, only without the "approved by you" badge.
 			}
-			// What still needs a reader comes first. A pull request someone has already
-			// approved or asked for changes on has had its review, one the reader approved
-			// themselves is done with them, and a draft is not asking for one yet - so all
-			// three sink, drafts furthest. The sort is stable, so within each group the order
-			// gh returned (most recently updated first) survives.
+			// A pull request that asked the reader for a review comes first: it is the one
+			// piece of the list somebody is waiting on them for. Then what still needs a
+			// reader at all. A pull request someone has already approved or asked for changes
+			// on has had its review, one the reader approved themselves is done with them, and
+			// a draft is not asking for one yet - so all three sink, drafts furthest. The sort
+			// is stable, so within each group the order gh returned (most recently updated
+			// first) survives.
 			foreach (var pr in prs.Select(p => p with { ViewerLogin = viewer })
-				.OrderBy(p => p.IsDraft ? 3 : p.ApprovedByMe ? 2 : p.IsApproved || p.ChangesRequested ? 1 : 0))
+				.OrderBy(p => p.ReviewRequestedFromMe ? -1
+					: p.IsDraft ? 3 : p.ApprovedByMe ? 2 : p.IsApproved || p.ChangesRequested ? 1 : 0))
 				Items.Add(pr);
 			State.Status = $"{prs.Count} open pull request(s)";
 		}
