@@ -719,15 +719,45 @@ public sealed class ReviewWorkspace(string repoPath)
 			return ShowDiffDocument(file, ReadOrEmpty(generated.BaseFile), ReadOrEmpty(generated.HeadFile));
 		if (BaseSha is null || HeadSha is null)
 			return null;
-		string oldText = file.Kind == FileChangeKind.Added || file.IsBinary
-			? ""
-			: await Blobs.ReadAsync(BaseSha, file.OldPath) ?? "";
+		string oldText = "";
+		if (file.Kind != FileChangeKind.Added && !file.IsBinary)
+		{
+			if (await Blobs.ReadAsync(BaseSha, file.OldPath) is not { } text)
+			{
+				// The change says this file had an earlier version and the revision it is read
+				// against does not have one. An empty side here would draw the whole file as
+				// newly added - a diff that never happened, and one a reader cannot tell from
+				// a real one, least of all in a scope whose base is a tree built for it.
+				string where = BaseSha.Length > 9 ? BaseSha[..9] : BaseSha;
+				CliLog.Write("review", $"no base side for {file.OldPath}: {where} does not have it, "
+					+ $"though the change calls the file {file.Kind}");
+				StatusMessage?.Invoke($"{file.Path}: {where}, the revision this change is read against, "
+					+ "does not have this file - showing the head side alone rather than a diff against "
+					+ "nothing. The Log pane names the revision to check.");
+				return await ShowHeadSideAlone(file);
+			}
+			oldText = text;
+		}
 		string newText = file.Kind == FileChangeKind.Deleted || file.IsBinary
 			? ""
 			: await ReadHeadFileAsync(file.NewPath);
 		return ShowDiffDocument(file, oldText, newText);
 
 		static string ReadOrEmpty(string? path) => path is null ? "" : File.ReadAllText(path);
+	}
+
+	/// <summary>The head side of a file whose earlier version cannot be read, as a source view:
+	/// there is nothing to compare it with, and saying so beats drawing a diff that is not
+	/// one. It takes the file's own tab, so reopening the file replaces it once the base is
+	/// readable again.</summary>
+	async Task<Documents.IDiffDocument?> ShowHeadSideAlone(FileDiff file)
+	{
+		string text = await ReadHeadFileAsync(file.NewPath);
+		return ShowDocument("diff:" + file.Path, () => {
+			var source = Stampeded.Documents.DiffDocumentViewModel.ForSource(file.Path, text);
+			source.Title += " (head only)";
+			return source;
+		});
 	}
 
 	/// <summary>
