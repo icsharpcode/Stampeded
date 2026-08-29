@@ -405,16 +405,11 @@ public sealed class ReviewComments(ReviewWorkspace workspace)
 					+ "Replies to existing threads can be submitted as a comment review from here.";
 			}
 		}
-		// Drafts are matched against the files in scope, so submitting from one would keep every
-		// draft written elsewhere local and report it as outdated - which is not what happened
-		// to it. This used to be answered inside the submit, with a status line and a return
-		// value that said a review had been submitted: the verdict did nothing and said it had
-		// worked.
-		if (workspace.Scopes.InScope)
-		{
-			return "A review covers the whole change, and this is a part of it: press 'Whole change' "
-				+ $"first, then approve or decline. Your {Drafts.Count} draft(s) are kept.";
-		}
+		// An approval says the whole change was read, so it is the one verdict a part of it
+		// cannot carry. Said before the scope is left, because leaving it is what would hide
+		// how much of the series never came up.
+		if (eventType == "APPROVE" && workspace.Scopes.UnreadSeries is { } unread)
+			return $"{unread} Your {Drafts.Count} draft(s) are kept.";
 		if (eventType == "APPROVE" && workspace.ApprovalGate?.Invoke() is { Ok: false } gate)
 			return $"Approval blocked by the review guide - incomplete: {gate.Detail}  (override in the Guide pane)";
 		// The buttons are disabled for these on your own pull request, but the check that
@@ -424,11 +419,30 @@ public sealed class ReviewComments(ReviewWorkspace workspace)
 			return $"GitHub does not accept {(eventType == "APPROVE" ? "an approval" : "a change request")} "
 				+ "on your own pull request. Submit it as a comment instead; the drafts are kept.";
 		}
+		// Drafts are matched against the files in scope and the lines of the head on screen, so
+		// a verdict given from inside one commit would keep every draft written elsewhere local
+		// and report it as outdated - which is not what happened to it. So the scope is left
+		// first. It used to be a refusal telling the reader to press 'Whole change' themselves,
+		// which is a refusal in place of one keystroke, and it stopped a reader who had just
+		// read the last commit of the series from saying so.
+		string scopeNote = "";
+		if (workspace.Scopes.InScope)
+		{
+			// Read before leaving: the way out of a scope forgets which part of it was on screen.
+			string progress = workspace.Scopes.SeriesProgress;
+			scopeNote = " Left the " + (workspace.Scopes.Commit is not null
+					? "commit-by-commit reading"
+					: "since-last-pass scope")
+				+ ", because a verdict is given on the whole change."
+				+ (progress.Length > 0 ? " " + progress : "");
+			await workspace.Scopes.ExitAsync();
+		}
 		try
 		{
 			var (submitted, skipped) = await SubmitAsync(eventType, body);
 			return $"Review submitted ({eventType}): {submitted} comment(s) posted"
-				+ (skipped > 0 ? $", {skipped} kept local (outdated/off-diff)" : "") + ".";
+				+ (skipped > 0 ? $", {skipped} kept local (outdated/off-diff)" : "") + "."
+				+ scopeNote;
 		}
 		catch (ToolFailedException ex)
 		{
