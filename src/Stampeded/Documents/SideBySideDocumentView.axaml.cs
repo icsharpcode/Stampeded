@@ -165,8 +165,10 @@ public partial class SideBySideDocumentView : UserControl, IReviewDocumentView
 	bool MoveToThread(ThreadData thread)
 	{
 		var pane = thread.OldSide ? leftPane : rightPane;
-		if (pane?.MoveCaretToBlobLine(thread.BlobLine) != true)
+		if (pane?.DocLineFromBlobLine(thread.BlobLine) is not { } docLine)
 			return false;
+		Reveal(docLine);
+		pane.MoveCaretToBlobLine(thread.BlobLine);
 		(thread.OldSide ? Left : Right).TextArea.Focus();
 		return true;
 	}
@@ -525,10 +527,54 @@ public partial class SideBySideDocumentView : UserControl, IReviewDocumentView
 		=> Dispatcher.UIThread.Post(
 			() => {
 				var (first, second) = oldSide ? (leftPane, rightPane) : (rightPane, leftPane);
-				if (first?.MoveCaretToBlobLine(blobLine) != true)
-					second?.MoveCaretToBlobLine(blobLine);
+				var pane = first?.DocLineFromBlobLine(blobLine) is not null ? first : second;
+				if (pane?.DocLineFromBlobLine(blobLine) is { } docLine)
+				{
+					Reveal(docLine);
+					pane.MoveCaretToBlobLine(blobLine);
+					ScrollBothWhenLaidOut(docLine);
+				}
 			},
 			DispatcherPriority.Loaded);
+
+	/// <summary>
+	/// Puts both panes on a row, and again on the next few layout passes. Giving rows back
+	/// rebuilds what is collapsed, and the scroll that follows is measured against the rows
+	/// as they were - it lands short, or at the top of the file. Both panes show the same
+	/// rows, so scrolling each to the row is also what keeps them in step.
+	/// </summary>
+	void ScrollBothWhenLaidOut(int docLine)
+	{
+		int passes = 4;
+		void OnLaidOut(object? sender, EventArgs e)
+		{
+			Left.ScrollToLine(Math.Min(docLine, Left.Document.LineCount));
+			Right.ScrollToLine(Math.Min(docLine, Right.Document.LineCount));
+			if (--passes <= 0)
+				LayoutUpdated -= OnLaidOut;
+		}
+		LayoutUpdated += OnLaidOut;
+	}
+
+	/// <summary>
+	/// Gives a row back before the caret is put on it: a line hidden as context, or folded
+	/// away inside a member, is not a place the caret can be seen. Both panes are opened,
+	/// because they render the same rows and only stay in step while they agree on which.
+	/// The gap goes first - revealing rebuilds the folds over it.
+	/// </summary>
+	void Reveal(int docLine)
+	{
+		contextGaps?.Reveal(docLine);
+		foreach (var (editor, folding) in
+			new[] { (Left, leftFolding), (Right, rightFolding) })
+		{
+			if (folding is null || docLine > editor.Document.LineCount)
+				continue;
+			int offset = editor.Document.GetLineByNumber(docLine).Offset;
+			foreach (var section in folding.GetFoldingsContaining(offset))
+				section.IsFolded = false;
+		}
+	}
 
 	/// <summary>
 	/// Both panes fold over the same document lines. They have to: the panes are kept in
