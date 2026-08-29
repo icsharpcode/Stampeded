@@ -1881,6 +1881,7 @@ public sealed class ReviewWorkspace(string repoPath)
 				oldSide))
 			.ToList();
 		ReferencesAvailable?.Invoke(symbol.Name + (oldSide ? " (base)" : ""), items);
+		Factory?.ShowPane("References");
 	}
 
 	/// <summary>Root of a call graph: the symbol at a blob position, named for display.</summary>
