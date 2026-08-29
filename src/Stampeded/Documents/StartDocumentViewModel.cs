@@ -222,6 +222,14 @@ public class StartDocumentViewModel : Document
 					break;
 			}
 		};
+		// The grammar registry and the first run of a tokenizer cost about a quarter of a
+		// second between them, and neither depends on which file is being read. Paid here,
+		// off the UI thread while the start page waits for a click, rather than on the first
+		// file of a review - where it lands on the UI thread, in front of the reader, next to
+		// everything else opening a review is doing. C# because that is what the grammar of a
+		// review here turns out to be; any other language pays its own load once.
+		Task.Run(() => Editor.SyntaxPainter.For("warm.cs")?.Paint("class C { void M() { } }").Count())
+			.HandleExceptions();
 		LoadStartPageAsync().HandleExceptions();
 	}
 
