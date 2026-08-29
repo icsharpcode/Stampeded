@@ -104,4 +104,52 @@ public class ReReviewTests
 			Directory.Delete(dir, recursive: true);
 		}
 	}
+
+	[Test]
+	public void OpeningAReviewIsNotAPassOverIt()
+	{
+		string dir = Path.Combine(Path.GetTempPath(), "stampeded-test-" + Guid.NewGuid().ToString("N"));
+		try
+		{
+			var store = new ReviewStateStore(dir);
+			// Opened at one, ticked a file off; opened at two and only looked around; opened
+			// at three. The pass to measure from is one, not two - nothing was read at two.
+			store.Open("repo", 1, "sha-one", "base-one");
+			store.SetViewed("a.cs", true);
+			store.Open("repo", 1, "sha-two", "base-two");
+			Assert.That(store.PreviousMarkedHead, Is.EqualTo("sha-one"));
+			Assert.That(store.PreviousMarkedBase, Is.EqualTo("base-one"));
+
+			store.Open("repo", 1, "sha-three", "base-three");
+			Assert.That(store.PreviousHead, Is.EqualTo("sha-two"), "the head last opened is still recorded");
+			Assert.That(store.PreviousMarkedHead, Is.EqualTo("sha-one"), "a pass nobody read does not become one");
+		}
+		finally
+		{
+			if (Directory.Exists(dir))
+				Directory.Delete(dir, recursive: true);
+		}
+	}
+
+	[Test]
+	public void ASubmittedReviewMarksTheHeadItWasSaidAbout()
+	{
+		string dir = Path.Combine(Path.GetTempPath(), "stampeded-test-" + Guid.NewGuid().ToString("N"));
+		try
+		{
+			var store = new ReviewStateStore(dir);
+			store.Open("repo", 2, "sha-one", "base-one");
+			store.RecordReviewSubmitted();
+			store.Open("repo", 2, "sha-two", "base-two");
+
+			Assert.That(store.PreviousSubmittedHead, Is.EqualTo("sha-one"));
+			Assert.That(store.PreviousSubmittedBase, Is.EqualTo("base-one"));
+			Assert.That(store.PreviousMarkedHead, Is.Null, "nothing was ticked off, so nothing was read");
+		}
+		finally
+		{
+			if (Directory.Exists(dir))
+				Directory.Delete(dir, recursive: true);
+		}
+	}
 }

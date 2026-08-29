@@ -506,6 +506,9 @@ public sealed class ReviewComments(ReviewWorkspace workspace)
 		}
 		foreach (var id in submitted)
 			workspace.Store.RemoveDraft(id);
+		// The head this was said about, so a later pass can be read from what the author was
+		// last told rather than from whenever the review happened to be opened.
+		workspace.Store.RecordReviewSubmitted();
 		RebuildDrafts();
 		await LoadPostedAsync(pr.Number, CancellationToken.None);
 		return (submitted.Count, skipped);

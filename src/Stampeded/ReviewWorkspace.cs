@@ -877,6 +877,29 @@ public sealed class ReviewWorkspace(string repoPath)
 	/// <summary>Files the interdiff (last pass head -> current head) touched.</summary>
 	public IReadOnlySet<string>? TouchedSinceLastPass { get; private set; }
 
+	/// <summary>
+	/// The earlier points this review can be read against, in the order they are offered:
+	/// where the reader last ticked a file off, where they last submitted a review, and the
+	/// head they last opened. Only those whose commit is still in the repository - a pass at
+	/// a head that has been pruned cannot be diffed against.
+	/// </summary>
+	public IReadOnlyList<PassBaseline> PassBaselines { get; private set; } = [];
+
+	async Task<IReadOnlyList<PassBaseline>> ReadPassBaselinesAsync(CancellationToken ct)
+	{
+		var found = new List<PassBaseline>();
+		await Add(PassBaselineKind.MarkedViewed, Store.PreviousMarkedHead, Store.PreviousMarkedBase);
+		await Add(PassBaselineKind.SubmittedReview, Store.PreviousSubmittedHead, Store.PreviousSubmittedBase);
+		await Add(PassBaselineKind.Opened, Store.PreviousHead, Store.PreviousBase);
+		return found;
+
+		async Task Add(PassBaselineKind kind, string? head, string? baseSha)
+		{
+			if (head is not null && await Git.HasCommitAsync(head, ct))
+				found.Add(new PassBaseline(kind, head, baseSha));
+		}
+	}
+
 	public bool IsTouchedSinceLastPass(string path) => TouchedSinceLastPass?.Contains(path) ?? false;
 
 	/// <summary>Re-review is not a repeat: viewed flags carry over except for files the new
@@ -887,9 +910,11 @@ public sealed class ReviewWorkspace(string repoPath)
 		LastPassHead = null;
 		LastPassBase = null;
 		TouchedSinceLastPass = null;
+		PassBaselines = [];
 		Scopes.ForgetSinceLastPassTree();
 		if (HeadSha is null)
 			return;
+		PassBaselines = await ReadPassBaselinesAsync(ct);
 		// The baseline comes from the store rather than from the move this open discovered:
 		// a reader who closes the app between two passes still wants the diff against what
 		// they read last time.

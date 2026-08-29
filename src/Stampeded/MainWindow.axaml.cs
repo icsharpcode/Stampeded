@@ -258,6 +258,21 @@ public partial class MainWindow : Window
 
 	void OnSinceLastPass(object? s, RoutedEventArgs e) => App.Workspace?.Scopes.EnterSinceLastPassAsync().HandleExceptions();
 
+	// Choosing where a pass starts also reads from there: the choice is only ever made to see
+	// that scope, and leaving the reader to press the scope entry afterwards is a second step
+	// for one intention.
+	void OnPassFromMarked(object? s, RoutedEventArgs e) => UsePassBaseline(PassBaselineKind.MarkedViewed);
+	void OnPassFromSubmitted(object? s, RoutedEventArgs e) => UsePassBaseline(PassBaselineKind.SubmittedReview);
+	void OnPassFromOpened(object? s, RoutedEventArgs e) => UsePassBaseline(PassBaselineKind.Opened);
+
+	static void UsePassBaseline(PassBaselineKind kind)
+	{
+		if (App.Workspace is not { } workspace)
+			return;
+		workspace.Scopes.UsePassBaseline(kind);
+		workspace.Scopes.EnterSinceLastPassAsync().HandleExceptions();
+	}
+
 	void OnOpenStart(object? s, RoutedEventArgs e) => App.Workspace?.OpenStart();
 
 	void OnCloseReview(object? s, RoutedEventArgs e) => App.Workspace?.CloseReviewAsync().HandleExceptions();

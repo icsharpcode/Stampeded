@@ -13,6 +13,32 @@ namespace Stampeded;
 /// the workspace because narrowing means re-reading the diff, re-keying the review state and
 /// re-opening the tabs, none of which a scope can do for itself.
 /// </summary>
+/// <summary>What an earlier pass is measured from.</summary>
+public enum PassBaselineKind
+{
+	/// <summary>The head where the reader last ticked a file off. Opening a review is not
+	/// reading it, so this is what "your last pass" means unless the reader says otherwise.</summary>
+	MarkedViewed,
+
+	/// <summary>The head where the reader last submitted a review - what the author was last
+	/// told about.</summary>
+	SubmittedReview,
+
+	/// <summary>The head the review was last opened at, whether or not anything came of it.</summary>
+	Opened,
+}
+
+/// <summary>An earlier point this review can be read against: the pass's head and the base it
+/// was read against, so the work of that pass is a range and not just a tip.</summary>
+public sealed record PassBaseline(PassBaselineKind Kind, string Head, string? Base)
+{
+	public string Label => Kind switch {
+		PassBaselineKind.MarkedViewed => "the last file you ticked off",
+		PassBaselineKind.SubmittedReview => "your last submitted review",
+		_ => "the last time you opened it",
+	};
+}
+
 public sealed class ReviewScopes(ReviewWorkspace workspace)
 {
 	/// <summary>
@@ -138,16 +164,40 @@ public sealed class ReviewScopes(ReviewWorkspace workspace)
 	public string CommitScopeTip => CommitScopeRefusal
 		?? "Commit by commit - read the change one commit at a time, in the order it was written";
 
+	/// <summary>
+	/// Which earlier point the reader wants to be measured from. The default is the head they
+	/// last ticked a file off at: opening a review, looking around and closing it again is not
+	/// a pass over it, and reading against one would show nothing.
+	/// </summary>
+	public PassBaselineKind PreferredPassBaseline { get; private set; } = PassBaselineKind.MarkedViewed;
+
+	/// <summary>
+	/// The pass to read against: the one the reader asked for, or the next one recorded. A
+	/// review that has been opened and never read has only the head it was opened at, and
+	/// saying so beats offering nothing.
+	/// </summary>
+	public PassBaseline? PassBaseline
+		=> workspace.PassBaselines.FirstOrDefault(b => b.Kind == PreferredPassBaseline)
+			?? workspace.PassBaselines.FirstOrDefault();
+
+	/// <summary>Reads the next pass from a different point. Entering the scope again is what
+	/// shows it - the replay of a different pass is a different tree.</summary>
+	public void UsePassBaseline(PassBaselineKind kind)
+	{
+		PreferredPassBaseline = kind;
+		Changed?.Invoke();
+	}
+
 	/// <summary>Why the work since the reader's last pass cannot be read on its own, or null
 	/// when it can.</summary>
 	public string? SinceLastPassRefusal
 	{
 		get
 		{
-			if (workspace.LastPassHead is null)
+			if (PassBaseline is null)
 			{
-				return "No earlier pass is recorded for this review - Stampeded compares against the "
-					+ "head you last opened it at, and this is the first.";
+				return "No earlier pass is recorded for this review - a pass is a head you ticked a "
+					+ "file off at, submitted a review at, or at least opened, and this is the first.";
 			}
 			if (workspace.DirtyWorktreePath is not null)
 			{
@@ -163,8 +213,8 @@ public sealed class ReviewScopes(ReviewWorkspace workspace)
 	/// <summary>What the since-last-pass control says of itself: what it would show, or why
 	/// there is nothing for it to show.</summary>
 	public string SinceLastPassTip => SinceLastPassRefusal
-		?? "Since last pass - only what changed since you last opened this review; after a rebase, "
-			+ "the author's own edits without the commits it brought in";
+		?? $"Since last pass - only what changed since {PassBaseline!.Label} ({PassBaseline.Head[..9]}); "
+			+ "after a rebase, the author's own edits without the commits it brought in";
 
 	/// <summary>
 	/// Forgets what was in scope. A review that has just been opened is the whole change by
@@ -403,8 +453,8 @@ public sealed class ReviewScopes(ReviewWorkspace workspace)
 	#region Only what changed since the last pass
 
 	/// <summary>The replay is a pure function of (base, last pass head), so it is computed
-	/// once and kept for as long as the review is open.</summary>
-	string? sinceLastPassTree;
+	/// once and kept for as long as that head is the one being read against.</summary>
+	(string Head, string Tree)? sinceLastPassTree;
 
 	/// <summary>Forgets the replayed tree: what it is worth depends on the head the last pass
 	/// ended at, which is what re-reading the review's state has just re-established.</summary>
@@ -429,14 +479,17 @@ public sealed class ReviewScopes(ReviewWorkspace workspace)
 		}
 		if (InScope)
 			await ExitAsync();
-		if (workspace.LastPassHead is not { } previous || ReviewRange is not { } range)
+		if (PassBaseline is not { } baseline || ReviewRange is not { } range)
 			return;
+		string previous = baseline.Head;
 		using var busy = workspace.Busy.Begin("Diffing against your last pass");
-		if (sinceLastPassTree is null)
+		if (sinceLastPassTree?.Head != previous)
 		{
+			sinceLastPassTree = null;
 			try
 			{
-				sinceLastPassTree = await workspace.Git.ReplayTreeAsync(range.Base, previous, workspace.LastPassBase);
+				if (await workspace.Git.ReplayTreeAsync(range.Base, previous, baseline.Base) is { } replayed)
+					sinceLastPassTree = (previous, replayed);
 			}
 			catch (ToolFailedException ex)
 			{
@@ -452,7 +505,8 @@ public sealed class ReviewScopes(ReviewWorkspace workspace)
 			await workspace.OpenInterdiffAsync();
 			return;
 		}
-		var files = await workspace.Git.DiffAsync(sinceLastPassTree, range.Head);
+		string replayedTree = sinceLastPassTree.Value.Tree;
+		var files = await workspace.Git.DiffAsync(replayedTree, range.Head);
 		if (files.Count == 0)
 		{
 			workspace.PostStatus($"Nothing has changed since your last pass at {previous[..9]}"
@@ -466,15 +520,16 @@ public sealed class ReviewScopes(ReviewWorkspace workspace)
 		int wholeChange = workspace.Files.Count;
 		int neverViewed = workspace.Files.Count(f => !workspace.Store.IsViewed(f.Path));
 		fullRange ??= range;
-		SinceLastPassBase = sinceLastPassTree;
-		workspace.SetScopeContent(sinceLastPassTree, range.Head, files);
-		ScopeLine = $"Since your pass at {previous[..9]}{(rewritten ? " (head rewritten)" : "")}: "
+		SinceLastPassBase = replayedTree;
+		workspace.SetScopeContent(replayedTree, range.Head, files);
+		ScopeLine = $"Since your pass at {previous[..9]} ({baseline.Label}){(rewritten ? ", head rewritten" : "")}: "
 			+ $"{files.Count} file(s). Whole change: {neverViewed} of {wholeChange} file(s) never viewed.";
 		await workspace.ApplyScopeSemanticsAsync();
 		workspace.PostStatus(ScopeLine);
 		Changed?.Invoke();
 		await workspace.RebuildForScopeAsync($"since-last-pass scope {previous[..9]} -> {range.Head[..9]} "
-			+ $"({(rewritten ? "rewritten" : "fast-forward")}), base tree {sinceLastPassTree[..9]}, {files.Count} file(s)");
+			+ $"({baseline.Kind}, {(rewritten ? "rewritten" : "fast-forward")}), base tree {replayedTree[..9]}, "
+			+ $"{files.Count} file(s)");
 	}
 
 	#endregion

@@ -52,6 +52,22 @@
                   IsChecked="{Binding InSinceLastPassScope, Mode=OneWay}"
                   IsEnabled="{Binding CanEnterSinceLastPass}"
                   ToolTip.ShowOnDisabled="True" ToolTip.Tip="{Binding SinceLastPassTip}" />
+        <!-- What "last pass" is measured from. A separate group from the scope above: it says
+             where the scope starts, not which scope is on, and choosing one enters it. -->
+        <MenuItem Header="Last Pass Was" IsEnabled="{Binding HasReview}">
+          <MenuItem Header="The Last File You Ticked Off" Click="OnPassFromMarked" ToggleType="Radio"
+                    GroupName="passbaseline" IsChecked="{Binding PassFromMarked, Mode=OneWay}"
+                    ToolTip.ShowOnDisabled="True" ToolTip.Tip="{Binding PassFromMarkedTip}"
+                    IsEnabled="{Binding HasPassFromMarked}" />
+          <MenuItem Header="Your Last Submitted Review" Click="OnPassFromSubmitted" ToggleType="Radio"
+                    GroupName="passbaseline" IsChecked="{Binding PassFromSubmitted, Mode=OneWay}"
+                    ToolTip.ShowOnDisabled="True" ToolTip.Tip="{Binding PassFromSubmittedTip}"
+                    IsEnabled="{Binding HasPassFromSubmitted}" />
+          <MenuItem Header="The Last Time You Opened It" Click="OnPassFromOpened" ToggleType="Radio"
+                    GroupName="passbaseline" IsChecked="{Binding PassFromOpened, Mode=OneWay}"
+                    ToolTip.ShowOnDisabled="True" ToolTip.Tip="{Binding PassFromOpenedTip}"
+                    IsEnabled="{Binding HasPassFromOpened}" />
+        </MenuItem>
         <Separator />
         <MenuItem Header="Mark Viewed + Advance  ( v )" Click="OnToggleViewed" IsEnabled="{Binding HasReview}" />
         <MenuItem Header="Comment Here  ( c )" Click="OnCommentAtCaret" IsEnabled="{Binding CanComment}" />

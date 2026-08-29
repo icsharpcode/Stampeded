@@ -11,7 +11,10 @@ public sealed record StoredComment(Guid Id, CommentAnchor Anchor, string Body, D
 
 // Depth carried a per-file review plan that no longer exists. The field stays so state files
 // written by an older build still parse; nothing reads or writes it.
-sealed record ReviewStateFile(string HeadSha, Dictionary<string, bool> Viewed, List<StoredComment>? Drafts, Dictionary<string, bool>? GuideChecks, Dictionary<string, string>? Depth = null, string? BaseSha = null, string? PreviousHead = null, string? PreviousBase = null);
+sealed record ReviewStateFile(string HeadSha, Dictionary<string, bool> Viewed, List<StoredComment>? Drafts, Dictionary<string, bool>? GuideChecks, Dictionary<string, string>? Depth = null, string? BaseSha = null, string? PreviousHead = null, string? PreviousBase = null,
+	string? MarkedHead = null, string? MarkedBase = null, string? SubmittedHead = null, string? SubmittedBase = null,
+	string? PreviousMarkedHead = null, string? PreviousMarkedBase = null,
+	string? PreviousSubmittedHead = null, string? PreviousSubmittedBase = null);
 
 [JsonSourceGenerationOptions(WriteIndented = true)]
 [JsonSerializable(typeof(ReviewStateFile))]
@@ -49,6 +52,19 @@ public sealed class ReviewStateStore
 	/// <summary>The base that head was reviewed against, so the work of that pass can be
 	/// identified as base..head however the branch was rewritten since.</summary>
 	public string? PreviousBase => current?.PreviousBase;
+
+	/// <summary>The head at which the reader last ticked a file off, before the current one -
+	/// the last head they can be said to have read rather than merely opened. Null until they
+	/// have ticked one off at a head that has since moved.</summary>
+	public string? PreviousMarkedHead => current?.PreviousMarkedHead;
+
+	public string? PreviousMarkedBase => current?.PreviousMarkedBase;
+
+	/// <summary>The head at which the reader last submitted a review, before the current one:
+	/// the point they last said something to the author about.</summary>
+	public string? PreviousSubmittedHead => current?.PreviousSubmittedHead;
+
+	public string? PreviousSubmittedBase => current?.PreviousSubmittedBase;
 
 	public ReviewStateStore(string? directory = null)
 	{
@@ -113,6 +129,19 @@ public sealed class ReviewStateStore
 				BaseSha = baseSha,
 				PreviousHead = current.HeadSha,
 				PreviousBase = current.BaseSha,
+				// What the outgoing pass was: where a file was ticked off, where a review was
+				// submitted. A pass that did neither leaves the older marks standing, which is
+				// what keeps opening a review from counting as having read it.
+				PreviousMarkedHead = current.MarkedHead ?? current.PreviousMarkedHead,
+				PreviousMarkedBase = current.MarkedHead is not null ? current.MarkedBase : current.PreviousMarkedBase,
+				PreviousSubmittedHead = current.SubmittedHead ?? current.PreviousSubmittedHead,
+				PreviousSubmittedBase = current.SubmittedHead is not null
+					? current.SubmittedBase
+					: current.PreviousSubmittedBase,
+				MarkedHead = null,
+				MarkedBase = null,
+				SubmittedHead = null,
+				SubmittedBase = null,
 			};
 			// Persist the head move now: reopening before the next SetViewed must not
 			// re-read the old head from disk and report a second supersede.
@@ -135,6 +164,20 @@ public sealed class ReviewStateStore
 		if (current is null)
 			return;
 		current.Viewed[path] = viewed;
+		// Ticking a file off is the act that makes this head a pass. Unticking is not: it says
+		// the reader wants to look again, not that they never did.
+		if (viewed)
+			current = current with { MarkedHead = current.HeadSha, MarkedBase = current.BaseSha };
+		Save();
+	}
+
+	/// <summary>Records that a review was submitted at the head being read, so a later pass can
+	/// be measured from what the author was last told.</summary>
+	public void RecordReviewSubmitted()
+	{
+		if (current is null)
+			return;
+		current = current with { SubmittedHead = current.HeadSha, SubmittedBase = current.BaseSha };
 		Save();
 	}
 
