@@ -409,14 +409,13 @@ public partial class SideBySideDocumentView : UserControl, IReviewDocumentView
 		if (syncing || target.Offset == source.Offset)
 			return;
 		syncing = true;
-		try
-		{
-			target.Offset = source.Offset;
-		}
-		finally
-		{
-			syncing = false;
-		}
+		target.Offset = source.Offset;
+		// The guard is dropped a turn later, not here. A pane whose widest line is narrower
+		// clamps the offset it was given and reports the clamp as a scroll of its own, from
+		// inside the layout pass that measured it; answering that echo drags the pane the
+		// reader is scrolling, and the two can go on correcting each other until the layout
+		// gives up. The echo comes before the next turn of the dispatcher, so it is let go.
+		Dispatcher.UIThread.Post(() => syncing = false, DispatcherPriority.Input);
 	}
 
 	protected override void OnDataContextChanged(EventArgs e)
@@ -548,22 +547,37 @@ public partial class SideBySideDocumentView : UserControl, IReviewDocumentView
 			DispatcherPriority.Loaded);
 
 	/// <summary>
-	/// Puts both panes on a row, and again on the next few layout passes. Giving rows back
-	/// rebuilds what is collapsed, and the scroll that follows is measured against the rows
-	/// as they were - it lands short, or at the top of the file. Both panes show the same
-	/// rows, so scrolling each to the row is also what keeps them in step.
+	/// Puts both panes on a row, and tries again for a few turns of the dispatcher. Giving
+	/// rows back rebuilds what is collapsed, and a scroll issued before those rows have been
+	/// measured lands short, or at the top of the file.
+	///
+	/// Between turns rather than from a layout callback: scrolling from inside a layout pass
+	/// invalidates the layout that is running, and a handler waiting for passes that have not
+	/// come yet is still armed when the reader scrolls - which both drags the view back to a
+	/// row they have left and lays the view out until Avalonia gives up on it.
 	/// </summary>
 	void ScrollBothWhenLaidOut(int docLine)
 	{
-		int passes = 4;
-		void OnLaidOut(object? sender, EventArgs e)
+		int attempts = 4;
+		Dispatcher.UIThread.Post(Attempt, DispatcherPriority.Background);
+
+		void Attempt()
 		{
 			Left.ScrollToLine(Math.Min(docLine, Left.Document.LineCount));
 			Right.ScrollToLine(Math.Min(docLine, Right.Document.LineCount));
-			if (--passes <= 0)
-				LayoutUpdated -= OnLaidOut;
+			// Once the row is on screen there is nothing left to correct, and nothing is
+			// armed to correct it later.
+			if (--attempts > 0 && !Shows(Right, docLine) && !Shows(Left, docLine))
+				Dispatcher.UIThread.Post(Attempt, DispatcherPriority.Background);
 		}
-		LayoutUpdated += OnLaidOut;
+
+		static bool Shows(ReviewTextEditor editor, int docLine)
+		{
+			var view = editor.TextArea.TextView;
+			return view.VisualLinesValid
+				&& view.VisualLines.Any(line => line.FirstDocumentLine.LineNumber <= docLine
+					&& docLine <= line.LastDocumentLine.LineNumber);
+		}
 	}
 
 	/// <summary>
