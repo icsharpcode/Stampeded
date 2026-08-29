@@ -28,6 +28,12 @@ public enum PassBaselineKind
 	Opened,
 }
 
+/// <summary>One of the points a pass can be measured from, as the entries offering them need
+/// it: what to call it, what it would show or what is missing, and whether it is the one in
+/// use. Named whether or not this review has one - an entry that vanishes teaches nobody what
+/// it was for.</summary>
+public sealed record PassBaselineOption(PassBaselineKind Kind, string Header, string Tip, bool Available, bool InUse);
+
 /// <summary>An earlier point this review can be read against: the pass's head and the base it
 /// was read against, so the work of that pass is a range and not just a tip.</summary>
 public sealed record PassBaseline(PassBaselineKind Kind, string Head, string? Base)
@@ -179,6 +185,28 @@ public sealed class ReviewScopes(ReviewWorkspace workspace)
 	public PassBaseline? PassBaseline
 		=> workspace.PassBaselines.FirstOrDefault(b => b.Kind == PreferredPassBaseline)
 			?? workspace.PassBaselines.FirstOrDefault();
+
+	/// <summary>The three points, in the order they are offered.</summary>
+	public IReadOnlyList<PassBaselineOption> PassBaselineOptions
+	{
+		get
+		{
+			var inUse = PassBaseline?.Kind;
+			return [.. new[] {
+				(Kind: PassBaselineKind.MarkedViewed, Header: "The last file you ticked off",
+					Missing: "No file has been ticked off at an earlier head of this review yet."),
+				(Kind: PassBaselineKind.SubmittedReview, Header: "Your last submitted review",
+					Missing: "No review has been submitted at an earlier head of this review yet."),
+				(Kind: PassBaselineKind.Opened, Header: "The last time you opened it",
+					Missing: "This review has only ever been opened at the head you are reading."),
+			}.Select(entry => {
+				var found = workspace.PassBaselines.FirstOrDefault(b => b.Kind == entry.Kind);
+				return new PassBaselineOption(entry.Kind, entry.Header,
+					found is null ? entry.Missing : $"Read what changed since {found.Label} ({found.Head[..9]})",
+					found is not null, inUse == entry.Kind);
+			})];
+		}
+	}
 
 	/// <summary>Reads the next pass from a different point. Entering the scope again is what
 	/// shows it - the replay of a different pass is a different tree.</summary>

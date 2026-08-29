@@ -178,36 +178,24 @@ public partial class MainViewModel : ObservableObject
 	}
 
 	/// <summary>What each of the three points has to offer, for the entries that choose one.
-	/// A point this review has no record of is named all the same, greyed, with what would
-	/// have to happen for it to exist.</summary>
+	/// The list is the scope's, so the menu bar and the button's dropdown say the same thing.</summary>
 	void UpdatePassBaselines(ReviewWorkspace? workspace)
 	{
-		// The point actually in use, not the one asked for: a review with nothing ticked off
-		// falls back to the head it was opened at, and the mark has to sit where the scope
-		// will really start or it says something untrue.
-		var chosen = workspace?.Scopes.PassBaseline?.Kind;
-		PassFromMarked = chosen == PassBaselineKind.MarkedViewed;
-		PassFromSubmitted = chosen == PassBaselineKind.SubmittedReview;
-		PassFromOpened = chosen == PassBaselineKind.Opened;
-		HasPassFromMarked = Has(PassBaselineKind.MarkedViewed);
-		HasPassFromSubmitted = Has(PassBaselineKind.SubmittedReview);
-		HasPassFromOpened = Has(PassBaselineKind.Opened);
-		PassFromMarkedTip = Tip(PassBaselineKind.MarkedViewed,
-			"No file has been ticked off at an earlier head of this review yet.");
-		PassFromSubmittedTip = Tip(PassBaselineKind.SubmittedReview,
-			"No review has been submitted at an earlier head of this review yet.");
-		PassFromOpenedTip = Tip(PassBaselineKind.Opened,
-			"This review has only ever been opened at the head you are reading.");
+		var options = workspace?.Scopes.PassBaselineOptions ?? [];
+		PassFromMarked = InUse(PassBaselineKind.MarkedViewed);
+		PassFromSubmitted = InUse(PassBaselineKind.SubmittedReview);
+		PassFromOpened = InUse(PassBaselineKind.Opened);
+		HasPassFromMarked = Available(PassBaselineKind.MarkedViewed);
+		HasPassFromSubmitted = Available(PassBaselineKind.SubmittedReview);
+		HasPassFromOpened = Available(PassBaselineKind.Opened);
+		PassFromMarkedTip = Tip(PassBaselineKind.MarkedViewed);
+		PassFromSubmittedTip = Tip(PassBaselineKind.SubmittedReview);
+		PassFromOpenedTip = Tip(PassBaselineKind.Opened);
 
-		bool Has(PassBaselineKind kind) => Baseline(kind) is not null;
-
-		PassBaseline? Baseline(PassBaselineKind kind)
-			=> workspace?.PassBaselines.FirstOrDefault(b => b.Kind == kind);
-
-		string Tip(PassBaselineKind kind, string missing)
-			=> Baseline(kind) is { } baseline
-				? $"Read what changed since {baseline.Label} ({baseline.Head[..9]})"
-				: missing;
+		PassBaselineOption? Option(PassBaselineKind kind) => options.FirstOrDefault(o => o.Kind == kind);
+		bool InUse(PassBaselineKind kind) => Option(kind)?.InUse ?? false;
+		bool Available(PassBaselineKind kind) => Option(kind)?.Available ?? false;
+		string Tip(PassBaselineKind kind) => Option(kind)?.Tip ?? "";
 	}
 
 	void UpdateTitle()

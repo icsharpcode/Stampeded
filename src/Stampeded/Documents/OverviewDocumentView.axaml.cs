@@ -75,6 +75,9 @@ public partial class OverviewDocumentView : UserControl
 
 	void OnSinceLastPass(object? sender, RoutedEventArgs e) => Vm?.EnterSinceLastPass();
 
+	void OnPassBaselineDropdown(object? sender, RoutedEventArgs e)
+		=> Panes.PassBaselineFlyout.ShowFor(sender);
+
 	void OnPreviousCommit(object? sender, RoutedEventArgs e) => Vm?.StepCommitScope(-1);
 
 	void OnNextCommit(object? sender, RoutedEventArgs e) => Vm?.StepCommitScope(1);

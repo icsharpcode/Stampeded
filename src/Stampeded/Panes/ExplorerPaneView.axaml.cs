@@ -37,6 +37,9 @@ public partial class ExplorerPaneView : UserControl
 
 	void OnSinceLastPass(object? sender, Avalonia.Interactivity.RoutedEventArgs e) => Vm?.EnterSinceLastPass();
 
+	void OnPassBaselineDropdown(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+		=> Panes.PassBaselineFlyout.ShowFor(sender);
+
 	void OnPreviousCommit(object? sender, Avalonia.Interactivity.RoutedEventArgs e) => Vm?.StepCommit(-1);
 
 	void OnNextCommit(object? sender, Avalonia.Interactivity.RoutedEventArgs e) => Vm?.StepCommit(1);

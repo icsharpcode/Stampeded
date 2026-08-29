@@ -50,6 +50,13 @@
               <Image Source="{x:Static app:Images.History}" />
             </Button>
           </Border>
+          <!-- Where that pass starts. Beside the button rather than only in the menu bar: the
+               answer differs by how a reader works, and it is chosen while looking at what it
+               would show. -->
+          <Button Classes="tool" Padding="1,0" Click="OnPassBaselineDropdown"
+                  IsVisible="{Binding !InScope}" ToolTip.Tip="Choose what your last pass was">
+            <TextBlock Text="&#x25BE;" FontSize="10" VerticalAlignment="Center" />
+          </Button>
           <Button Classes="tool" Click="OnPreviousCommit" IsVisible="{Binding InCommitScope}"
                   ToolTip.Tip="Previous commit  ( Ctrl+[ )">
             <Image Source="{x:Static app:Images.Previous}" />

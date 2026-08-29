@@ -60,6 +60,10 @@
             <Image Source="{x:Static app:Images.History}" />
           </Button>
         </Border>
+        <Button Classes="tool" Padding="1,0" Click="OnPassBaselineDropdown"
+                IsVisible="{Binding !State.InScope}" ToolTip.Tip="Choose what your last pass was">
+          <TextBlock Text="&#x25BE;" FontSize="10" VerticalAlignment="Center" />
+        </Button>
         <Border Classes="toolsep" />
         <Button Classes="tool" Click="OnOpenVsCode"
                 ToolTip.Tip="Open the head worktree in VS Code for building and debugging this revision">
