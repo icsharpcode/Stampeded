@@ -182,11 +182,18 @@ sealed class SideBySidePane
 		RemoveColorizer();
 	}
 
+	/// <summary>The document row showing a line of this pane's blob, or null when this side
+	/// has no such line - the other side's rows are filler in this one.</summary>
+	public int? DocLineFromBlobLine(int blobLine)
+		=> blobToDocLine.TryGetValue(blobLine, out int docLine) && docLine <= editor.Document.LineCount
+			? docLine
+			: null;
+
 	/// <summary>Puts the caret on a line of this pane's blob, and says whether that line is
 	/// shown here at all - the other side's rows are filler in this one.</summary>
 	public bool MoveCaretToBlobLine(int blobLine)
 	{
-		if (!blobToDocLine.TryGetValue(blobLine, out int docLine) || docLine > editor.Document.LineCount)
+		if (DocLineFromBlobLine(blobLine) is not { } docLine)
 			return false;
 		editor.TextArea.Caret.Line = docLine;
 		editor.TextArea.Caret.Column = 1;
