@@ -64,6 +64,12 @@ public partial class ExplorerPaneViewModel : Tool
 	[ObservableProperty]
 	string commitScopeLine = "Whole change";
 
+	/// <summary>The hash of the commit in scope, empty for anything that is not one commit -
+	/// the whole change, the since-last-pass scope, uncommitted work. It is the name the rest
+	/// of the world calls this revision by, so it is worth having where the scope is stated.</summary>
+	[ObservableProperty]
+	string shortSha = "";
+
 	/// <summary>The message of the commit being read, as it was written. In per-commit mode
 	/// it is the author's account of why the change is what it is, which is the thing a
 	/// reader wants before the diff - and too long for the one-line scope header.</summary>
@@ -116,6 +122,7 @@ public partial class ExplorerPaneViewModel : Tool
 			: workspace.Scopes.InSinceLastPass ? workspace.Scopes.ScopeLine
 			: $"Whole change{spread}";
 		CommitMessage = workspace.Scopes.Commit?.Message ?? "";
+		ShortSha = workspace.Scopes.Commit is { IsWorkingTree: false } inScope ? inScope.ShortSha : "";
 	}
 
 	public void EnterCommitScope() => workspace.Scopes.EnterCommitAsync().HandleExceptions();
@@ -135,6 +142,12 @@ public partial class ExplorerPaneViewModel : Tool
 	{
 		if (workspace.CurrentPr is { } pr)
 			workspace.OpenOnGitHubAsync(pr.Number).HandleExceptions();
+	}
+
+	public void OpenCommitOnGitHub()
+	{
+		if (ShortSha.Length > 0)
+			workspace.OpenCommitOnGitHubAsync(ShortSha).HandleExceptions();
 	}
 
 	public void OpenReview() => workspace.OpenReviewDocument();

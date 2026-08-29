@@ -47,6 +47,8 @@ public partial class ExplorerPaneView : UserControl
 
 	void OnOpenOnGitHub(object? sender, Avalonia.Interactivity.RoutedEventArgs e) => Vm?.OpenPrOnGitHub();
 
+	void OnOpenCommitOnGitHub(object? sender, Avalonia.Interactivity.RoutedEventArgs e) => Vm?.OpenCommitOnGitHub();
+
 	void OnOpenReview(object? sender, Avalonia.Interactivity.RoutedEventArgs e) => Vm?.OpenReview();
 
 	void OnCloseReview(object? sender, Avalonia.Interactivity.RoutedEventArgs e) => Vm?.CloseReview();
