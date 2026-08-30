@@ -82,6 +82,9 @@ public partial class SideBySideDocumentView : UserControl, IReviewDocumentView
 		editor.ScrollToLine(docLine);
 	}
 
+	public (int BlobLine, bool OldSide)? CaretOrigin
+		=> FocusedPane?.CaretBlobPosition() is { } pos ? (pos.Line, pos.OldSide) : null;
+
 	public void GoToDefinitionCommand() => FocusedPane?.NavigateToDefinition();
 
 	public void FindReferencesCommand() => FocusedPane?.ShowReferences();

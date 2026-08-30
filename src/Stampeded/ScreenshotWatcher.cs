@@ -113,13 +113,26 @@ static class ScreenshotWatcher
 	/// Raises one half of a left-button gesture at a point in window coordinates, on whatever
 	/// is under it - the element a real press would reach, not the focused one.
 	/// </summary>
-	static void RaisePointer(Window window, Avalonia.Point point, bool pressing, Avalonia.Input.KeyModifiers modifiers)
+	static void RaisePointer(Window window, Avalonia.Point point, bool pressing,
+		Avalonia.Input.KeyModifiers modifiers,
+		Avalonia.Input.MouseButton button = Avalonia.Input.MouseButton.Left)
 	{
 		var target = Avalonia.Input.InputExtensions.InputHitTest(window, point) as Interactive ?? window;
 		ulong timestamp = (ulong)Environment.TickCount64;
+		var (held, pressedKind, releasedKind) = button switch {
+			Avalonia.Input.MouseButton.XButton1 => (Avalonia.Input.RawInputModifiers.XButton1MouseButton,
+				Avalonia.Input.PointerUpdateKind.XButton1Pressed,
+				Avalonia.Input.PointerUpdateKind.XButton1Released),
+			Avalonia.Input.MouseButton.XButton2 => (Avalonia.Input.RawInputModifiers.XButton2MouseButton,
+				Avalonia.Input.PointerUpdateKind.XButton2Pressed,
+				Avalonia.Input.PointerUpdateKind.XButton2Released),
+			_ => (Avalonia.Input.RawInputModifiers.LeftMouseButton,
+				Avalonia.Input.PointerUpdateKind.LeftButtonPressed,
+				Avalonia.Input.PointerUpdateKind.LeftButtonReleased),
+		};
 		var properties = new Avalonia.Input.PointerPointProperties(
-			pressing ? Avalonia.Input.RawInputModifiers.LeftMouseButton : Avalonia.Input.RawInputModifiers.None,
-			pressing ? Avalonia.Input.PointerUpdateKind.LeftButtonPressed : Avalonia.Input.PointerUpdateKind.LeftButtonReleased);
+			pressing ? held : Avalonia.Input.RawInputModifiers.None,
+			pressing ? pressedKind : releasedKind);
 		if (pressing)
 		{
 			target.RaiseEvent(new Avalonia.Input.PointerPressedEventArgs(
@@ -128,10 +141,9 @@ static class ScreenshotWatcher
 		else
 		{
 			target.RaiseEvent(new Avalonia.Input.PointerReleasedEventArgs(
-				target, TestPointer, window, point, timestamp, properties, modifiers,
-				Avalonia.Input.MouseButton.Left));
+				target, TestPointer, window, point, timestamp, properties, modifiers, button));
 		}
-		CliLog.Write("action", $"{(pressing ? "press" : "release")} {point.X:0},{point.Y:0} "
+		CliLog.Write("action", $"{(pressing ? "press" : "release")} {button} {point.X:0},{point.Y:0} "
 			+ $"{modifiers} -> {target.GetType().Name}");
 	}
 
@@ -306,6 +318,28 @@ static class ScreenshotWatcher
 					else
 						RaisePointer(window, point, parts[0] == "press", modifiers);
 				}
+				// mouse-back:<x>,<y> / mouse-forward:<x>,<y> - the extra mouse buttons, pressed
+				// and released over a point. They are read by the window rather than by a
+				// control, so nothing else drives them.
+				foreach (var command in lines.Where(l =>
+					l.StartsWith("mouse-back:", StringComparison.Ordinal)
+					|| l.StartsWith("mouse-forward:", StringComparison.Ordinal)))
+				{
+					var parts = command.Split(':', 2);
+					var coords = parts.Length < 2 ? [] : parts[1].Split(',');
+					if (coords.Length != 2
+						|| !double.TryParse(coords[0], out double mx) || !double.TryParse(coords[1], out double my))
+					{
+						CliLog.Write("action", $"{parts[0]}: cannot read '{command}'");
+						continue;
+					}
+					var button = parts[0] == "mouse-back"
+						? Avalonia.Input.MouseButton.XButton1
+						: Avalonia.Input.MouseButton.XButton2;
+					var at = new Avalonia.Point(mx, my);
+					RaisePointer(window, at, pressing: true, Avalonia.Input.KeyModifiers.None, button);
+					RaisePointer(window, at, pressing: false, Avalonia.Input.KeyModifiers.None, button);
+				}
 				// wheel:<x>,<y>:<delta> - rolls the wheel over a point, positive being up. The
 				// gesture some controls read instead of a click, and the only way to reach one.
 				foreach (var command in lines.Where(l => l.StartsWith("wheel:", StringComparison.Ordinal)))
@@ -436,7 +470,7 @@ static class ScreenshotWatcher
 					if (App.Workspace is { } ws
 						&& ws.Files.FirstOrDefault(f => f.Path == rel) is { } file)
 					{
-						ws.OpenFileAsync(file).HandleExceptions();
+						ws.OpenFileAsync(file, record: true).HandleExceptions();
 					}
 				}
 				foreach (var command in lines.Where(l => l.StartsWith("goto:", StringComparison.Ordinal)))

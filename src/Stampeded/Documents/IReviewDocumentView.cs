@@ -36,6 +36,11 @@ public interface IReviewDocumentView
 	/// one in front.</summary>
 	string DocumentId { get; }
 
+	/// <summary>Where the caret is, as a line of the blob this view shows and which side that
+	/// line belongs to. Null on a row that belongs to neither blob, and null in a view with no
+	/// caret at all - navigation history records what it can and line 1 otherwise.</summary>
+	(int BlobLine, bool OldSide)? CaretOrigin { get; }
+
 	/// <summary>Moves to the next or previous hunk, and says whether there was one: past the
 	/// last, reading carries on in the next file rather than stopping.</summary>
 	bool JumpToHunkCommand(int direction);

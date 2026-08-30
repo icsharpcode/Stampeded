@@ -1008,6 +1008,9 @@ public partial class DiffDocumentView : UserControl, IReviewDocumentView
 
 	/// <summary>Caret as a blob position: head side on context/added lines, base side on
 	/// removed lines (whose code only exists at the merge base).</summary>
+	public (int BlobLine, bool OldSide)? CaretOrigin
+		=> CaretBlobPosition() is { } pos ? (pos.Line, pos.OldSide) : null;
+
 	(string RelPath, int Line, int Column, bool OldSide)? CaretBlobPosition()
 	{
 		if (model is null || viewModel is null)

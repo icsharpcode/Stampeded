@@ -208,6 +208,47 @@ public sealed class ReviewScopes(ReviewWorkspace workspace)
 		}
 	}
 
+	/// <summary>
+	/// What is being read, as a history entry has to remember it: which commit of the series,
+	/// the work since the last pass, or the whole change. An entry recorded in one scope is
+	/// only where the reader was if that scope is back on screen.
+	/// </summary>
+	public string? ScopeKey => Commit is { } commit ? "commit:" + commit.Sha : InSinceLastPass ? "pass" : null;
+
+	/// <summary>Puts back the scope an entry was recorded in. Nothing to do when it is already
+	/// on - stepping back within one commit must not re-enter it and rebuild the window.</summary>
+	public async Task RestoreScopeAsync(string? key)
+	{
+		if (key == ScopeKey)
+			return;
+		if (key is null)
+			await ExitAsync();
+		else if (key == "pass")
+			await EnterSinceLastPassAsync();
+		else if (key.StartsWith("commit:", StringComparison.Ordinal))
+			await GoToCommitAsync(key["commit:".Length..]);
+	}
+
+	/// <summary>Reads one commit of the series by name, entering the scope if it is not on.
+	/// A commit that is no longer in the series - the branch was rewritten under the reader -
+	/// leaves the scope as it is rather than jumping somewhere arbitrary.</summary>
+	public async Task GoToCommitAsync(string sha)
+	{
+		if (Commit is null)
+			await EnterCommitAsync();
+		int index = -1;
+		for (int i = 0; i < Series.Count; i++)
+		{
+			if (Series[i].Sha == sha)
+			{
+				index = i;
+				break;
+			}
+		}
+		if (index >= 0 && index != CommitIndex)
+			await ApplyCommitAsync(index);
+	}
+
 	/// <summary>Reads the next pass from a different point. Entering the scope again is what
 	/// shows it - the replay of a different pass is a different tree.</summary>
 	public void UsePassBaseline(PassBaselineKind kind)
@@ -412,7 +453,7 @@ public sealed class ReviewScopes(ReviewWorkspace workspace)
 		// The two scopes are alternatives, not layers: the since-last-pass scope diffs
 		// against a tree, which has no history for a commit list to come from.
 		if (InSinceLastPass)
-			await ExitAsync();
+			await ExitAsync(record: false);
 		if (ReviewRange is not { } range)
 			return;
 		if (Series.Count == 0)
@@ -444,6 +485,9 @@ public sealed class ReviewScopes(ReviewWorkspace workspace)
 
 	async Task ApplyCommitAsync(int index)
 	{
+		// Where the reader is, before the window is rebuilt around another commit: stepping
+		// through a series is navigation, and Back has to lead out of it the way in.
+		workspace.RecordCurrentPosition();
 		var commit = Series[index];
 		CommitIndex = index;
 		Commit = commit;
@@ -474,6 +518,7 @@ public sealed class ReviewScopes(ReviewWorkspace workspace)
 		await workspace.ApplyScopeSemanticsAsync();
 		Changed?.Invoke();
 		await workspace.RebuildForScopeAsync($"commit scope {index + 1}/{Series.Count} {commit.ShortSha}");
+		workspace.RecordArrival(workspace.ActiveDocumentId);
 	}
 
 	#endregion
@@ -505,8 +550,11 @@ public sealed class ReviewScopes(ReviewWorkspace workspace)
 			workspace.PostStatus(refusal);
 			return;
 		}
+		workspace.RecordCurrentPosition();
+		// Leaving whatever scope was on is part of entering this one, not a step of its own:
+		// history would otherwise lead back through a whole change nobody asked to see.
 		if (InScope)
-			await ExitAsync();
+			await ExitAsync(record: false);
 		if (PassBaseline is not { } baseline || ReviewRange is not { } range)
 			return;
 		string previous = baseline.Head;
@@ -558,6 +606,7 @@ public sealed class ReviewScopes(ReviewWorkspace workspace)
 		await workspace.RebuildForScopeAsync($"since-last-pass scope {previous[..9]} -> {range.Head[..9]} "
 			+ $"({baseline.Kind}, {(rewritten ? "rewritten" : "fast-forward")}), base tree {replayedTree[..9]}, "
 			+ $"{files.Count} file(s)");
+		workspace.RecordArrival(workspace.ActiveDocumentId);
 	}
 
 	#endregion
@@ -565,10 +614,12 @@ public sealed class ReviewScopes(ReviewWorkspace workspace)
 	/// <summary>Back to reading the whole change at once, out of whichever scope was on.
 	/// One exit for both: the button has always said "Whole change", and that is what it
 	/// means whether a commit or the work since the last pass was being read.</summary>
-	public async Task ExitAsync()
+	public async Task ExitAsync(bool record = true)
 	{
 		if (fullRange is not { } range)
 			return;
+		if (record)
+			workspace.RecordCurrentPosition();
 		UserData.Write(PreferredScopeFile, WholeMode);
 		Commit = null;
 		SinceLastPassBase = null;
@@ -589,6 +640,8 @@ public sealed class ReviewScopes(ReviewWorkspace workspace)
 				Path.GetFileName(workspace.RepoPath), LocalRangeKey(range), range.Head, range.Base);
 		Changed?.Invoke();
 		await workspace.RebuildForScopeAsync("scope off");
+		if (record)
+			workspace.RecordArrival(workspace.ActiveDocumentId);
 	}
 
 	/// <summary>The key a local review's state file is named by: the range as it was opened,

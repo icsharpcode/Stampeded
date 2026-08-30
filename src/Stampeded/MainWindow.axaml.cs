@@ -16,6 +16,40 @@ public partial class MainWindow : Window
 		DataContext = new MainViewModel();
 		ScreenshotWatcher.Attach(this);
 		RecentMenu.AddHandler(MenuItem.ClickEvent, OnRecentRepoClick);
+		// The extra mouse buttons, the way every browser and IDE reads them. The press is
+		// taken so nothing under the pointer acts on it, and the release does the navigating -
+		// handledEventsToo because the editors handle pointer events for their own gestures
+		// without ever using these two buttons.
+		AddHandler(PointerPressedEvent, OnNavigationPointerPressed, RoutingStrategies.Tunnel);
+		AddHandler(PointerReleasedEvent, OnNavigationPointerReleased,
+			RoutingStrategies.Bubble, handledEventsToo: true);
+	}
+
+	void OnNavigationPointerPressed(object? sender, PointerPressedEventArgs e)
+	{
+		if (e.GetCurrentPoint(this).Properties.PointerUpdateKind
+			is PointerUpdateKind.XButton1Pressed or PointerUpdateKind.XButton2Pressed)
+		{
+			e.Handled = true;
+		}
+	}
+
+	void OnNavigationPointerReleased(object? sender, PointerReleasedEventArgs e)
+	{
+		if (App.Workspace is not { } workspace)
+			return;
+		switch (e.InitialPressMouseButton)
+		{
+			case MouseButton.XButton1:
+				workspace.GoBackAsync().HandleExceptions();
+				break;
+			case MouseButton.XButton2:
+				workspace.GoForwardAsync().HandleExceptions();
+				break;
+			default:
+				return;
+		}
+		e.Handled = true;
 	}
 
 	MainViewModel? Vm => DataContext as MainViewModel;
@@ -373,6 +407,8 @@ public partial class MainWindow : Window
 		PointerCrossHairItem.IsChecked = Editor.PointerCrossHairRenderer.IsEnabled;
 #endif
 		FillBuildSolutionMenu();
+		BackItem.IsEnabled = App.Workspace?.CanGoBack ?? false;
+		ForwardItem.IsEnabled = App.Workspace?.CanGoForward ?? false;
 		NextHunkItem.IsEnabled = Has(ReviewCommands.JumpToHunk);
 		PrevHunkItem.IsEnabled = Has(ReviewCommands.JumpToHunk);
 		NextUncoveredItem.IsEnabled = Has(ReviewCommands.JumpToUncovered);

@@ -108,8 +108,11 @@
                   IsEnabled="{Binding SemanticsReady}" />
         <MenuItem Header="Call Graph from Caret" Click="OnCallGraph" IsEnabled="{Binding SemanticsReady}" />
         <Separator />
-        <MenuItem Header="Back" InputGesture="Alt+Left" Click="OnBack" IsEnabled="{Binding HasReview}" />
-        <MenuItem Header="Forward" InputGesture="Alt+Right" Click="OnForward" IsEnabled="{Binding HasReview}" />
+        <!-- Enabled by what history actually holds, worked out as the menu opens: the extra
+             mouse buttons and Alt+arrow drive the same two commands, and an entry offered with
+             nothing behind it says the reader has run out of history when they have not. -->
+        <MenuItem Header="Back" InputGesture="Alt+Left" Click="OnBack" x:Name="BackItem" />
+        <MenuItem Header="Forward" InputGesture="Alt+Right" Click="OnForward" x:Name="ForwardItem" />
         <Separator />
         <MenuItem Header="Overview / Back to File  ( o )" Click="OnToggleOverview"
                   IsEnabled="{Binding HasReview}" />

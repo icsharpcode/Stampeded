@@ -497,7 +497,7 @@ public class OverviewDocumentViewModel : Document
 	{
 		var file = workspace.Files.FirstOrDefault(f => f.Path == row.Path);
 		if (file is not null)
-			workspace.OpenFileAsync(file).HandleExceptions();
+			workspace.OpenFileAsync(file, record: true).HandleExceptions();
 	}
 
 	public void OpenPrOnGitHub()

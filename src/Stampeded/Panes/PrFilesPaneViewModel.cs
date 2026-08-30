@@ -251,6 +251,6 @@ public class PrFilesPaneViewModel : Tool
 
 	public void Open(FileEntry entry)
 	{
-		workspace.OpenFileAsync(entry.File).HandleExceptions();
+		workspace.OpenFileAsync(entry.File, record: true).HandleExceptions();
 	}
 }

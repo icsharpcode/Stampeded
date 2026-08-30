@@ -14,7 +14,12 @@ using Stampeded.Navigation;
 
 namespace Stampeded;
 
-sealed record NavEntry(string DockableId, int BlobLine, bool OldSide) : IEquatable<NavEntry?>;
+/// <summary>Somewhere the reader has been: a document, a line of the blob it shows, which side
+/// that line belongs to, and what was being read at the time - the whole change, one commit of
+/// the series, or the work since the last pass. Without the scope, coming back lands on the
+/// right file of the wrong diff.</summary>
+sealed record NavEntry(string DockableId, int BlobLine, bool OldSide, string? Scope = null)
+	: IEquatable<NavEntry?>;
 
 public sealed record ReferenceItem(string RelPath, int Line, string Preview, bool InChangedLine, bool OldSide);
 
@@ -713,8 +718,12 @@ public sealed class ReviewWorkspace(string repoPath)
 	/// two layouts are two views of the same thing, so a file that is already open in the other
 	/// one is rebuilt rather than joined by a second tab.
 	/// </summary>
-	public async Task<Documents.IDiffDocument?> OpenFileAsync(FileDiff file)
+	/// <param name="record">Whether this open is a step of the reader's own, to be found
+	/// again with Back. A rebuild reopening the tabs it just closed is not one.</param>
+	public async Task<Documents.IDiffDocument?> OpenFileAsync(FileDiff file, bool record = false)
 	{
+		if (record)
+			RecordCurrentPosition();
 		if (file.Generated is { } generated)
 			return ShowDiffDocument(file, ReadOrEmpty(generated.BaseFile), ReadOrEmpty(generated.HeadFile));
 		if (BaseSha is null || HeadSha is null)
@@ -741,7 +750,10 @@ public sealed class ReviewWorkspace(string repoPath)
 		string newText = file.Kind == FileChangeKind.Deleted || file.IsBinary
 			? ""
 			: await ReadHeadFileAsync(file.NewPath);
-		return ShowDiffDocument(file, oldText, newText);
+		var document = ShowDiffDocument(file, oldText, newText);
+		if (record && document is not null)
+			RecordArrival("diff:" + file.Path);
+		return document;
 
 		static string ReadOrEmpty(string? path) => path is null ? "" : File.ReadAllText(path);
 	}
@@ -1686,7 +1698,7 @@ public sealed class ReviewWorkspace(string repoPath)
 			if (i >= 0 && index == i)
 				return;
 		}
-		if (await OpenFileAsync(order[index]) is { } opened)
+		if (await OpenFileAsync(order[index], record: true) is { } opened)
 			FocusEditorOf(opened);
 	}
 
@@ -1713,7 +1725,7 @@ public sealed class ReviewWorkspace(string repoPath)
 			// diff. The key means "on to the next thing to read" wherever it is pressed, and
 			// from here that is the first file still unread. With nothing left unread there is
 			// nothing to go on to, and opening a file that was already read would be a loop.
-			if (FirstUnread() is { } start && await OpenFileAsync(start) is { } opened)
+			if (FirstUnread() is { } start && await OpenFileAsync(start, record: true) is { } opened)
 			{
 				FocusEditorOf(opened);
 			}
@@ -1747,7 +1759,7 @@ public sealed class ReviewWorkspace(string repoPath)
 				// reading before the diff - but reading the series with 'v' is one continuous
 				// pass, and a stop at the overview between every commit is a key pressed for
 				// nothing.
-				if (ReadingOrder is [var firstOfCommit, ..] && await OpenFileAsync(firstOfCommit) is { } first)
+				if (ReadingOrder is [var firstOfCommit, ..] && await OpenFileAsync(firstOfCommit, record: true) is { } first)
 					FocusEditorOf(first);
 				if (unread > 0)
 					StatusMessage?.Invoke($"Moved on with {unread} file(s) of that commit still unread.");
@@ -2359,7 +2371,43 @@ public sealed class ReviewWorkspace(string repoPath)
 	public readonly record struct NavEntryOrigin(string DockableId, int BlobLine, bool OldSide);
 
 	void RecordOrigin(NavEntryOrigin origin)
-		=> history.Record(new NavEntry(origin.DockableId, origin.BlobLine, origin.OldSide));
+		=> history.Record(new NavEntry(origin.DockableId, origin.BlobLine, origin.OldSide, Scopes.ScopeKey));
+
+	/// <summary>
+	/// Writes down where the reader is, before they are taken somewhere else. Where they are
+	/// includes the line they had reached, which is why the entry is rewritten rather than
+	/// pushed when it is the one already current: an entry recorded when the document opened
+	/// says line 1, and coming back to line 1 of a file someone read halfway is not coming
+	/// back at all.
+	/// </summary>
+	internal void RecordCurrentPosition()
+	{
+		if (Documents?.ActiveDockable?.Id is not { Length: > 0 } id)
+			return;
+		var caret = Documents.ActiveDockable?.Id == id
+			&& Stampeded.Documents.ReviewViews.Active is { } view
+			? view.CaretOrigin
+			: null;
+		var entry = new NavEntry(id, caret?.BlobLine ?? 1, caret?.OldSide ?? false, Scopes.ScopeKey);
+		if (history.Current is { } current && current.DockableId == id && current.Scope == entry.Scope)
+			history.ReplaceCurrent(entry);
+		else
+			history.Record(entry);
+	}
+
+	/// <summary>Writes down where the reader has arrived, so the next step back returns to
+	/// it.</summary>
+	internal void RecordArrival(string dockableId, int blobLine = 1, bool oldSide = false)
+		=> history.Record(new NavEntry(dockableId, blobLine, oldSide, Scopes.ScopeKey));
+
+	/// <summary>The document in front, whatever it is - what a change of scope is recorded
+	/// against when no file is open at all.</summary>
+	internal string ActiveDocumentId => Documents?.ActiveDockable?.Id ?? "overview";
+
+	/// <summary>Whether there is anywhere to go, for the entries that offer it.</summary>
+	public bool CanGoBack => history.CanNavigateBack;
+
+	public bool CanGoForward => history.CanNavigateForward;
 
 	public Task GoBackAsync() => history.CanNavigateBack ? NavigateToEntryAsync(history.GoBack()) : Task.CompletedTask;
 
@@ -2367,6 +2415,23 @@ public sealed class ReviewWorkspace(string repoPath)
 
 	async Task NavigateToEntryAsync(NavEntry entry)
 	{
+		// What was being read when the entry was written, first: a file of one commit shows a
+		// different diff in the whole change, and the line recorded belongs to neither.
+		await Scopes.RestoreScopeAsync(entry.Scope);
+		if (entry.DockableId is "overview" or "start" or "review")
+		{
+			if (Documents?.VisibleDockables?.FirstOrDefault(d => d.Id == entry.DockableId) is { } known
+				&& Factory is not null && Documents is not null)
+			{
+				Factory.SetActiveDockable(known);
+				Factory.SetFocusedDockable(Documents, known);
+			}
+			else if (entry.DockableId == "overview")
+			{
+				OpenOverview();
+			}
+			return;
+		}
 		if (entry.DockableId.StartsWith("decomp:", StringComparison.Ordinal))
 		{
 			// Decompiled tabs are only revisited while still open; a closed one would

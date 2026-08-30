@@ -115,6 +115,19 @@ namespace Stampeded.Navigation
 				current = null;
 		}
 
+		/// <summary>
+		/// Rewrites the current entry without touching either stack. The reader has moved
+		/// inside what they were already looking at, and an entry has to come back to where
+		/// they left off rather than to where they arrived - which is what ILSpy does by
+		/// reaching into <see cref="Current"/> and stamping the view state onto it, and what
+		/// an immutable entry needs a method for.
+		/// </summary>
+		public void ReplaceCurrent(T entry)
+		{
+			if (current != null)
+				current = entry;
+		}
+
 		/// <summary>Records a new history entry. Discards the forward stack.</summary>
 		public void Record(T entry)
 		{
