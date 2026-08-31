@@ -89,7 +89,7 @@ public class PythonLspTests
 		finally
 		{
 			connection?.Dispose();
-			Directory.Delete(dir, recursive: true);
+			TempDirectory.Delete(dir);
 		}
 	}
 

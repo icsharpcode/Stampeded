@@ -25,7 +25,11 @@ public class PythonProjectConfigTests
 		LspConnection? connection = null;
 		try
 		{
-			string interpreter = FakeVenv(clone);
+			if (CloneWithPackage(clone) is not { } interpreter)
+			{
+				Assert.Ignore("no Python interpreter available");
+				return;
+			}
 			// The worktree is a checkout: it has the committed config, and no environment.
 			File.WriteAllText(Path.Combine(worktree, "pyproject.toml"), """
 				[tool.pyright]
@@ -55,41 +59,24 @@ public class PythonProjectConfigTests
 		finally
 		{
 			connection?.Dispose();
-			Directory.Delete(clone, recursive: true);
-			Directory.Delete(worktree, recursive: true);
+			TempDirectory.Delete(clone);
+			TempDirectory.Delete(worktree);
 		}
 	}
 
-	static string FakeVenv(string root)
+	/// <summary>The reader's own clone: an environment with the package the project depends
+	/// on, which is the thing the worktree does not have.</summary>
+	static string? CloneWithPackage(string root)
 	{
-		string version = PythonVersionOf(SystemPython());
-		string bin = OperatingSystem.IsWindows() ? "Scripts" : "bin";
-		Directory.CreateDirectory(Path.Combine(root, ".venv", bin));
-		string packages = Path.Combine(root, ".venv", "lib", "python" + version, "site-packages", "mylib");
+		if (PythonVenv.Create(Path.Combine(root, ".venv")) is not { } interpreter)
+			return null;
+		string packages = Path.Combine(PythonVenv.SitePackages(interpreter), "mylib");
 		Directory.CreateDirectory(packages);
 		File.WriteAllText(Path.Combine(packages, "__init__.py"), """
 			def hello(name):
 				return "hi " + name
 			""");
-		File.WriteAllText(Path.Combine(root, ".venv", "pyvenv.cfg"), $"home = /usr/bin\nversion = {version}\n");
-		string interpreter = Path.Combine(root, ".venv", bin, OperatingSystem.IsWindows() ? "python.exe" : "python");
-		File.CreateSymbolicLink(interpreter, SystemPython());
 		return interpreter;
-	}
-
-	static string SystemPython()
-		=> new[] { "/usr/bin/python3", "/usr/local/bin/python3" }.FirstOrDefault(File.Exists)
-			?? throw new InvalidOperationException("no system python3");
-
-	static string PythonVersionOf(string interpreter)
-	{
-		var process = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(interpreter) {
-			ArgumentList = { "-c", "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')" },
-			RedirectStandardOutput = true,
-		})!;
-		string version = process.StandardOutput.ReadToEnd().Trim();
-		process.WaitForExit();
-		return version;
 	}
 
 	static string NewTempDir()
