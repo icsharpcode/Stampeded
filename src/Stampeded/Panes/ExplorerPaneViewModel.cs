@@ -64,6 +64,15 @@ public partial class ExplorerPaneViewModel : Tool
 	[ObservableProperty]
 	string commitScopeLine = "Whole change";
 
+	/// <summary>The pull request being read, as it is spoken about - "#4064" - and its title.
+	/// Empty for a local review, which has no number to be called by. The window title carries
+	/// it too, but the reader is looking at this pane.</summary>
+	[ObservableProperty]
+	string prNumber = "";
+
+	[ObservableProperty]
+	string prTitle = "";
+
 	/// <summary>The hash of the commit in scope, empty for anything that is not one commit -
 	/// the whole change, the since-last-pass scope, uncommitted work. It is the name the rest
 	/// of the world calls this revision by, so it is worth having where the scope is stated.</summary>
@@ -98,6 +107,8 @@ public partial class ExplorerPaneViewModel : Tool
 			? "CHANGED FILES"
 			: $"CHANGED FILES  ({workspace.Files.Count})";
 		HasPullRequest = workspace.CurrentPr is not null;
+		PrNumber = workspace.CurrentPr is { } current ? $"#{current.Number}" : "";
+		PrTitle = workspace.CurrentPr?.Title ?? "";
 		InCommitScope = workspace.Scopes.Commit is not null;
 		InScope = workspace.Scopes.InScope;
 		CanEnterSinceLastPass = workspace.Scopes.CanEnterSinceLastPass;

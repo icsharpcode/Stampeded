@@ -93,6 +93,19 @@
             <Image Source="{x:Static app:Images.Close}" />
           </Button>
         </WrapPanel>
+        <!-- Which pull request this is. A review is spoken about by its number - in a
+             message to the author, in a branch name, in a question to someone else - and the
+             pane where it is read should not be the one place that does not say it. The title
+             follows it while there is room, and the whole line opens the pull request. -->
+        <Button Background="Transparent" BorderThickness="0" Padding="0" Cursor="Hand"
+                Click="OnOpenOnGitHub" HorizontalAlignment="Left" HorizontalContentAlignment="Left"
+                IsVisible="{Binding HasPullRequest}"
+                ToolTip.Tip="Open this pull request in the browser">
+          <TextBlock FontSize="11" TextTrimming="CharacterEllipsis">
+            <Run Text="{Binding PrNumber}" FontWeight="Bold" />
+            <Run Text="{Binding PrTitle}" />
+          </TextBlock>
+        </Button>
         <StackPanel Orientation="Horizontal" Spacing="4" IsVisible="{Binding InScope}">
           <Border Background="{x:Static app:ScopePalette.Accent}" CornerRadius="2"
                   Padding="5,1" VerticalAlignment="Center">
@@ -101,7 +114,8 @@
           </Border>
           <!-- The commit read on its own is worth naming by its hash: it is what an author
                is told to look at, and what a checkout needs. Clicking opens it on GitHub. -->
-          <Button Background="Transparent" Padding="2,0" Cursor="Hand" Click="OnOpenCommitOnGitHub"
+          <Button Background="Transparent" BorderThickness="0" Padding="2,0" Cursor="Hand"
+                  Click="OnOpenCommitOnGitHub"
                   IsVisible="{Binding ShortSha, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
                   ToolTip.Tip="Open this commit on GitHub">
             <TextBlock Text="{Binding ShortSha}" FontFamily="monospace" FontSize="10" />
