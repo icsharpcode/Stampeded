@@ -30,13 +30,7 @@ public class GitMergeStateTests
 	{
 		foreach (var dir in temporaryDirectories)
 		{
-			try
-			{
-				Directory.Delete(dir, recursive: true);
-			}
-			catch (IOException)
-			{
-			}
+			TempDirectory.Delete(dir);
 		}
 		temporaryDirectories.Clear();
 	}
@@ -160,10 +154,11 @@ public class GitMergeStateTests
 		await Git("branch", "already-in");
 		string worktree = NewDirectory();
 		await Git("worktree", "add", "--quiet", worktree, "already-in");
+		string worktreeAsGitReportsIt = await AsGitReports(worktree);
 
 		var deletion = await new GitService(repo).DeleteBranchAsync("already-in");
 
-		Assert.That(deletion.RemovedWorktree, Is.EqualTo(worktree));
+		Assert.That(deletion.RemovedWorktree, Is.EqualTo(worktreeAsGitReportsIt));
 		Assert.That(Directory.Exists(worktree), Is.False);
 		Assert.That(await Git("branch", "--format=%(refname:short)"), Does.Not.Contain("already-in"));
 	}
@@ -205,13 +200,14 @@ public class GitMergeStateTests
 		await Git("branch", "already-in");
 		string worktree = NewDirectory();
 		await Git("worktree", "add", "--quiet", worktree, "already-in");
+		string worktreeAsGitReportsIt = await AsGitReports(worktree);
 
 		var deletion = await new GitService(repo).DeleteBranchAsync("already-in");
 
-		Assert.That(deletion.RemovedWorktree, Is.EqualTo(worktree));
+		Assert.That(deletion.RemovedWorktree, Is.EqualTo(worktreeAsGitReportsIt));
 		Assert.That(Directory.Exists(worktree), Is.False);
 		Assert.That(await Git("branch", "--format=%(refname:short)"), Does.Not.Contain("already-in"));
-		Assert.That(await Git("worktree", "list", "--porcelain"), Does.Not.Contain(worktree),
+		Assert.That(await Git("worktree", "list", "--porcelain"), Does.Not.Contain(worktreeAsGitReportsIt),
 			"the administrative entry has to go with the directory");
 	}
 
@@ -273,4 +269,9 @@ public class GitMergeStateTests
 	}
 
 	Task<string> Git(params string[] args) => ExternalTool.RunAsync("git", args, repo);
+
+	/// <summary>The path in the form git prints it - forward slashes on Windows, symlinks
+	/// resolved on macOS - which is the form the service passes on unchanged.</summary>
+	static async Task<string> AsGitReports(string dir)
+		=> (await ExternalTool.RunAsync("git", ["rev-parse", "--show-toplevel"], dir)).Trim();
 }

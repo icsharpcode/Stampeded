@@ -1,0 +1,66 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            rid: win-x64
+          - os: ubuntu-latest
+            rid: linux-x64
+          - os: macos-latest
+            rid: osx-arm64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.x
+
+      - run: dotnet build Stampeded.slnx -c Release
+      - run: dotnet test Stampeded.slnx -c Release --no-build
+
+      # Framework-dependent on purpose: the app needs an installed .NET SDK at runtime
+      # anyway (Roslyn's MSBuild workspace, dotnet build/test), so bundling a runtime
+      # would only grow the artifact. RID-specific so an apphost exists to launch.
+      - run: dotnet publish src/Stampeded/Stampeded.csproj -c Release -r ${{ matrix.rid }} --no-self-contained -o publish/${{ matrix.rid }}
+
+      - name: Zip (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: Compress-Archive -Path publish/win-x64/* -DestinationPath Stampeded-win-x64.zip
+
+      # Info-ZIP keeps the execute bit; Compress-Archive and upload-artifact drop it.
+      - name: Zip (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: cd publish/linux-x64 && zip -r -q ../../Stampeded-linux-x64.zip .
+
+      # Unsigned and unnotarized: first launch needs `xattr -dr com.apple.quarantine Stampeded.app`.
+      - name: dmg (macOS)
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          mkdir dmg
+          cp -R publish/osx-arm64/Stampeded.app dmg/
+          ln -s /Applications dmg/Applications
+          hdiutil create -volname Stampeded -srcfolder dmg -ov -format UDZO Stampeded-macos-arm64.dmg
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: Stampeded-${{ matrix.rid }}
+          path: |
+            Stampeded-*.zip
+            Stampeded-*.dmg
+          if-no-files-found: error

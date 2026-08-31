@@ -72,7 +72,7 @@ public class DecompilationServiceTests
 		}
 		finally
 		{
-			Directory.Delete(dir, recursive: true);
+			TempDirectory.Delete(dir);
 		}
 	}
 }

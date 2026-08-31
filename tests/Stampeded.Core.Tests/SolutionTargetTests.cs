@@ -21,7 +21,7 @@ public class SolutionTargetTests
 	public void TearDown()
 	{
 		if (Directory.Exists(root))
-			Directory.Delete(root, recursive: true);
+			TempDirectory.Delete(root);
 	}
 
 	void Write(string name, int size) => File.WriteAllText(Path.Combine(root, name), new string('x', size));

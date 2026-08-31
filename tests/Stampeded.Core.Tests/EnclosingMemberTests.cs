@@ -61,7 +61,7 @@ public class EnclosingMemberTests
 		}
 		finally
 		{
-			Directory.Delete(dir, recursive: true);
+			TempDirectory.Delete(dir);
 		}
 	}
 
@@ -98,7 +98,7 @@ public class EnclosingMemberTests
 		}
 		finally
 		{
-			Directory.Delete(dir, recursive: true);
+			TempDirectory.Delete(dir);
 		}
 	}
 

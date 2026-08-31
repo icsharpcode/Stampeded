@@ -18,13 +18,7 @@ public class BuildArtifactCleanupTests
 	[TearDown]
 	public void TearDown()
 	{
-		try
-		{
-			Directory.Delete(root, recursive: true);
-		}
-		catch (IOException)
-		{
-		}
+		TempDirectory.Delete(root);
 	}
 
 	static void WriteFile(string directory, string name)

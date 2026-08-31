@@ -7,20 +7,21 @@ namespace Stampeded.Core.Tests;
 [TestFixture]
 public class SideBySideBuilderTests
 {
-	const string OldText = """
+	// Raw literals take the line endings of the checkout; the builder speaks LF.
+	static readonly string OldText = """
 		line a
 		line b
 		line c
 		line d
-		""";
+		""".ReplaceLineEndings("\n");
 
-	const string NewText = """
+	static readonly string NewText = """
 		line a
 		line b CHANGED
 		line c
 		inserted line
 		line d
-		""";
+		""".ReplaceLineEndings("\n");
 
 	[Test]
 	public void SidesHaveEqualLineCounts()
