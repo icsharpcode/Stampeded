@@ -18,13 +18,17 @@ public class PythonInterpreterTests
 		string repo = NewTempDir();
 		try
 		{
-			string interpreter = FakeEnvironment(Path.Combine(repo, ".venv"));
+			if (PythonVenv.Create(Path.Combine(repo, ".venv")) is not { } interpreter)
+			{
+				Assert.Ignore("no Python interpreter available");
+				return;
+			}
 
 			Assert.That(PythonEnvironment.InterpreterFor(repo), Is.EqualTo(interpreter));
 		}
 		finally
 		{
-			Directory.Delete(repo, recursive: true);
+			TempDirectory.Delete(repo);
 		}
 	}
 
@@ -42,7 +46,7 @@ public class PythonInterpreterTests
 		}
 		finally
 		{
-			Directory.Delete(repo, recursive: true);
+			TempDirectory.Delete(repo);
 		}
 	}
 
@@ -60,8 +64,12 @@ public class PythonInterpreterTests
 		try
 		{
 			// The clone: an environment with one package in it, and nothing else.
-			string interpreter = FakeEnvironment(Path.Combine(repo, ".venv"));
-			string package = Path.Combine(repo, ".venv", "lib", "python" + PythonVersion(), "site-packages", "mylib");
+			if (PythonVenv.Create(Path.Combine(repo, ".venv")) is not { } interpreter)
+			{
+				Assert.Ignore("no Python interpreter available");
+				return;
+			}
+			string package = Path.Combine(PythonVenv.SitePackages(interpreter), "mylib");
 			Directory.CreateDirectory(package);
 			File.WriteAllText(Path.Combine(package, "__init__.py"), """
 				def hello(name):
@@ -96,42 +104,9 @@ public class PythonInterpreterTests
 		finally
 		{
 			connection?.Dispose();
-			Directory.Delete(repo, recursive: true);
-			Directory.Delete(worktree, recursive: true);
+			TempDirectory.Delete(repo);
+			TempDirectory.Delete(worktree);
 		}
-	}
-
-	/// <summary>
-	/// A virtual environment as Python itself recognises one: a pyvenv.cfg beside a bin
-	/// directory whose python is the system's. Building a real one would take a minute and
-	/// prove the same thing, which is that an interpreter reports its own site-packages.
-	/// </summary>
-	static string FakeEnvironment(string root)
-	{
-		string bin = OperatingSystem.IsWindows() ? "Scripts" : "bin";
-		Directory.CreateDirectory(Path.Combine(root, bin));
-		File.WriteAllText(Path.Combine(root, "pyvenv.cfg"),
-			$"home = /usr/bin\nversion = {PythonVersion()}\n");
-		string interpreter = Path.Combine(root, bin, OperatingSystem.IsWindows() ? "python.exe" : "python");
-		File.CreateSymbolicLink(interpreter, SystemPython());
-		return interpreter;
-	}
-
-	static string SystemPython()
-		=> new[] { "/usr/bin/python3", "/usr/local/bin/python3" }.FirstOrDefault(File.Exists)
-			?? throw new InvalidOperationException("no system python3");
-
-	/// <summary>The system interpreter's major.minor, which is what names its site-packages
-	/// directory.</summary>
-	static string PythonVersion()
-	{
-		var process = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(SystemPython()) {
-			ArgumentList = { "-c", "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')" },
-			RedirectStandardOutput = true,
-		})!;
-		string version = process.StandardOutput.ReadToEnd().Trim();
-		process.WaitForExit();
-		return version;
 	}
 
 	static string NewTempDir()
