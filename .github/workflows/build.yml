@@ -38,6 +38,13 @@ jobs:
           path: test-results/*.trx
           if-no-files-found: error
 
+      - name: Create Test Report
+        uses: test-summary/action@v2
+        if: always()
+        with:
+          paths: test-results/*.trx
+          folded: true
+
       # Framework-dependent on purpose: the app needs an installed .NET SDK at runtime
       # anyway (Roslyn's MSBuild workspace, dotnet build/test), so bundling a runtime
       # would only grow the artifact. RID-specific so an apphost exists to launch.
