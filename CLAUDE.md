@@ -161,7 +161,12 @@ than with a tree at the wrong lines. A parser in this process answers before it 
 Prefix `dotnet` with `OPENSSL_ENABLE_SHA1_SIGNATURES=1` (the local OpenSSL setup needs it):
 
     OPENSSL_ENABLE_SHA1_SIGNATURES=1 dotnet build Stampeded.slnx
-    OPENSSL_ENABLE_SHA1_SIGNATURES=1 dotnet test Stampeded.slnx
+    OPENSSL_ENABLE_SHA1_SIGNATURES=1 dotnet test --solution Stampeded.slnx --report-trx --results-directory test-results
+
+`dotnet test` runs through Microsoft.Testing.Platform (`global.json` pins the runner), so the
+solution is named with `--solution` - the bare positional form is VSTest syntax and errors.
+`--report-trx` leaves a TRX per test assembly under `test-results/`, which is how a failure
+survives the run.
 
 Tests that exercise git create real repositories in temp directories and shell out to `git` -
 that is deliberate: the interesting behaviour is git's, and a mock would only assert what we
