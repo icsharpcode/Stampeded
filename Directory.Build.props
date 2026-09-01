@@ -9,6 +9,13 @@
     <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
   </PropertyGroup>
   <ItemGroup>
+    <!-- Microsoft.Build.Locator loads the MSBuild assemblies out of the installed SDK, so the
+         copies Roslyn's MSBuild workspace drags in transitively must not land next to ours:
+         two Microsoft.Build.Framework identities in one process is exactly the load failure
+         the locator exists to avoid (MSBL001). -->
+    <PackageReference Include="Microsoft.Build.Framework" ExcludeAssets="runtime" PrivateAssets="all" />
+  </ItemGroup>
+  <ItemGroup>
     <!-- The semantic vocabulary (tokens, symbols, hits) is named unqualified everywhere it
          is used, the way the framework's own types are. -->
     <Using Include="Stampeded.Core.Semantics" />
