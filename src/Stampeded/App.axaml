@@ -22,12 +22,69 @@
           <SolidColorBrush x:Key="Stampeded.EditorSelectionBrush" Color="#007ACC" Opacity="0.3" />
           <SolidColorBrush x:Key="Stampeded.TreeFocusFill" Color="#33007ACC" />
           <SolidColorBrush x:Key="Stampeded.TreeFocusBorder" Color="#005A9E" />
+          <!-- The ground the window is built on, a shade off the white that content is
+               painted in, so a list or an editor reads as a surface laid on the frame rather
+               than as more of the same sheet. -->
+          <SolidColorBrush x:Key="Stampeded.ChromeBackground" Color="#F4F5F7" />
+          <!-- The Simple theme's own palette, restated. Its defaults draw a near-black
+               hairline around every list and text box and shade the buttons like a Win32
+               dialog; a review is read for an hour at a time, and the frame should be quiet
+               enough to disappear. Only the brushes are overridden, not the colours behind
+               them: the theme builds each brush from its colour with a StaticResource, which
+               is resolved once at parse time and never looks back. -->
+          <SolidColorBrush x:Key="ThemeBackgroundBrush" Color="#FFFFFF" />
+          <SolidColorBrush x:Key="ThemeBorderLowBrush" Color="#E4E7EA" />
+          <SolidColorBrush x:Key="ThemeBorderMidBrush" Color="#D8DCE1" />
+          <SolidColorBrush x:Key="ThemeBorderHighBrush" Color="#B9C0C8" />
+          <SolidColorBrush x:Key="ThemeControlLowBrush" Color="#F0F2F5" />
+          <SolidColorBrush x:Key="ThemeControlMidBrush" Color="#F6F7F9" />
+          <SolidColorBrush x:Key="ThemeControlMidHighBrush" Color="#F0F2F5" />
+          <SolidColorBrush x:Key="ThemeControlHighBrush" Color="#ECEFF3" />
+          <SolidColorBrush x:Key="ThemeControlVeryHighBrush" Color="#FFFFFF" />
+          <SolidColorBrush x:Key="ThemeControlHighlightLowBrush" Color="#F6F7F9" />
+          <SolidColorBrush x:Key="ThemeControlHighlightMidBrush" Color="#ECEFF3" />
+          <SolidColorBrush x:Key="ThemeControlHighlightHighBrush" Color="#E1E5EA" />
+          <SolidColorBrush x:Key="ThemeForegroundBrush" Color="#1F2328" />
+          <SolidColorBrush x:Key="ThemeForegroundLowBrush" Color="#656D76" />
+          <SolidColorBrush x:Key="ThemeAccentBrush" Color="#3794FF" />
+          <SolidColorBrush x:Key="HighlightBrush" Color="#3794FF" />
+          <SolidColorBrush x:Key="ThemeAccentBrush2" Color="#993794FF" />
+          <SolidColorBrush x:Key="ThemeAccentBrush3" Color="#663794FF" />
+          <SolidColorBrush x:Key="ThemeAccentBrush4" Color="#333794FF" />
+          <Color x:Key="ThemeBackgroundColor">#FFFFFF</Color>
+          <Color x:Key="ThemeForegroundColor">#1F2328</Color>
+          <Color x:Key="ThemeBorderLowColor">#E4E7EA</Color>
+          <Color x:Key="ThemeAccentColor">#3794FF</Color>
         </ResourceDictionary>
         <ResourceDictionary x:Key="Dark">
           <SolidColorBrush x:Key="Stampeded.EditorBackground" Color="#1E1E1E" />
           <SolidColorBrush x:Key="Stampeded.EditorSelectionBrush" Color="#3794FF" Opacity="0.35" />
           <SolidColorBrush x:Key="Stampeded.TreeFocusFill" Color="#40007ACC" />
           <SolidColorBrush x:Key="Stampeded.TreeFocusBorder" Color="#4A90D9" />
+          <SolidColorBrush x:Key="Stampeded.ChromeBackground" Color="#181A1C" />
+          <SolidColorBrush x:Key="ThemeBackgroundBrush" Color="#1E1E1E" />
+          <SolidColorBrush x:Key="ThemeBorderLowBrush" Color="#2A2E33" />
+          <SolidColorBrush x:Key="ThemeBorderMidBrush" Color="#3A4046" />
+          <SolidColorBrush x:Key="ThemeBorderHighBrush" Color="#555D66" />
+          <SolidColorBrush x:Key="ThemeControlLowBrush" Color="#23272B" />
+          <SolidColorBrush x:Key="ThemeControlMidBrush" Color="#33383E" />
+          <SolidColorBrush x:Key="ThemeControlMidHighBrush" Color="#26292E" />
+          <SolidColorBrush x:Key="ThemeControlHighBrush" Color="#2A2E33" />
+          <SolidColorBrush x:Key="ThemeControlVeryHighBrush" Color="#33383E" />
+          <SolidColorBrush x:Key="ThemeControlHighlightLowBrush" Color="#33383E" />
+          <SolidColorBrush x:Key="ThemeControlHighlightMidBrush" Color="#3D434A" />
+          <SolidColorBrush x:Key="ThemeControlHighlightHighBrush" Color="#474E56" />
+          <SolidColorBrush x:Key="ThemeForegroundBrush" Color="#E6EDF3" />
+          <SolidColorBrush x:Key="ThemeForegroundLowBrush" Color="#8B949E" />
+          <SolidColorBrush x:Key="ThemeAccentBrush" Color="#3794FF" />
+          <SolidColorBrush x:Key="HighlightBrush" Color="#3794FF" />
+          <SolidColorBrush x:Key="ThemeAccentBrush2" Color="#993794FF" />
+          <SolidColorBrush x:Key="ThemeAccentBrush3" Color="#663794FF" />
+          <SolidColorBrush x:Key="ThemeAccentBrush4" Color="#333794FF" />
+          <Color x:Key="ThemeBackgroundColor">#1E1E1E</Color>
+          <Color x:Key="ThemeForegroundColor">#E6EDF3</Color>
+          <Color x:Key="ThemeBorderLowColor">#2F343A</Color>
+          <Color x:Key="ThemeAccentColor">#3794FF</Color>
         </ResourceDictionary>
       </ResourceDictionary.ThemeDictionaries>
       <ResourceDictionary.MergedDictionaries>
@@ -47,6 +104,41 @@
          panes here are resizable and their buttons are labelled with sentences. -->
     <Style Selector="Button TextBlock">
       <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+    </Style>
+    <!-- A corner radius the whole window over. The Simple theme draws every control as a
+         hard-edged rectangle, which reads as unfinished next to the rounded chrome every
+         other tool on the platform has. Set before Button.tool below, since equal-specificity
+         styles apply in source order and a toolbar button keeps its own tighter radius. -->
+    <Style Selector="Button">
+      <Setter Property="CornerRadius" Value="4" />
+    </Style>
+    <Style Selector="ToggleButton">
+      <Setter Property="CornerRadius" Value="4" />
+    </Style>
+    <Style Selector="TextBox">
+      <Setter Property="CornerRadius" Value="4" />
+    </Style>
+    <Style Selector="ComboBox">
+      <Setter Property="CornerRadius" Value="4" />
+    </Style>
+    <Style Selector="ListBox">
+      <Setter Property="CornerRadius" Value="5" />
+      <Setter Property="Background" Value="Transparent" />
+    </Style>
+    <Style Selector="ListBox /template/ Border#border">
+      <Setter Property="Background" Value="{DynamicResource ThemeBackgroundBrush}" />
+    </Style>
+    <Style Selector="ListBoxItem">
+      <Setter Property="CornerRadius" Value="3" />
+    </Style>
+    <!-- A pane's and a document's content are the surfaces a review is read on, so they keep
+         the content colour while the frame around them carries the chrome tone. Without this
+         they would inherit whatever the window is painted in, which is now not white. -->
+    <Style Selector="dockControls|ToolContentControl">
+      <Setter Property="Background" Value="{DynamicResource ThemeBackgroundBrush}" />
+    </Style>
+    <Style Selector="dockControls|DocumentContentControl">
+      <Setter Property="Background" Value="{DynamicResource ThemeBackgroundBrush}" />
     </Style>
     <!-- A row of commands over a list is a toolbar: pressed with the mouse, read at a glance,
          and narrow enough that a pane keeps room for what it is about. The name each icon
