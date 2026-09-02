@@ -29,7 +29,21 @@ jobs:
           dotnet-version: 10.0.x
 
       - run: dotnet build Stampeded.slnx -c Release
-      - run: dotnet test Stampeded.slnx -c Release --no-build
+      - run: dotnet test --solution Stampeded.slnx -c Release --no-build --report-trx --results-directory test-results
+
+      - uses: actions/upload-artifact@v7
+        if: success() || failure()
+        with:
+          name: test-results-${{ matrix.rid }}
+          path: test-results/*.trx
+          if-no-files-found: error
+
+      - name: Create Test Report
+        uses: test-summary/action@v2
+        if: always()
+        with:
+          paths: test-results/*.trx
+          folded: true
 
       # Framework-dependent on purpose: the app needs an installed .NET SDK at runtime
       # anyway (Roslyn's MSBuild workspace, dotnet build/test), so bundling a runtime
