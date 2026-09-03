@@ -94,6 +94,7 @@ public class StampededDockFactory(ReviewWorkspace workspace) : Factory
 
 		var references = new ReferencesPaneViewModel(workspace) { Id = "References", Title = "References" };
 		var checks = new ChecksPaneViewModel(workspace) { Id = "Checks", Title = "Checks" };
+		var mergeQueue = new MergeQueuePaneViewModel(workspace) { Id = "MergeQueue", Title = "Merge Queue" };
 		var tests = new TestsPaneViewModel(workspace) { Id = "Tests", Title = "Tests" };
 		var comments = new CommentsPaneViewModel(workspace) { Id = "Comments", Title = "Comments" };
 		workspace.Comments.Pane = comments;
@@ -106,10 +107,10 @@ public class StampededDockFactory(ReviewWorkspace workspace) : Factory
 			Id = "BottomDock",
 			Alignment = Alignment.Bottom,
 			Proportion = 0.28,
-			VisibleDockables = CreateList<IDockable>(references, callGraph, comments, commits, history, checks, tests, run, log),
+			VisibleDockables = CreateList<IDockable>(references, callGraph, comments, commits, history, checks, mergeQueue, tests, run, log),
 			ActiveDockable = references,
 		};
-		foreach (var pane in new Tool[] { references, callGraph, comments, commits, history, checks, tests, run, log })
+		foreach (var pane in new Tool[] { references, callGraph, comments, commits, history, checks, mergeQueue, tests, run, log })
 			panes[pane.Id!] = (pane, bottomDock);
 		var rightSide = new ProportionalDock {
 			Orientation = Orientation.Vertical,

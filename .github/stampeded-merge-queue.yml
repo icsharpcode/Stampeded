@@ -1,0 +1,194 @@
+# Drains the merge queue Stampeded keeps on refs/stampeded/merge-queue.
+#
+# The queue is a chain of commits on that ref, each carrying the whole queue as its message and
+# each parented on the state it replaces, so publishing is a plain push and git's refusal to
+# move a ref to a commit that does not descend from the one it holds is the compare-and-swap.
+# This workflow is simply another client of that protocol - a reader's Stampeded window speaks
+# it too, and the lock in the document is what keeps the two from merging the same thing twice.
+#
+# Why not trigger on the queue ref itself: `on: push` accepts only `branches:` and `tags:`, so a
+# push to refs/stampeded/* fires nothing. Stampeded sends a repository_dispatch instead when it
+# queues something, which is the event this reacts to.
+name: Stampeded merge queue
+
+on:
+  repository_dispatch:
+    types: [stampeded-merge-queue]
+  check_suite:
+    types: [completed]
+  workflow_dispatch:
+  schedule:
+    # A safety net only: every trigger above can be missed (a dispatch sent while the workflow
+    # was disabled, a check suite that completed during an outage), and an entry nobody comes
+    # back for is the failure this whole thing exists to prevent.
+    - cron: '*/15 * * * *'
+
+# GitHub serializes the runs, so the workflow never races itself. It still takes the lock in the
+# document, because a reader's window is a client too and knows nothing about this.
+concurrency:
+  group: stampeded-merge-queue
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  drain:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Drain the queue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          QUEUE_REF: refs/stampeded/merge-queue
+          # Distinct per run, so the lock this takes is recognisably this run's.
+          CLIENT: gha-${{ github.run_id }}
+          HOLDER: github-actions@${{ github.repository }}
+          LEASE_SECONDS: '300'
+        run: |
+          set -euo pipefail
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          EMPTY_TREE=$(git mktree </dev/null)
+
+          # Reads the queue into QSHA (empty when the ref does not exist) and QDOC.
+          read_queue() {
+            QSHA=$(git ls-remote origin "$QUEUE_REF" | awk 'NR==1{print $1}')
+            if [ -z "$QSHA" ]; then
+              QDOC='{"version":1,"entries":[],"lock":null}'
+              return
+            fi
+            git fetch --quiet origin "+$QUEUE_REF:$QUEUE_REF"
+            QDOC=$(git cat-file commit "$QSHA" | sed -n '/^$/,$p' | sed -n '/{/,$p')
+            [ -n "$QDOC" ] || QDOC='{"version":1,"entries":[],"lock":null}'
+          }
+
+          # publish <subject> <document> - a plain push, so a queue somebody else has replaced
+          # since we read it is rejected rather than overwritten. Returns 1 on that rejection.
+          publish() {
+            local subject="$1" doc="$2" commit args=()
+            [ -n "${QSHA:-}" ] && args=(-p "$QSHA")
+            commit=$(printf '%s\n\n%s\n' "$subject" "$doc" | git commit-tree "$EMPTY_TREE" "${args[@]}")
+            git push --quiet origin "$commit:$QUEUE_REF" 2>/dev/null || return 1
+            echo "queue: $subject"
+          }
+
+          # update <subject> <jq filter> - read, apply, publish, retrying against whatever the
+          # winner of a race left behind. A filter that returns null means nothing to do.
+          update() {
+            local subject="$1" filter="$2" next
+            for _ in 1 2 3 4 5; do
+              read_queue
+              next=$(printf '%s' "$QDOC" | jq -c "$filter")
+              [ "$next" = "null" ] && return 0
+              publish "$subject" "$next" && return 0
+            done
+            echo "queue: gave up publishing after five attempts: $subject" >&2
+            return 1
+          }
+
+          now() { date -u +%Y-%m-%dT%H:%M:%SZ; }
+
+          # One pass over the queue; merges at most one entry, so the loop below can re-read
+          # between merges the way a client's turn does.
+          drain_once() {
+            read_queue
+            local count held expired
+            count=$(printf '%s' "$QDOC" | jq '.entries | length')
+            if [ "$count" -eq 0 ]; then echo "queue: empty"; return 1; fi
+
+            held=$(printf '%s' "$QDOC" | jq -r '.lock.client // ""')
+            if [ -n "$held" ] && [ "$held" != "$CLIENT" ]; then
+              expired=$(printf '%s' "$QDOC" | jq -r --argjson lease "$LEASE_SECONDS" \
+                '((now - (.lock.at | fromdateiso8601)) > $lease) | tostring')
+              if [ "$expired" != "true" ]; then
+                echo "queue: $(printf '%s' "$QDOC" | jq -r .lock.holder) is merging #$(printf '%s' "$QDOC" | jq -r .lock.pr)"
+                return 1
+              fi
+            fi
+
+            local i pr method head state mergeable status
+            for i in $(seq 0 $((count - 1))); do
+              pr=$(printf '%s'     "$QDOC" | jq -r ".entries[$i].pr")
+              method=$(printf '%s' "$QDOC" | jq -r ".entries[$i].method")
+              head=$(printf '%s'   "$QDOC" | jq -r ".entries[$i].headSha")
+
+              # GitHub recomputes mergeability in the background, and answers UNKNOWN while it
+              # is doing so - which is exactly the state every other entry is in for a few
+              # seconds after one of them lands. Taking UNKNOWN at face value would drain one
+              # entry per run and leave the rest for the next trigger.
+              for attempt in 1 2 3 4 5 6; do
+                if ! info=$(gh pr view "$pr" --json state,mergeable,mergeStateStatus,headRefOid,isDraft 2>&1); then
+                  echo "queue: #$pr - GitHub will not describe it: $info"
+                  info=""
+                  break
+                fi
+                state=$(printf '%s' "$info" | jq -r .state)
+                mergeable=$(printf '%s' "$info" | jq -r .mergeable)
+                status=$(printf '%s' "$info" | jq -r .mergeStateStatus)
+                [ "$mergeable" != "UNKNOWN" ] && [ "$status" != "UNKNOWN" ] && break
+                [ "$state" = "MERGED" ] || [ "$state" = "CLOSED" ] && break
+                echo "queue: #$pr - GitHub is still working out whether it merges (attempt $attempt)"
+                sleep 5
+              done
+              [ -n "$info" ] || continue
+
+              if [ "$state" = "MERGED" ] || [ "$state" = "CLOSED" ]; then
+                update "remove #$pr: already $(echo "$state" | tr '[:upper:]' '[:lower:]')" \
+                  "if any(.entries[]; .pr == $pr) then .entries |= map(select(.pr != $pr)) else null end"
+                return 0
+              fi
+
+              if [ -n "$head" ] && [ "$(printf '%s' "$info" | jq -r .headRefOid)" != "$head" ]; then
+                echo "queue: #$pr - pushed to since it was queued; it needs queueing again"
+                continue
+              fi
+
+              # A draft reports CLEAN on a repository with no rule about drafts, so its own
+              # flag is the only reliable way to recognise one - and GitHub refuses to merge it
+              # whatever the status said.
+              if [ "$(printf '%s' "$info" | jq -r .isDraft)" = "true" ]; then
+                echo "queue: #$pr - still a draft; mark it ready for review first"
+                continue
+              fi
+
+              case "$mergeable:$status" in
+                MERGEABLE:CLEAN|MERGEABLE:UNSTABLE|MERGEABLE:HAS_HOOKS) ;;
+                *) echo "queue: #$pr - $mergeable / $status"; continue ;;
+              esac
+
+              # Take the lock before merging. A reader's window may be driving this queue too,
+              # and GitHub refusing the second merge is a worse way to find that out than this.
+              update "lock taken by $HOLDER for #$pr" \
+                "if (.lock == null) or (.lock.client == \"$CLIENT\") or ((now - (.lock.at | fromdateiso8601)) > $LEASE_SECONDS) then .lock = {holder: \"$HOLDER\", client: \"$CLIENT\", at: \"$(now)\", pr: $pr} else null end"
+              read_queue
+              if [ "$(printf '%s' "$QDOC" | jq -r '.lock.client // ""')" != "$CLIENT" ]; then
+                echo "queue: another client took #$pr first"
+                return 1
+              fi
+
+              if gh pr merge "$pr" "--$method"; then
+                echo "queue: merged #$pr by $method"
+              else
+                echo "queue: merging #$pr failed"
+              fi
+              # The entry goes when the pull request is seen merged or closed, which the next
+              # pass decides. Only the lock is given back here, so a merge that failed leaves
+              # the entry in place with nothing held.
+              update "lock released by $HOLDER" \
+                "if .lock.client == \"$CLIENT\" then .lock = null else null end"
+              return 0
+            done
+
+            echo "queue: nothing can be merged right now"
+            return 1
+          }
+
+          for _ in $(seq 1 20); do
+            drain_once || break
+          done

@@ -156,7 +156,9 @@ public sealed record MergeState(
 	string? ReviewDecision = null,
 	bool IsDraft = false,
 	string? BaseRefName = null,
-	System.Text.Json.JsonElement? StatusCheckRollup = null)
+	System.Text.Json.JsonElement? StatusCheckRollup = null,
+	string? State = null,
+	string? HeadRefOid = null)
 {
 	/// <summary>
 	/// UNSTABLE is a failing or pending check on a pull request GitHub would still merge, so
@@ -378,7 +380,10 @@ public sealed class GitHubService(string repoPath)
 		=> JsonAsync<MergeState>(ct, "pr", "view", number.ToString(),
 			// The fields beyond the two verdicts are what turns "BLOCKED" into a reason: the
 			// review decision, the checks and the draft flag are where GitHub keeps the detail.
-			"--json", "mergeable,mergeStateStatus,reviewDecision,isDraft,baseRefName,statusCheckRollup");
+			// state and headRefOid are what a merge queue needs on top: whether somebody has
+			// merged or closed it since, and whether the branch still carries the revision that
+			// was queued.
+			"--json", "mergeable,mergeStateStatus,reviewDecision,isDraft,baseRefName,statusCheckRollup,state,headRefOid");
 
 	/// <summary>
 	/// The title of an issue or pull request of this repository, or null when the number is
@@ -420,6 +425,38 @@ public sealed class GitHubService(string repoPath)
 		=> mergeMethods ??= await JsonAsync<MergeMethods>(ct,
 			"repo", "view", "--json", "mergeCommitAllowed,squashMergeAllowed,rebaseMergeAllowed");
 
+	/// <summary>
+	/// Whether this repository has the drainer workflow installed, so the queue empties itself
+	/// without a reader's window being open. Asked once: a workflow is not added mid-session, and
+	/// a repository with no Actions, or a login without the rights to list them, simply has none.
+	/// </summary>
+	public async Task<bool> HasMergeQueueWorkflowAsync(CancellationToken ct = default)
+	{
+		if (hasMergeQueueWorkflow is { } known)
+			return known;
+		try
+		{
+			string paths = await ExternalTool.RunAsync("gh",
+				["api", "repos/{owner}/{repo}/actions/workflows",
+					"--jq", ".workflows[] | select(.state == \"active\") | .path"], repoPath, ct);
+			return (hasMergeQueueWorkflow = paths.Contains(MergeQueueWorkflow, StringComparison.Ordinal)).Value;
+		}
+		catch (ToolFailedException)
+		{
+			return (hasMergeQueueWorkflow = false).Value;
+		}
+	}
+
+	/// <summary>
+	/// Tells the drainer workflow there is something to do. A push to refs/stampeded/* triggers
+	/// nothing - `on: push` accepts only branches and tags - so the queue cannot be its own
+	/// event and this is sent instead. GitHub only runs the workflow on the default branch,
+	/// which is where the drainer lives.
+	/// </summary>
+	public Task DispatchMergeQueueAsync(CancellationToken ct = default)
+		=> ExternalTool.RunAsync("gh",
+			["api", "repos/{owner}/{repo}/dispatches", "-f", $"event_type={MergeQueueEvent}"], repoPath, ct);
+
 	/// <summary>Merges the pull request. <paramref name="method"/> is a gh flag name:
 	/// merge, squash or rebase.</summary>
 	public Task<string> MergePrAsync(int number, string method, CancellationToken ct = default)
@@ -434,6 +471,14 @@ public sealed class GitHubService(string repoPath)
 		=> ExternalTool.RunAsync("gh", ["pr", "ready", number.ToString()], repoPath, ct);
 
 	/// <summary>Log lines of the failed steps of a workflow run.</summary>
+	/// <summary>The drainer workflow's path in a repository that has one, and the event that
+	/// wakes it. Both are named by <c>.github/stampeded-merge-queue.yml</c> in this repository,
+	/// which is the file to copy into a repository whose queue should empty itself.</summary>
+	public const string MergeQueueWorkflow = "stampeded-merge-queue.yml";
+	public const string MergeQueueEvent = "stampeded-merge-queue";
+
+	bool? hasMergeQueueWorkflow;
+
 	public Task<string> GetFailedLogAsync(long runId, CancellationToken ct = default)
 		=> ExternalTool.RunAsync("gh", ["run", "view", runId.ToString(), "--log-failed"], repoPath, ct);
 
