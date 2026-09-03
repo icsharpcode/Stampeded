@@ -178,6 +178,7 @@
               <NativeMenuItem Header="Call Graph" CommandParameter="CallGraph" Click="OnShowPane" />
               <NativeMenuItem Header="Comments" CommandParameter="Comments" Click="OnShowPane" />
               <NativeMenuItem Header="Checks" CommandParameter="Checks" Click="OnShowPane" />
+              <NativeMenuItem Header="Merge Queue" CommandParameter="MergeQueue" Click="OnShowPane" />
               <NativeMenuItem Header="Tests" CommandParameter="Tests" Click="OnShowPane" />
               <NativeMenuItem Header="Commits" CommandParameter="Commits" Click="OnShowPane" />
               <NativeMenuItem Header="History" CommandParameter="History" Click="OnShowPane" />

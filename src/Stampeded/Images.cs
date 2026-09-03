@@ -86,6 +86,7 @@ public static class Images
 	public static readonly IImage Comment = LoadSvg(nameof(Comment));
 	public static readonly IImage Merge = LoadSvg(nameof(Merge));
 	public static readonly IImage Cancel = LoadSvg(nameof(Cancel));
+	public static readonly IImage Lock = LoadSvg(nameof(Lock));
 
 	// What a file is, for the tree that lists them. Same treatment as the icons above: a 16x16
 	// SVG drawn at whatever size the row asks for.

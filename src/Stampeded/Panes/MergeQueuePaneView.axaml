@@ -1,0 +1,143 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:panes="using:Stampeded.Panes"
+             xmlns:app="using:Stampeded"
+             x:Class="Stampeded.Panes.MergeQueuePaneView"
+             x:DataType="panes:MergeQueuePaneViewModel">
+  <UserControl.Styles>
+    <!-- An SvgImage draws through an operation of its own and never sees the opacity a disabled
+         button sets, so an icon-only button looks identical whether or not it can be pressed.
+         The veil is an ordinary shape, which does obey it, painted in the background colour so
+         it works out to the same fading in either theme. -->
+    <Style Selector="Button.tool Panel > Rectangle.veil">
+      <Setter Property="IsVisible" Value="False" />
+    </Style>
+    <Style Selector="Button.tool:disabled Panel > Rectangle.veil">
+      <Setter Property="IsVisible" Value="True" />
+    </Style>
+    <!-- A settled note is always a reason something did not merge, so it reads as one. -->
+    <Style Selector="TextBlock.failed">
+      <Setter Property="Foreground" Value="#c0392b" />
+      <Setter Property="Opacity" Value="1" />
+    </Style>
+  </UserControl.Styles>
+  <DockPanel>
+    <!-- Above the list, like every other pane's commands: a row that sits under a list moves
+         with it, and the reader has to look for it.
+
+         The buttons dock to the right, so they are written here in the reverse of the order they
+         appear in. Each is available only when it has something to act on: the three that work on
+         one entry need a selection, and the rest need the thing they would clear. -->
+    <DockPanel DockPanel.Dock="Top">
+      <Button x:Name="RefreshButton" DockPanel.Dock="Right" Classes="tool" Margin="0,2,4,2"
+              VerticalAlignment="Center" Click="OnRefresh"
+              ToolTip.Tip="Refresh - re-read the queue from the remote">
+        <Image Source="{x:Static app:Images.Refresh}" />
+      </Button>
+      <CheckBox DockPanel.Dock="Right" Margin="8,2,4,2" VerticalAlignment="Center"
+                IsChecked="{Binding State.Driving}" Content="Drive"
+                ToolTip.Tip="Take turns merging the front of the queue, checking every 30 seconds. This is the only thing in the application that polls, so it starts off - though adding a pull request turns it on." />
+      <Button DockPanel.Dock="Right" Classes="tool" Margin="0,2,8,2"
+              VerticalAlignment="Center" Click="OnBreakLock"
+              IsEnabled="{Binding State.HasLock}"
+              ToolTip.Tip="Clear lock - take the lock off the queue whoever holds it, for a window that is not coming back. A lock still within its lease asks first.">
+        <Panel>
+          <Image Source="{x:Static app:Images.Lock}" />
+          <Rectangle Classes="veil" Fill="{DynamicResource ThemeBackgroundBrush}" Opacity="0.65" />
+        </Panel>
+      </Button>
+      <Button DockPanel.Dock="Right" Classes="tool" Margin="0,2,4,2"
+              VerticalAlignment="Center" Click="OnClearErrors"
+              IsEnabled="{Binding State.HasErrors}"
+              ToolTip.Tip="Clear errors - take out the entries the last turn could not merge, leaving the ones still waiting">
+        <Panel>
+          <Image Source="{x:Static app:Images.Clear}" />
+          <Rectangle Classes="veil" Fill="{DynamicResource ThemeBackgroundBrush}" Opacity="0.65" />
+        </Panel>
+      </Button>
+      <Button DockPanel.Dock="Right" Classes="tool" Margin="0,2,4,2"
+              VerticalAlignment="Center" Click="OnClear"
+              IsEnabled="{Binding State.HasEntries}"
+              ToolTip.Tip="Empty the queue - takes out everything, including what other people queued. Asks first.">
+        <Panel>
+          <Image Source="{x:Static app:Images.Delete}" />
+          <Rectangle Classes="veil" Fill="{DynamicResource ThemeBackgroundBrush}" Opacity="0.65" />
+        </Panel>
+      </Button>
+      <Button DockPanel.Dock="Right" Classes="tool" Margin="0,2,8,2"
+              VerticalAlignment="Center" Click="OnDown"
+              IsEnabled="{Binding #QueueList.SelectedItem, Converter={x:Static ObjectConverters.IsNotNull}}"
+              ToolTip.Tip="Move the selected pull request one place later">
+        <!-- Previous and Next are the only arrows in the icon set; a quarter turn is cheaper than
+             two more SVGs that would have to be kept looking like their siblings. -->
+        <Panel>
+          <Image Source="{x:Static app:Images.Next}">
+          <Image.RenderTransform>
+            <RotateTransform Angle="90" />
+          </Image.RenderTransform>
+        </Image>
+          <Rectangle Classes="veil" Fill="{DynamicResource ThemeBackgroundBrush}" Opacity="0.65" />
+        </Panel>
+      </Button>
+      <Button DockPanel.Dock="Right" Classes="tool" Margin="0,2,4,2"
+              VerticalAlignment="Center" Click="OnUp"
+              IsEnabled="{Binding #QueueList.SelectedItem, Converter={x:Static ObjectConverters.IsNotNull}}"
+              ToolTip.Tip="Move the selected pull request one place earlier">
+        <Panel>
+          <Image Source="{x:Static app:Images.Previous}">
+          <Image.RenderTransform>
+            <RotateTransform Angle="90" />
+          </Image.RenderTransform>
+        </Image>
+          <Rectangle Classes="veil" Fill="{DynamicResource ThemeBackgroundBrush}" Opacity="0.65" />
+        </Panel>
+      </Button>
+      <Button DockPanel.Dock="Right" Classes="tool" Margin="0,2,4,2"
+              VerticalAlignment="Center" Click="OnRemove"
+              IsEnabled="{Binding #QueueList.SelectedItem, Converter={x:Static ObjectConverters.IsNotNull}}"
+              ToolTip.Tip="Take the selected pull request out of the queue">
+        <Panel>
+          <Image Source="{x:Static app:Images.Close}" />
+          <Rectangle Classes="veil" Fill="{DynamicResource ThemeBackgroundBrush}" Opacity="0.65" />
+        </Panel>
+      </Button>
+      <!-- The one thing the reader came here to do keeps its name; the rest are its neighbours. -->
+      <Button x:Name="AddCurrentPrButton" DockPanel.Dock="Right" Classes="tool" Margin="0,2,8,2"
+              VerticalAlignment="Center" Click="OnEnqueue"
+              IsEnabled="{Binding State.CanEnqueue}"
+              ToolTip.Tip="Put the pull request being reviewed at the back of the queue, and start driving. A draft cannot be queued - mark it ready for review first.">
+        <StackPanel Orientation="Horizontal" Spacing="4">
+          <Panel>
+            <Image Source="{x:Static app:Images.Merge}" />
+            <Rectangle Classes="veil" Fill="{DynamicResource ThemeBackgroundBrush}" Opacity="0.65" />
+          </Panel>
+          <TextBlock Text="Add current PR" VerticalAlignment="Center" />
+        </StackPanel>
+      </Button>
+      <!-- One line, however long the message: this pane is often short, and a status that wraps
+           to three lines takes them off the list, which is the thing worth looking at. -->
+      <TextBlock Margin="6,4" Opacity="0.7" TextTrimming="CharacterEllipsis"
+                 Text="{Binding State.Status}" ToolTip.Tip="{Binding State.Status}" />
+    </DockPanel>
+    <TextBlock DockPanel.Dock="Bottom" Margin="6,4" Opacity="0.7"
+               TextTrimming="CharacterEllipsis" Text="{Binding State.Holder}"
+               ToolTip.Tip="{Binding State.Holder}" />
+    <!-- Rows fit the width rather than scrolling sideways: a horizontal scrollbar in a pane
+         this short costs a row, and the note at the end of a row is the part that can be cut. -->
+    <ListBox x:Name="QueueList" ItemsSource="{Binding Items}"
+             ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+             FontFamily="monospace" FontSize="12">
+      <ListBox.ItemTemplate>
+        <DataTemplate x:DataType="panes:MergeQueueRow">
+          <!-- The note is its own column so a long reason cannot push the entry off the row:
+               the entry is what the reader is looking for, the note is why it is still there. -->
+          <DockPanel>
+            <TextBlock DockPanel.Dock="Left" Text="{Binding Display}" />
+            <TextBlock Margin="8,0,0,0" Opacity="0.7" Text="{Binding Note}"
+                       Classes.failed="{Binding Failed}" TextTrimming="CharacterEllipsis" />
+          </DockPanel>
+        </DataTemplate>
+      </ListBox.ItemTemplate>
+    </ListBox>
+  </DockPanel>
+</UserControl>
