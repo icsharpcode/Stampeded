@@ -145,12 +145,18 @@
            shared a row with the buttons and lost. -->
       <Panel>
       <ListBox x:Name="PrListBox" ItemsSource="{Binding Prs}" DoubleTapped="OnPrDoubleTapped"
+               SelectionChanged="OnPrSelectionChanged"
                TextInput="OnListTextInput" KeyDown="OnListKeyDown"
                ScrollViewer.HorizontalScrollBarVisibility="Disabled">
         <ListBox.ContextMenu>
           <ContextMenu>
             <MenuItem Header="Open Review (double-click)" Click="OnPrOpen" />
             <MenuItem Header="Open on GitHub" Click="OnPrOpenOnGitHub" />
+            <!-- Only on a draft: there is nothing to take out of draft otherwise, and an item
+                 that would report that is worse than one that is not offered. -->
+            <MenuItem Header="Ready for Review" Click="OnPrMarkReady"
+                      IsVisible="{Binding State.SelectedPrIsDraft}"
+                      ToolTip.Tip="Take this pull request out of draft. GitHub then asks for the reviews its rules require." />
             <MenuItem Header="Pull Head Branch from origin" Click="OnPrPull" />
           </ContextMenu>
         </ListBox.ContextMenu>

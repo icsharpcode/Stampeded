@@ -4,7 +4,6 @@ using Stampeded.Core.Decompilation;
 using Stampeded.Core.Diff;
 using Stampeded.Core.Git;
 using Stampeded.Core.GitHub;
-using Stampeded.Core.MergeQueue;
 using Stampeded.Core.Infra;
 using Stampeded.Core.Lsp;
 using Stampeded.Core.Review;
@@ -35,9 +34,6 @@ public sealed class ReviewWorkspace(string repoPath)
 	public GitService Git { get; } = new(repoPath);
 	public GitHubService GitHub { get; } = new(repoPath);
 	public WorktreeManager Worktrees { get; } = new(repoPath);
-
-	/// <summary>The merge queue this repository's readers share, wherever they are.</summary>
-	public MergeQueueService MergeQueue { get; } = new(new GitService(repoPath), new GitHubService(repoPath));
 
 	/// <summary>File content at any revision, without a checkout: what the base side of a
 	/// review is read from.</summary>
@@ -1530,7 +1526,7 @@ public sealed class ReviewWorkspace(string repoPath)
 			PostStatus($"Reloaded: the head is still {before?[..9]}.");
 	}
 
-	internal static Avalonia.Controls.Window? MainWindowOrNull()
+	static Avalonia.Controls.Window? MainWindowOrNull()
 		=> (Avalonia.Application.Current?.ApplicationLifetime
 			as Avalonia.Controls.ApplicationLifetimes.IClassicDesktopStyleApplicationLifetime)?.MainWindow;
 
