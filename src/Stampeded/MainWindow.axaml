@@ -210,11 +210,12 @@
     <LayoutTransformControl.LayoutTransform>
       <ScaleTransform ScaleX="{Binding Zoom}" ScaleY="{Binding Zoom}" />
     </LayoutTransformControl.LayoutTransform>
-  <DockPanel>
+  <DockPanel Background="{DynamicResource Stampeded.ChromeBackground}">
     <!-- Empty and zero-height on macOS, where the platform took the menu; the bar the menu is
          drawn in on Windows and Linux. -->
     <NativeMenuBar DockPanel.Dock="Top" />
-    <Border DockPanel.Dock="Bottom" Padding="8,3" IsVisible="{Binding Busy.IsBusy}">
+    <Border DockPanel.Dock="Bottom" Padding="8,3" IsVisible="{Binding Busy.IsBusy}"
+            BorderBrush="{DynamicResource ThemeBorderLowBrush}" BorderThickness="0,1,0,0">
       <StackPanel Orientation="Horizontal" Spacing="8">
         <TextBlock Text="{Binding Busy.SpinnerFrame}" FontFamily="monospace" />
         <TextBlock Text="{Binding Busy.Text}" Opacity="0.8" />

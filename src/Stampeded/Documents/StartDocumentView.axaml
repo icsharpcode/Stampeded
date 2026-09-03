@@ -79,7 +79,10 @@
       <Setter Property="Height" Value="14" />
     </Style>
   </UserControl.Styles>
-  <Grid ColumnDefinitions="1*,8,2*,8,2*" Margin="8">
+  <!-- The chrome tone behind the three columns, so their lists read as three panels and not
+       as one sheet with lines drawn on it: the gutters are what separates them. -->
+  <Grid ColumnDefinitions="1*,8,2*,8,2*" Margin="8"
+        Background="{DynamicResource Stampeded.ChromeBackground}">
     <DockPanel Grid.Column="0">
       <Grid DockPanel.Dock="Top" Classes="header" ColumnDefinitions="*,Auto">
         <Panel Classes="headtitle">
