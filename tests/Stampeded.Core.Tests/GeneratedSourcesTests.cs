@@ -54,13 +54,13 @@ public class GeneratedSourcesTests
 	}
 
 	[Test]
-	public void PairsTheTwoSidesEvenWhenTheyWereBuiltDifferently()
+	public async Task PairsTheTwoSidesEvenWhenTheyWereBuiltDifferently()
 	{
 		string baseTree = NewDirectory(), headTree = NewDirectory();
 		Write(baseTree, "src/Lib/obj/Debug/net10.0/generated/G/E/Thing.g.cs", "one\ntwo\n");
 		Write(headTree, "src/Lib/obj/Release/net11.0/generated/G/E/Thing.g.cs", "one\ntwo changed\n");
 
-		var files = GeneratedSources.DiffAsync(baseTree, headTree).GetAwaiter().GetResult();
+		var files = await GeneratedSources.DiffAsync(baseTree, headTree);
 
 		Assert.That(files, Has.Count.EqualTo(1));
 		Assert.That(files[0].Kind, Is.EqualTo(FileChangeKind.Modified));
@@ -69,13 +69,13 @@ public class GeneratedSourcesTests
 	}
 
 	[Test]
-	public void ReportsWhatOnlyOneSideGenerated()
+	public async Task ReportsWhatOnlyOneSideGenerated()
 	{
 		string baseTree = NewDirectory(), headTree = NewDirectory();
 		Write(baseTree, "src/Lib/obj/Debug/net10.0/generated/G/E/Gone.g.cs", "was here\n");
 		Write(headTree, "src/Lib/obj/Debug/net10.0/generated/G/E/New.g.cs", "is here\n");
 
-		var files = GeneratedSources.DiffAsync(baseTree, headTree).GetAwaiter().GetResult();
+		var files = await GeneratedSources.DiffAsync(baseTree, headTree);
 
 		Assert.That(files.Select(f => (f.Path, f.Kind)), Is.EquivalentTo(new[] {
 			("src/Lib/generated/G/E/Gone.g.cs", FileChangeKind.Deleted),
@@ -84,24 +84,24 @@ public class GeneratedSourcesTests
 	}
 
 	[Test]
-	public void LeavesOutGeneratedFilesTheChangeDidNotMove()
+	public async Task LeavesOutGeneratedFilesTheChangeDidNotMove()
 	{
 		string baseTree = NewDirectory(), headTree = NewDirectory();
 		Write(baseTree, "src/Lib/obj/Debug/net10.0/generated/G/E/Same.g.cs", "unchanged\n");
 		Write(headTree, "src/Lib/obj/Debug/net10.0/generated/G/E/Same.g.cs", "unchanged\n");
 
-		Assert.That(GeneratedSources.DiffAsync(baseTree, headTree).GetAwaiter().GetResult(), Is.Empty,
+		Assert.That(await GeneratedSources.DiffAsync(baseTree, headTree), Is.Empty,
 			"a generator whose output stands still is not part of the change");
 	}
 
 	[Test]
-	public void CarriesWhereEachSideCanBeReadFrom()
+	public async Task CarriesWhereEachSideCanBeReadFrom()
 	{
 		string baseTree = NewDirectory(), headTree = NewDirectory();
 		Write(baseTree, "src/Lib/obj/Debug/net10.0/generated/G/E/Thing.g.cs", "before\n");
 		Write(headTree, "src/Lib/obj/Debug/net10.0/generated/G/E/Thing.g.cs", "after\n");
 
-		var file = GeneratedSources.DiffAsync(baseTree, headTree).GetAwaiter().GetResult().Single();
+		var file = (await GeneratedSources.DiffAsync(baseTree, headTree)).Single();
 
 		// Nothing can read these out of a commit, so the diff has to say where they are.
 		Assert.That(file.IsGenerated, Is.True);

@@ -107,7 +107,7 @@ sealed class RoslynLspServer : IDisposable
 			case "textDocument/didChange":
 				// The client sends what the review is showing, which may be a revision that
 				// is not on disk. An overlay is how the workspace is told.
-				Overlay(parameters);
+				await OverlayAsync(parameters, ct);
 				break;
 			case "initialized":
 			case "$/cancelRequest":
@@ -206,8 +206,14 @@ sealed class RoslynLspServer : IDisposable
 		});
 	}
 
+	// An event handler cannot await, and the client only needs the notification to arrive
+	// eventually: the write lock queues waiters in order, so states are still sent in the
+	// order they were reached.
 	void ReportState()
-		=> Notify("stampeded/state", new { state = head.State.ToString(), detail = head.StateDetail });
+		=> NotifyAsync("stampeded/state", new { state = head.State.ToString(), detail = head.StateDetail })
+			.ContinueWith(
+				t => CliLog.Write("roslyn-lsp", $"state notification failed: {t.Exception?.GetBaseException().Message}"),
+				TaskContinuationOptions.OnlyOnFaulted);
 
 	/// <summary>Derives the base-side workspace from the head one, given the texts of the
 	/// revision being compared against.</summary>
@@ -242,7 +248,7 @@ sealed class RoslynLspServer : IDisposable
 		return texts;
 	}
 
-	void Overlay(JsonElement parameters)
+	async Task OverlayAsync(JsonElement parameters, CancellationToken ct)
 	{
 		if (!parameters.TryGetProperty("textDocument", out var document)
 			|| !document.TryGetProperty("uri", out var uri))
@@ -261,7 +267,7 @@ sealed class RoslynLspServer : IDisposable
 		// Only when it differs from what the workspace has: the client opens a document to
 		// be able to ask about it at all, and re-stating the file on disk would throw away
 		// the compilation that already knows it.
-		if (target.Service.GetDocumentTextAsync(target.RelPath, CancellationToken.None).Result is { } current
+		if (await target.Service.GetDocumentTextAsync(target.RelPath, ct) is { } current
 			&& string.Equals(current.ReplaceLineEndings("\n"), text.ReplaceLineEndings("\n"), StringComparison.Ordinal))
 		{
 			return;
@@ -619,11 +625,11 @@ sealed class RoslynLspServer : IDisposable
 		await SendAsync(payload);
 	}
 
-	void Notify(string method, object parameters)
+	Task NotifyAsync(string method, object parameters)
 	{
 		var payload = JsonSerializer.SerializeToUtf8Bytes(
 			new { jsonrpc = "2.0", method, @params = parameters }, Json);
-		SendAsync(payload).GetAwaiter().GetResult();
+		return SendAsync(payload);
 	}
 
 	async Task SendAsync(byte[] payload)
