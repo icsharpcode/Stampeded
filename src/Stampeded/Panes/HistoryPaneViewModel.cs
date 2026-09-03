@@ -51,39 +51,40 @@ public class HistoryPaneViewModel : Tool
 
 	async Task LoadAsync(string path)
 	{
-		Commits.Clear();
+		var rows = new List<CommitRow>();
 		State.Status = $"History of {path}...";
 		try
 		{
 			var commits = await workspace.Git.LogAsync(null, path, follow: true, limit: 50);
 			foreach (var commit in commits)
-				Commits.Add(new CommitRow(commit));
+				rows.Add(new CommitRow(commit));
 			State.Status = $"{commits.Count} commit(s) touching {path} (newest first).";
 		}
 		catch (ToolFailedException ex)
 		{
 			State.Status = ex.Message;
 		}
+		Commits.Replace(rows);
 	}
 
 	async Task PickaxeAsync(string text, string path)
 	{
-		Commits.Clear();
+		var rows = new List<CommitRow>();
 		currentPath = path;
 		string display = text.Length > 40 ? text[..40] + "..." : text;
 		State.Status = $"Commits adding/removing '{display}' in {path}...";
 		try
 		{
 			var commits = await workspace.Git.LogPickaxeAsync(text, path, limit: 50);
-			Commits.Clear();
 			foreach (var commit in commits)
-				Commits.Add(new CommitRow(commit));
+				rows.Add(new CommitRow(commit));
 			State.Status = $"{commits.Count} commit(s) added or removed '{display}' in {path}.";
 		}
 		catch (ToolFailedException ex)
 		{
 			State.Status = ex.Message;
 		}
+		Commits.Replace(rows);
 	}
 
 	public void Open(CommitRow row)

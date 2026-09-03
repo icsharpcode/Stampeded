@@ -21,6 +21,8 @@ public partial class ReviewDocumentView : UserControl
 
 	void OnComment(object? s, RoutedEventArgs e) => Vm?.Submit("COMMENT");
 
+	void OnMarkReady(object? s, RoutedEventArgs e) => Vm?.MarkReadyForReview();
+
 	void OnMerge(object? s, RoutedEventArgs e) => Vm?.Merge();
 
 	void OnOpen(object? s, TappedEventArgs e)

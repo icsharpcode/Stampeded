@@ -59,6 +59,11 @@ public sealed partial class ReviewDocumentState : ObservableObject
 
 	partial void OnMergeExplanationChanged(string value) => OnPropertyChanged(nameof(MergeButtonTip));
 
+	/// <summary>The pull request is still a draft, which is the one thing blocking it that the
+	/// reader can lift from here.</summary>
+	[ObservableProperty]
+	bool isDraft;
+
 	/// <summary>The merge methods this repository allows, as gh flag names.</summary>
 	public ObservableCollection<string> MergeMethods { get; } = [];
 
@@ -134,10 +139,12 @@ public sealed class ReviewDocumentViewModel : Document
 
 	async Task RebuildAsync()
 	{
-		Comments.Clear();
+		// Gathered and swapped in at the end: reading each comment's context is a round trip,
+		// and a clear before those awaits lets two rebuilds both fill the list.
+		var rows = new List<ReviewCommentRow>();
 		foreach (var draft in workspace.Comments.Drafts)
 		{
-			Comments.Add(new ReviewCommentRow(
+			rows.Add(new ReviewCommentRow(
 				draft.Stored.Anchor.Path, draft.CurrentLine, draft.Stored.Anchor.OldSide, "",
 				draft.Stored.Body,
 				await ContextAsync(draft.Stored.Anchor.Path, draft.CurrentLine, draft.Stored.Anchor.OldSide),
@@ -145,14 +152,15 @@ public sealed class ReviewDocumentViewModel : Document
 		}
 		foreach (var posted in workspace.Comments.Posted)
 		{
-			Comments.Add(new ReviewCommentRow(
+			rows.Add(new ReviewCommentRow(
 				posted.RelPath, posted.Line, posted.OldSide,
 				posted.IsResolved ? $"{posted.Author} (resolved)" : posted.Author,
 				posted.Body,
 				await ContextAsync(posted.RelPath, posted.Line, posted.OldSide),
 				IsDraft: false));
 		}
-		State.IsEmpty = Comments.Count == 0;
+		Comments.Replace(rows);
+		State.IsEmpty = rows.Count == 0;
 		State.CanComment = workspace.Comments.CanComment;
 		int drafts = workspace.Comments.Drafts.Count;
 		State.Status = workspace.Comments.CanComment
@@ -171,6 +179,7 @@ public sealed class ReviewDocumentViewModel : Document
 		if (workspace.CurrentPr is not { } pr)
 		{
 			State.CanMerge = false;
+			State.IsDraft = false;
 			State.MergeState = "";
 			State.MergeExplanation = "";
 			return;
@@ -190,6 +199,7 @@ public sealed class ReviewDocumentViewModel : Document
 				State.RememberMergeMethod = true;
 			}
 			var merge = await workspace.GitHub.GetMergeStateAsync(pr.Number);
+			State.IsDraft = merge.IsDraft;
 			State.MergeState = $"merge: {merge.Describe}";
 			State.MergeExplanation = merge.Explain
 				+ (State.MergeMethods.Count == 0
@@ -202,6 +212,19 @@ public sealed class ReviewDocumentViewModel : Document
 			State.CanMerge = false;
 			State.MergeState = $"merge state unknown ({ex.Message})";
 			State.MergeExplanation = $"Asking GitHub about the merge state failed:\n{ex.Message}";
+		}
+	}
+
+	/// <summary>Takes the pull request out of draft, then re-reads the merge state: coming out of
+	/// draft is exactly the change that can turn a refusal into a merge.</summary>
+	public void MarkReadyForReview()
+	{
+		ReadyAsync().HandleExceptions();
+
+		async Task ReadyAsync()
+		{
+			State.Status = await workspace.MarkReadyForReviewAsync();
+			await RefreshMergeAsync();
 		}
 	}
 

@@ -4,6 +4,7 @@ using Stampeded.Core.Decompilation;
 using Stampeded.Core.Diff;
 using Stampeded.Core.Git;
 using Stampeded.Core.GitHub;
+using Stampeded.Core.MergeQueue;
 using Stampeded.Core.Infra;
 using Stampeded.Core.Lsp;
 using Stampeded.Core.Review;
@@ -34,6 +35,9 @@ public sealed class ReviewWorkspace(string repoPath)
 	public GitService Git { get; } = new(repoPath);
 	public GitHubService GitHub { get; } = new(repoPath);
 	public WorktreeManager Worktrees { get; } = new(repoPath);
+
+	/// <summary>The merge queue this repository's readers share, wherever they are.</summary>
+	public MergeQueueService MergeQueue { get; } = new(new GitService(repoPath), new GitHubService(repoPath));
 
 	/// <summary>File content at any revision, without a checkout: what the base side of a
 	/// review is read from.</summary>
@@ -301,6 +305,10 @@ public sealed class ReviewWorkspace(string repoPath)
 	}
 
 	public event Action? ReviewChanged;
+
+	/// <summary>The open pull request changed in a way that is not a reload: it stopped being a
+	/// draft. What a reader may do with it changed, so the views that offer those things listen.</summary>
+	public event Action? PrStateChanged;
 	public event Action<string, bool>? ViewedChanged;
 	public event Action? SemanticsChanged;
 	public event Action? CoverageChanged;
@@ -1522,7 +1530,7 @@ public sealed class ReviewWorkspace(string repoPath)
 			PostStatus($"Reloaded: the head is still {before?[..9]}.");
 	}
 
-	static Avalonia.Controls.Window? MainWindowOrNull()
+	internal static Avalonia.Controls.Window? MainWindowOrNull()
 		=> (Avalonia.Application.Current?.ApplicationLifetime
 			as Avalonia.Controls.ApplicationLifetimes.IClassicDesktopStyleApplicationLifetime)?.MainWindow;
 
@@ -2592,6 +2600,40 @@ public sealed class ReviewWorkspace(string repoPath)
 
 	/// <summary>The ref to review and rebase against: the default branch as origin has it.</summary>
 	public async Task<string> GetDefaultBaseAsync() => "origin/" + await GetDefaultBranchAsync();
+
+	/// <summary>
+	/// Takes the current pull request out of draft, and says what happened either way.
+	///
+	/// Not asked about first, unlike the merge below: this asks for reviews rather than ending
+	/// the pull request, and GitHub can put it back. It is still a change everyone sees, so what
+	/// it did goes to the status line and to the log.
+	/// </summary>
+	public async Task<string> MarkReadyForReviewAsync()
+	{
+		if (CurrentPr is not { } pr)
+			return "No pull request is open.";
+		if (Offline)
+		{
+			return $"Offline: this review was opened from a snapshot taken {OfflineSince:g}. "
+				+ "Reload (F5) before changing anything on GitHub.";
+		}
+		try
+		{
+			using var busy = Busy.Begin($"Marking #{pr.Number} ready");
+			await GitHub.MarkReadyForReviewAsync(pr.Number);
+			// What the review holds has to stop saying draft at the same moment, or everything
+			// that reads it from here - the queue's Add button among them - stays wrong until
+			// the review is reloaded.
+			CurrentPr = pr with { IsDraft = false };
+			PrStateChanged?.Invoke();
+			CliLog.Write("action", $"marked #{pr.Number} ready for review");
+			return $"#{pr.Number} is ready for review; GitHub has asked for the reviews its rules require.";
+		}
+		catch (ToolFailedException ex)
+		{
+			return $"Could not mark #{pr.Number} ready: {ex.Message}";
+		}
+	}
 
 	/// <summary>
 	/// Merges the current pull request after asking, and says what happened either way.

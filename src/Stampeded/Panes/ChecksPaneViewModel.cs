@@ -52,16 +52,21 @@ public partial class ChecksPaneViewModel : Tool
 
 	public async Task LoadAsync()
 	{
-		Items.Clear();
+		// Gathered and swapped in at the end: this runs again on every event that says the
+		// review changed, and a clear before the awaits lets two runs both fill the list.
+		var rows = new List<CheckRow>();
 		if (workspace.CurrentPr is not { } pr)
+		{
+			Items.Replace(rows);
 			return;
+		}
 		State.Status = $"Loading checks for #{pr.Number}...";
 		try
 		{
 			var checks = await workspace.GitHub.GetChecksAsync(pr.Number);
 			workspace.SetChecks(checks);
 			foreach (var check in checks.OrderBy(c => c.Bucket is "fail" or "cancel" ? 0 : c.Bucket == "pending" ? 1 : 2))
-				Items.Add(new CheckRow(check));
+				rows.Add(new CheckRow(check));
 			int failed = checks.Count(c => c.Bucket is "fail" or "cancel");
 			int pending = checks.Count(c => c.Bucket == "pending");
 			State.Status = failed > 0
@@ -74,6 +79,7 @@ public partial class ChecksPaneViewModel : Tool
 		{
 			State.Status = ex.Message;
 		}
+		Items.Replace(rows);
 	}
 
 	public void Open(CheckRow row)

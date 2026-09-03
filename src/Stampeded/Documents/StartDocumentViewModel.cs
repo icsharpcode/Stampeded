@@ -95,6 +95,10 @@ static class SyncBrushes
 
 public sealed partial class StartState : ObservableObject
 {
+	/// <summary>Whether the selected pull request is a draft, which decides one context item.</summary>
+	[ObservableProperty]
+	bool selectedPrIsDraft;
+
 	[ObservableProperty]
 	string prColumnHeader = "Pull Requests";
 
@@ -569,6 +573,31 @@ public class StartDocumentViewModel : Document
 			catch (ToolFailedException ex)
 			{
 				State.Status = $"Pull of {branch} failed, branch left unchanged: {ex.Message}";
+			}
+		}
+	}
+
+	/// <summary>
+	/// Takes a pull request out of draft from the start page, without opening it. Refreshes the
+	/// list afterwards, because whether it is a draft is the thing the row just changed.
+	/// </summary>
+	public void MarkReadyForReview(PrSummary pr)
+	{
+		ReadyAsync().HandleExceptions();
+
+		async Task ReadyAsync()
+		{
+			State.Status = $"Marking #{pr.Number} ready for review...";
+			try
+			{
+				await workspace.GitHub.MarkReadyForReviewAsync(pr.Number);
+				CliLog.Write("action", $"marked #{pr.Number} ready for review");
+				State.Status = $"#{pr.Number} is ready for review.";
+				await PrList.LoadAsync();
+			}
+			catch (ToolFailedException ex)
+			{
+				State.Status = $"Could not mark #{pr.Number} ready: {ex.Message}";
 			}
 		}
 	}

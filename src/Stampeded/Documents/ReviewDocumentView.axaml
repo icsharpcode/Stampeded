@@ -73,6 +73,15 @@
                       SelectedItem="{Binding State.SelectedMergeMethod}"
                       IsEnabled="{Binding State.CanMerge}"
                       ToolTip.Tip="Merge method; only the ones this repository allows are listed" />
+            <!-- Only while it is one. A draft is the one thing in the merge explanation that the
+                 reader can lift from here, so the lifting sits next to the explanation. -->
+            <Button x:Name="MarkReadyButton" Click="OnMarkReady" IsVisible="{Binding State.IsDraft}"
+                    ToolTip.Tip="Take this pull request out of draft. GitHub then asks for the reviews its rules require; it can be made a draft again on GitHub.">
+              <StackPanel Orientation="Horizontal" Spacing="5">
+                <Image Source="{x:Static app:Images.Checkmark}" Width="16" Height="16" />
+                <TextBlock Text="Ready for Review" />
+              </StackPanel>
+            </Button>
             <Button Click="OnMerge" IsEnabled="{Binding State.CanMerge}"
                     ToolTip.Tip="{Binding State.MergeButtonTip}">
               <StackPanel Orientation="Horizontal" Spacing="5">

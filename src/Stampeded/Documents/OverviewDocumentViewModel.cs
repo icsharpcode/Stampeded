@@ -321,12 +321,17 @@ public class OverviewDocumentViewModel : Document
 
 	async Task LoadCommitsAsync()
 	{
-		CommitLines.Clear();
+		// Gathered here and swapped in at the end: this runs again whenever the review says it
+		// changed, and two runs that each cleared before adding would show the series twice.
+		var lines = new List<CommitLine>();
 		State.CommitsHeader = "";
 		// The review's range, not the displayed one: while a commit is in scope BaseSha and
 		// HeadSha describe that commit, and this section is about the series it belongs to.
 		if (workspace.Scopes.ReviewRange is null)
+		{
+			CommitLines.Replace(lines);
 			return;
+		}
 		try
 		{
 			// Uncommitted work leads the list: it sits on top of every commit below it, and
@@ -334,7 +339,7 @@ public class OverviewDocumentViewModel : Document
 			var uncommitted = await LoadUncommittedLineAsync();
 			State.CommitsExpanded = uncommitted is not null;
 			if (uncommitted is not null)
-				CommitLines.Add(uncommitted);
+				lines.Add(uncommitted);
 			var commits = await workspace.Scopes.GetRangeCommitsAsync();
 			var stats = await workspace.Scopes.GetRangeCommitStatsAsync();
 			foreach (var commit in commits.Take(8))
@@ -342,13 +347,13 @@ public class OverviewDocumentViewModel : Document
 				var (added, removed) = stats.GetValueOrDefault(commit.Sha);
 				// The one being read is marked, so the series says where in it you are.
 				bool inScope = workspace.Scopes.Commit?.Sha == commit.Sha;
-				CommitLines.Add(new CommitLine(commit.ShortSha, $"+{added}", $"-{removed}",
+				lines.Add(new CommitLine(commit.ShortSha, $"+{added}", $"-{removed}",
 					inScope ? $"> {commit.Subject}" : commit.Subject) {
 					Message = commit.Message,
 				});
 			}
 			if (commits.Count > 8)
-				CommitLines.Add(new CommitLine("", "", "", $"... and {commits.Count - 8} more (Commits pane)"));
+				lines.Add(new CommitLine("", "", "", $"... and {commits.Count - 8} more (Commits pane)"));
 			State.CommitsHeader = (commits.Count, uncommitted) switch {
 				(0, null) => "",
 				(0, _) => "uncommitted only",
@@ -360,6 +365,7 @@ public class OverviewDocumentViewModel : Document
 		{
 			// No commit summary is fine; the Commits pane still works.
 		}
+		CommitLines.Replace(lines);
 	}
 
 	void OnChangeMap()

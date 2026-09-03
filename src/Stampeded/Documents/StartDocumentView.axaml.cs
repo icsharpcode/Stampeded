@@ -273,6 +273,20 @@ public partial class StartDocumentView : UserControl
 			PromptBranchNameForAsync(row).HandleExceptions();
 	}
 
+	/// <summary>Keeps the draft-only context item in step with what is selected. The menu is
+	/// built once and shown many times, so the condition has to live somewhere it can change.</summary>
+	void OnPrSelectionChanged(object? sender, SelectionChangedEventArgs e)
+	{
+		if (Vm is { } vm)
+			vm.State.SelectedPrIsDraft = PrListBox.SelectedItem is PrSummary { IsDraft: true };
+	}
+
+	void OnPrMarkReady(object? sender, RoutedEventArgs e)
+	{
+		if (Vm is { } vm && PrListBox.SelectedItem is PrSummary pr)
+			vm.MarkReadyForReview(pr);
+	}
+
 	void OnPrOpenOnGitHub(object? sender, RoutedEventArgs e)
 	{
 		if (Vm is { } vm && PrListBox.SelectedItem is PrSummary pr)

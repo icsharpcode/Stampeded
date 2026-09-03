@@ -67,10 +67,15 @@ public class CommitsPaneViewModel : Tool
 
 	async Task LoadAsync()
 	{
-		Commits.Clear();
+		// Gathered and swapped in at the end: the review announces itself more than once as
+		// the parts of it arrive, and a clear before the awaits lets two runs both fill the list.
+		var rows = new List<CommitRow>();
 		CommitFiles.Clear();
 		if (workspace.Scopes.CommitRange is not { } range)
+		{
+			Commits.Replace(rows);
 			return;
+		}
 		State.Status = "Loading commits...";
 		try
 		{
@@ -81,22 +86,23 @@ public class CommitsPaneViewModel : Tool
 				var pending = await workspace.Git.DiffWorkingTreeAsync(dirty, "HEAD");
 				if (pending.Count > 0)
 				{
-					Commits.Add(new CommitRow(
+					rows.Add(new CommitRow(
 						new CommitInfo("", "uncommitted", "", "", $"{pending.Count} file(s) not committed"),
 						IsUncommitted: true));
 				}
 			}
 			var commits = await workspace.Scopes.GetCommitsAsync(range);
 			foreach (var commit in commits)
-				Commits.Add(new CommitRow(commit));
+				rows.Add(new CommitRow(commit));
 			State.Status = $"{commits.Count} commit(s) in the review range"
-				+ (Commits.Count > commits.Count ? ", plus uncommitted work" : "")
+				+ (rows.Count > commits.Count ? ", plus uncommitted work" : "")
 				+ ". Select one to see its files.";
 		}
 		catch (ToolFailedException ex)
 		{
 			State.Status = ex.Message;
 		}
+		Commits.Replace(rows);
 	}
 
 	public void SelectCommit(CommitRow row)
@@ -110,9 +116,12 @@ public class CommitsPaneViewModel : Tool
 
 	async Task LoadUncommittedFilesAsync()
 	{
-		CommitFiles.Clear();
+		var rows = new List<CommitFileRow>();
 		if (workspace.DirtyWorktreePath is not { } dirty)
+		{
+			CommitFiles.Replace(rows);
 			return;
+		}
 		var files = await workspace.Git.DiffWorkingTreeAsync(dirty, "HEAD");
 		foreach (var file in files)
 		{
@@ -122,19 +131,20 @@ public class CommitsPaneViewModel : Tool
 				Core.Diff.FileChangeKind.Renamed => 'R',
 				_ => 'M',
 			};
-			CommitFiles.Add(new CommitFileRow("", status, file.Path));
+			rows.Add(new CommitFileRow("", status, file.Path));
 		}
+		CommitFiles.Replace(rows);
 		State.Status = $"Uncommitted in {dirty}  -  {files.Count} file(s); double-click to open.";
 	}
 
 	async Task LoadFilesAsync(CommitInfo commit)
 	{
-		CommitFiles.Clear();
+		var rows = new List<CommitFileRow>();
 		try
 		{
 			var files = await workspace.Git.DiffNameStatusAsync($"{commit.Sha}^", commit.Sha);
 			foreach (var (status, path) in files)
-				CommitFiles.Add(new CommitFileRow(commit.Sha, status, path));
+				rows.Add(new CommitFileRow(commit.Sha, status, path));
 			State.Status = $"{commit.ShortSha} {commit.Subject}  -  {files.Count} file(s); double-click to open.";
 		}
 		catch (ToolFailedException)
@@ -142,6 +152,7 @@ public class CommitsPaneViewModel : Tool
 			// Root commits have no parent; show the whole commit instead.
 			State.Status = $"{commit.ShortSha} has no parent; open it as text via double-click.";
 		}
+		CommitFiles.Replace(rows);
 	}
 
 	public void OpenFile(CommitFileRow row)

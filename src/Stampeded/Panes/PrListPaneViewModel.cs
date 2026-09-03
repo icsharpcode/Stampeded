@@ -68,7 +68,7 @@ public class PrListPaneViewModel : Tool
 	{
 		State.Status = "Loading pull requests...";
 		State.Loading = true;
-		Items.Clear();
+		var rows = new List<PrSummary>();
 		try
 		{
 			if (!await workspace.Git.IsRepositoryAsync())
@@ -97,7 +97,7 @@ public class PrListPaneViewModel : Tool
 			foreach (var pr in prs.Select(p => p with { ViewerLogin = viewer })
 				.OrderBy(p => p.ReviewRequestedFromMe ? -1
 					: p.IsDraft ? 3 : p.ApprovedByMe ? 2 : p.IsApproved || p.ChangesRequested ? 1 : 0))
-				Items.Add(pr);
+				rows.Add(pr);
 			State.Status = $"{prs.Count} open pull request(s)";
 		}
 		catch (ToolFailedException ex)
@@ -106,6 +106,7 @@ public class PrListPaneViewModel : Tool
 		}
 		finally
 		{
+			Items.Replace(rows);
 			State.Loading = false;
 		}
 	}
