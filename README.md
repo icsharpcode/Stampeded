@@ -4,6 +4,8 @@ A keyboard-driven desktop code-review tool: PR diffs with real semantic code nav
 
 Built on AvaloniaEdit; editor components adapted from [ILSpy](https://github.com/icsharpcode/ILSpy) (MIT); diff-view concepts inspired by [Aehnlich](https://github.com/Dirkster99/Aehnlich) (MIT). Uses the `git` and `gh` CLIs for repository and GitHub access.
 
+Siegi and Chris recorded a brief [Introduction to Stampeded!(https://youtu.be/r16YIcvLlg4) for you to get a glimpse at what the IRE is capable of.
+
 # Motivation
 
 ## What was great in eg gitk, Fork and other tools?
