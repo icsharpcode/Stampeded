@@ -35,3 +35,8 @@ Using the git mergetool is very convenient that way (no need to re-implement thi
 ## Why didn't we bring certain features to Stampeded?
 
 * Infinite scroll => v shortcut
+
+## How did we arrive at the name?
+
+At times, it felt like a stampede of pull requests thundering towards the code reviewer for merging, thus the tagline "The PRs stampeded to the merge queue".
+The exclamation mark is a nod to our C# roots, specifically the damnit operator.
