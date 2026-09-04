@@ -15,7 +15,7 @@ public class PythonLspTests
 	[Test]
 	public async Task PyrightAnswersDefinitionsAndReferencesAcrossFiles()
 	{
-		if (LanguageServers.Python() is not { } spec)
+		if (await PythonServer.ResolveAsync() is not { } spec)
 		{
 			Assert.Ignore("no Python language server available");
 			return;
