@@ -316,6 +316,7 @@ public class GitRebaseTests
 		// repository with forty worktrees would otherwise cost forty processes per check.
 		string other = NewDirectory();
 		await Git(repo, "worktree", "add", "--quiet", other, "topic");
+		string otherAsGitReportsIt = await AsGitReports(other);
 		var git = new GitService(repo);
 		Assert.That(await git.InProgressInAsync(other), Is.Null);
 
@@ -329,8 +330,8 @@ public class GitRebaseTests
 
 		Assert.That(await git.InProgressInAsync(other), Is.EqualTo(GitOperation.Rebase));
 		var found = await git.ListInProgressAsync();
-		Assert.That(found.Select(o => o.WorkingDirectory), Does.Contain(other));
-		Assert.That(found.Single(o => o.WorkingDirectory == other).Branch, Is.EqualTo("wt-topic"),
+		Assert.That(found.Select(o => o.WorkingDirectory), Does.Contain(otherAsGitReportsIt));
+		Assert.That(found.Single(o => o.WorkingDirectory == otherAsGitReportsIt).Branch, Is.EqualTo("wt-topic"),
 			"the branch is read from the rebase state, since the worktree is detached while it runs");
 
 		await Git(other, "rebase", "--abort");
