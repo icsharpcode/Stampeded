@@ -112,10 +112,13 @@ jobs:
               fi
             fi
 
-            local i pr method head state mergeable status
+            local i pr method delete head state mergeable status
             for i in $(seq 0 $((count - 1))); do
               pr=$(printf '%s'     "$QDOC" | jq -r ".entries[$i].pr")
               method=$(printf '%s' "$QDOC" | jq -r ".entries[$i].method")
+              # Entries queued before the option existed have no such field; leaving the branch
+              # alone is the answer that cannot surprise whoever queued them.
+              delete=$(printf '%s' "$QDOC" | jq -r ".entries[$i].deleteBranch // false")
               head=$(printf '%s'   "$QDOC" | jq -r ".entries[$i].headSha")
 
               # GitHub recomputes mergeability in the background, and answers UNKNOWN while it
@@ -172,8 +175,16 @@ jobs:
                 return 1
               fi
 
-              if gh pr merge "$pr" "--$method"; then
-                echo "queue: merged #$pr by $method"
+              # An if rather than a test-and-append: this script runs under `set -e`, where a
+              # test that comes out false is the command that ends it.
+              local -a merge_args=("$pr" "--$method")
+              local deleted=""
+              if [ "$delete" = "true" ]; then
+                merge_args+=(--delete-branch)
+                deleted=", deleting its branch"
+              fi
+              if gh pr merge "${merge_args[@]}"; then
+                echo "queue: merged #$pr by $method$deleted"
               else
                 echo "queue: merging #$pr failed"
               fi

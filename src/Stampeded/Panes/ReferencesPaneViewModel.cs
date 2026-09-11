@@ -1,5 +1,7 @@
 using System.Collections.ObjectModel;
 
+using Avalonia.Threading;
+
 using CommunityToolkit.Mvvm.ComponentModel;
 
 using Dock.Model.Mvvm.Controls;
@@ -36,6 +38,12 @@ public class ReferencesPaneViewModel : Tool
 		this.workspace = workspace;
 		workspace.ReferencesAvailable += OnReferences;
 		workspace.SemanticsChanged += OnSemanticsChanged;
+		workspace.ReviewReset += () => Dispatcher.UIThread.Post(() => {
+			// The rows name files and lines of the review that answered, and the status line
+			// says what the symbol was. Neither means anything in the next one.
+			Items.Clear();
+			State.Status = "Shift+F12 on a symbol lists its references here.";
+		});
 	}
 
 	void OnSemanticsChanged()

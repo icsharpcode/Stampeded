@@ -59,7 +59,7 @@ public class PrListPaneViewModel : Tool
 			}
 			catch (ToolFailedException ex)
 			{
-				State.Status = ex.Message;
+				State.Status = ExternalTool.Explain(ex);
 			}
 		}
 	}
@@ -77,6 +77,7 @@ public class PrListPaneViewModel : Tool
 				return;
 			}
 			var prs = await workspace.GitHub.ListOpenPrsAsync();
+			string? originOwner = await workspace.Git.GetOriginOwnerAsync();
 			string viewer = "";
 			try
 			{
@@ -94,7 +95,7 @@ public class PrListPaneViewModel : Tool
 			// a draft is not asking for one yet - so all three sink, drafts furthest. The sort
 			// is stable, so within each group the order gh returned (most recently updated
 			// first) survives.
-			foreach (var pr in prs.Select(p => p with { ViewerLogin = viewer })
+			foreach (var pr in prs.Select(p => p with { ViewerLogin = viewer, OriginOwner = originOwner })
 				.OrderBy(p => p.ReviewRequestedFromMe ? -1
 					: p.IsDraft ? 3 : p.ApprovedByMe ? 2 : p.IsApproved || p.ChangesRequested ? 1 : 0))
 				rows.Add(pr);
@@ -102,7 +103,7 @@ public class PrListPaneViewModel : Tool
 		}
 		catch (ToolFailedException ex)
 		{
-			State.Status = ex.Message;
+			State.Status = ExternalTool.Explain(ex);
 		}
 		finally
 		{
@@ -125,7 +126,7 @@ public class PrListPaneViewModel : Tool
 			}
 			catch (ToolFailedException ex)
 			{
-				State.Status = ex.Message;
+				State.Status = ExternalTool.Explain(ex);
 			}
 		}
 	}

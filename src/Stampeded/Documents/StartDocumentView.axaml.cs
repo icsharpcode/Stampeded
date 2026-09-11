@@ -1,3 +1,4 @@
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Input;
@@ -168,7 +169,7 @@ public partial class StartDocumentView : UserControl
 	void OnPrPull(object? sender, RoutedEventArgs e)
 	{
 		if (Vm is { } vm && PrListBox.SelectedItem is PrSummary pr)
-			vm.PullBranch(pr.HeadRefName);
+			vm.PullPrBranch(pr);
 	}
 
 	void OnRebaseBranch(object? sender, RoutedEventArgs e)
@@ -258,7 +259,7 @@ public partial class StartDocumentView : UserControl
 	void OnRowPrPull(object? sender, RoutedEventArgs e)
 	{
 		if (Vm is { } vm && RowOf<PrSummary>(sender) is { } pr)
-			vm.PullBranch(pr.HeadRefName);
+			vm.PullPrBranch(pr);
 	}
 
 	void OnRowBranchPrGitHub(object? sender, RoutedEventArgs e)
@@ -281,10 +282,54 @@ public partial class StartDocumentView : UserControl
 			vm.State.SelectedPrIsDraft = PrListBox.SelectedItem is PrSummary { IsDraft: true };
 	}
 
+	/// <summary>
+	/// What git is half-way through is state on disk that changes without this window being
+	/// told: the usual way out of a conflicted rebase is a terminal, and coming back to find
+	/// the banner still claiming it is stuck is worse than not having one. Cheap enough to do
+	/// on every activation now that reading a worktree's state costs no process.
+	/// </summary>
+	protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
+	{
+		base.OnAttachedToVisualTree(e);
+		if (TopLevel.GetTopLevel(this) is Window window)
+		{
+			// The IsActive property rather than the Activated event: the event does not reach
+			// this backend, and the property change does.
+			activation = window.GetObservable(WindowBase.IsActiveProperty).Subscribe(
+				new Avalonia.Reactive.AnonymousObserver<bool>(active => {
+					if (active)
+						Vm?.RefreshInProgressAsync().HandleExceptions();
+				}));
+		}
+	}
+
+	protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
+	{
+		activation?.Dispose();
+		activation = null;
+		base.OnDetachedFromVisualTree(e);
+	}
+
+	IDisposable? activation;
+
+	void OnAbortInProgress(object? sender, RoutedEventArgs e) => Vm?.AbortInProgress();
+
+	void OnResolveInProgress(object? sender, RoutedEventArgs e) => Vm?.ResolveInProgress();
+
+	void OnContinueInProgress(object? sender, RoutedEventArgs e) => Vm?.ContinueInProgress();
+
+	void OnSkipInProgress(object? sender, RoutedEventArgs e) => Vm?.SkipInProgress();
+
 	void OnPrMarkReady(object? sender, RoutedEventArgs e)
 	{
 		if (Vm is { } vm && PrListBox.SelectedItem is PrSummary pr)
 			vm.MarkReadyForReview(pr);
+	}
+
+	void OnPrEnqueue(object? sender, RoutedEventArgs e)
+	{
+		if (Vm is { } vm && PrListBox.SelectedItem is PrSummary pr)
+			vm.EnqueuePr(pr);
 	}
 
 	void OnPrOpenOnGitHub(object? sender, RoutedEventArgs e)

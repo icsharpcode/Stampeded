@@ -138,7 +138,7 @@ public class App : Application
 			catch (ToolFailedException ex)
 			{
 				CliLog.Write("action", $"clone of {owner}/{repo} failed: {ex.Message}");
-				Workspace?.PostStatus($"Clone failed: {ex.Message}");
+				Workspace?.PostStatus($"Clone failed: {ExternalTool.Explain(ex)}");
 				return;
 			}
 		}

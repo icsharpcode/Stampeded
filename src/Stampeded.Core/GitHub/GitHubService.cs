@@ -12,6 +12,9 @@ public sealed record PrAuthor(string Login);
 /// <summary>One reviewer's last word on a pull request, as `latestReviews` hands it over.</summary>
 public sealed record PrLatestReview(PrAuthor? Author, string? State);
 
+/// <summary>The account a repository belongs to, as `headRepositoryOwner` hands it over.</summary>
+public sealed record PrRepoOwner(string Login);
+
 /// <summary>Someone a review has been asked of. A team has no login, which is why this is
 /// not a <see cref="PrAuthor"/>: `reviewRequests` holds both.</summary>
 public sealed record PrReviewRequest(string? Login);
@@ -31,11 +34,25 @@ public sealed record PrSummary(
 	int Deletions = 0,
 	int ChangedFiles = 0,
 	IReadOnlyList<PrLatestReview>? LatestReviews = null,
-	IReadOnlyList<PrReviewRequest>? ReviewRequests = null)
+	IReadOnlyList<PrReviewRequest>? ReviewRequests = null,
+	PrRepoOwner? HeadRepositoryOwner = null)
 {
 	/// <summary>The login gh is authenticated as, stamped on after the list is read: only
 	/// that tells "approved" apart from "approved by the reader".</summary>
 	public string? ViewerLogin { get; init; }
+
+	/// <summary>The owner origin belongs to, stamped on after the list is read: a head branch
+	/// name means nothing without it, because a pull request lists the branch as it is named
+	/// in the repository it lives in, which for a fork is not this one.</summary>
+	public string? OriginOwner { get; init; }
+
+	/// <summary>The head branch is in somebody's fork, so no branch of this clone is that
+	/// branch however alike the two are named - "master" from a fork is not the master that
+	/// is checked out here. Owner alone decides it: a fork cannot sit beside its original
+	/// under the same account.</summary>
+	public bool HeadIsFork => OriginOwner is { Length: > 0 } origin
+		&& HeadRepositoryOwner is { Login.Length: > 0 } head
+		&& !string.Equals(head.Login, origin, StringComparison.OrdinalIgnoreCase);
 
 	/// <summary>"fail" / "pending" / "green" / "none", folded from the check rollup.</summary>
 	public string ChecksBucket => CheckRollup.Bucket(StatusCheckRollup);
@@ -169,7 +186,52 @@ public sealed record MergeState(
 	public bool CanMerge => Mergeable == "MERGEABLE"
 		&& MergeStateStatus is "CLEAN" or "UNSTABLE" or "HAS_HOOKS";
 
+	/// <summary>GitHub's own two words, for the line that quotes it rather than reads it.</summary>
 	public string Describe => $"{Mergeable ?? "UNKNOWN"} / {MergeStateStatus ?? "UNKNOWN"}";
+
+	/// <summary>
+	/// What is actually in the way, in the fewest words that let the reader decide what to do.
+	///
+	/// "MERGEABLE / BLOCKED" is GitHub answering a different question: it names the kind of
+	/// refusal, not the thing to wait for or fix, and the two most common reasons behind it -
+	/// a check still running and a review not given - are indistinguishable in it. Both are
+	/// in the fields alongside, so they are read here and the raw pair is kept for the tooltip.
+	///
+	/// Ordered by what the reader would do about it: what they must fix first, then what they
+	/// are waiting on, then what somebody else owes them.
+	/// </summary>
+	public string Summary
+	{
+		get
+		{
+			string target = BaseRefName is { Length: > 0 } ? BaseRefName : "the target branch";
+			string status = MergeStateStatus is { Length: > 0 } ? MergeStateStatus : "UNKNOWN";
+			var reasons = new List<string>();
+			if (Mergeable == "CONFLICTING" || status == "DIRTY")
+				reasons.Add($"conflicts with {target}");
+			if (IsDraft || status == "DRAFT")
+				reasons.Add("still a draft");
+			if (status == "BEHIND")
+				reasons.Add($"behind {target}");
+			if (CheckRollup.Names(StatusCheckRollup, "fail") is { Count: > 0 } failing)
+				reasons.Add($"{failing.Count} check{(failing.Count == 1 ? "" : "s")} failing");
+			if (CheckRollup.Names(StatusCheckRollup, "pending") is { Count: > 0 } running)
+				reasons.Add($"{running.Count} check{(running.Count == 1 ? "" : "s")} still running");
+			if (ReviewDecision == "CHANGES_REQUESTED")
+				reasons.Add("changes requested");
+			else if (ReviewDecision == "REVIEW_REQUIRED")
+				reasons.Add("no approving review yet");
+
+			if (reasons.Count > 0)
+				// Two at most: a third is detail the tooltip already carries in full.
+				return string.Join(", ", reasons.Take(2));
+			if (status == "BLOCKED")
+				return "blocked by a rule this account cannot read";
+			if (status == "UNKNOWN")
+				return "GitHub has not worked it out yet";
+			return CanMerge ? "nothing blocks it" : Describe;
+		}
+	}
 
 	/// <summary>
 	/// Why the merge would be refused, in as much detail as GitHub gives from here. Its two
@@ -344,7 +406,7 @@ public sealed class GitHubService(string repoPath)
 	public Task<IReadOnlyList<PrSummary>> ListOpenPrsAsync(CancellationToken ct = default)
 		=> JsonAsync<IReadOnlyList<PrSummary>>(ct,
 			"pr", "list",
-			"--json", "number,title,author,headRefName,baseRefName,isDraft,updatedAt,statusCheckRollup,headRefOid,reviewDecision,additions,deletions,changedFiles,latestReviews,reviewRequests",
+			"--json", "number,title,author,headRefName,baseRefName,isDraft,updatedAt,statusCheckRollup,headRefOid,reviewDecision,additions,deletions,changedFiles,latestReviews,reviewRequests,headRepositoryOwner",
 			"--limit", "50");
 
 	public Task<PrDetail> GetPrAsync(int number, CancellationToken ct = default)
@@ -458,9 +520,14 @@ public sealed class GitHubService(string repoPath)
 			["api", "repos/{owner}/{repo}/dispatches", "-f", $"event_type={MergeQueueEvent}"], repoPath, ct);
 
 	/// <summary>Merges the pull request. <paramref name="method"/> is a gh flag name:
-	/// merge, squash or rebase.</summary>
-	public Task<string> MergePrAsync(int number, string method, CancellationToken ct = default)
-		=> ExternalTool.RunAsync("gh", ["pr", "merge", number.ToString(), $"--{method}"], repoPath, ct);
+	/// merge, squash or rebase. <paramref name="deleteBranch"/> adds gh's own tidying, which
+	/// takes the head branch off the remote and out of this clone as well - a branch some
+	/// checkout still has stays, and gh says so.</summary>
+	public Task<string> MergePrAsync(int number, string method, bool deleteBranch = false,
+		CancellationToken ct = default)
+		=> ExternalTool.RunAsync("gh",
+			["pr", "merge", number.ToString(), $"--{method}", .. deleteBranch ? new[] { "--delete-branch" } : []],
+			repoPath, ct);
 
 	/// <summary>
 	/// Takes a pull request out of draft. GitHub then requests the reviews the repository's rules

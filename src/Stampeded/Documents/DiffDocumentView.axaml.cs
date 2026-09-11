@@ -1111,20 +1111,31 @@ public partial class DiffDocumentView : UserControl, IReviewDocumentView
 		IReadOnlyList<Core.Git.BlameLine> newBlame = [];
 		IReadOnlyList<Core.Git.BlameLine> oldBlame = [];
 		string newRev = vm.Historical ? vm.HistoricalSha! : ws.HeadSha;
-		string? oldRev = vm.Historical ? vm.HistoricalSha + "^" : ws.BaseSha;
-		try
-		{
-			if (vm.File.Kind != FileChangeKind.Deleted)
-				newBlame = await ws.Git.BlameAsync(newRev, vm.File.Path);
-			if (oldRev is not null && m.Tags.Any(t => t.Kind == DiffLineKind.Removed))
-				oldBlame = await ws.Git.BlameAsync(oldRev, vm.File.OldPath);
-		}
-		catch (Core.Infra.ToolFailedException)
-		{
-			return; // e.g. blaming a base-only view at head; blame is best-effort
-		}
+		// What the removed lines came from - except in the since-last-pass scope, where the
+		// base is a tree built for that scope and not a commit at all. Blame answers about
+		// commits, so asking it about that tree only earns a "Non commit" from git; the head
+		// side is a commit there as anywhere, and it is the side the margin is read for.
+		string? oldRev = vm.Historical ? vm.HistoricalSha + "^"
+			: ws.Scopes.InSinceLastPass ? null
+			: ws.BaseSha;
+		// Each side asked for on its own. One side that cannot be blamed - a base-only view at
+		// head, a file the other revision does not have - used to take the side that could
+		// down with it, and the margin with that, which is a key that looks broken rather than
+		// a margin with one side filled in.
+		if (vm.File.Kind != FileChangeKind.Deleted)
+			newBlame = await BlameOrNothing(newRev, vm.File.Path);
+		if (oldRev is not null && m.Tags.Any(t => t.Kind == DiffLineKind.Removed))
+			oldBlame = await BlameOrNothing(oldRev, vm.File.OldPath);
 		if (model != m)
 			return;
+		if (newBlame.Count == 0 && oldBlame.Count == 0)
+		{
+			// An empty margin is a worse answer than a sentence saying there is nothing to
+			// put in it.
+			ws.PostStatus($"No blame to show for {vm.File.Path} here - git could not attribute "
+				+ "either side of this diff. The Log pane has what it said.");
+			return;
+		}
 		var newByLine = newBlame.ToDictionary(b => b.FinalLine);
 		var oldByLine = oldBlame.ToDictionary(b => b.FinalLine);
 		var perDoc = new Core.Git.BlameLine?[m.Tags.Count];
@@ -1138,6 +1149,19 @@ public partial class DiffDocumentView : UserControl, IReviewDocumentView
 		blameMargin.SetLines(perDoc);
 		Editor.TextArea.LeftMargins.Insert(0, blameMargin);
 		blameVisible = true;
+
+		async Task<IReadOnlyList<Core.Git.BlameLine>> BlameOrNothing(string rev, string path)
+		{
+			try
+			{
+				return await ws.Git.BlameAsync(rev, path);
+			}
+			catch (Core.Infra.ToolFailedException)
+			{
+				// Best-effort: the command and its reason are in the log already.
+				return [];
+			}
+		}
 	}
 
 	#endregion

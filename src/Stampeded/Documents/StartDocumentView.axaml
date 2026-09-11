@@ -8,6 +8,17 @@
              x:DataType="docs:StartDocumentViewModel"
              FontSize="14">
   <UserControl.Styles>
+    <!-- Stopped part-way is not the same as broken. Red is kept for the state that wants a
+         decision - something is conflicted - and everything else reads as a note that the
+         operation is waiting to be carried on. -->
+    <Style Selector="Border.progress">
+      <Setter Property="Background" Value="#14808080" />
+      <Setter Property="BorderBrush" Value="#33808080" />
+    </Style>
+    <Style Selector="Border.progress.conflicted">
+      <Setter Property="Background" Value="#18c0392b" />
+      <Setter Property="BorderBrush" Value="#40c0392b" />
+    </Style>
     <Style Selector="TextBlock.colhead">
       <Setter Property="FontWeight" Value="SemiBold" />
       <Setter Property="Margin" Value="0,0,0,4" />
@@ -157,6 +168,11 @@
             <MenuItem Header="Ready for Review" Click="OnPrMarkReady"
                       IsVisible="{Binding State.SelectedPrIsDraft}"
                       ToolTip.Tip="Take this pull request out of draft. GitHub then asks for the reviews its rules require." />
+            <!-- A draft cannot be queued, and the item that would only report that is not
+                 offered - the same rule Ready for Review is shown by. -->
+            <MenuItem Header="Add to Merge Queue" Click="OnPrEnqueue"
+                      IsVisible="{Binding !State.SelectedPrIsDraft}"
+                      ToolTip.Tip="Put this pull request at the back of the shared merge queue, without opening it for review. It is merged the remembered way, which the Merge Queue pane shows." />
             <MenuItem Header="Pull Head Branch from origin" Click="OnPrPull" />
           </ContextMenu>
         </ListBox.ContextMenu>
@@ -236,12 +252,16 @@
         </ListBox.ItemTemplate>
       </ListBox>
         <!-- Over the list, near its top: the first rows are where a reader is looking, and
-             one that fills in underneath keeps its place. -->
-        <StackPanel IsVisible="{Binding PrList.State.Loading}" IsHitTestVisible="False"
-                    HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,24,0,0" Spacing="8">
-          <controls:WaveSpinner SquareSize="4" Width="60" HorizontalAlignment="Center" />
-          <TextBlock Text="Reading the open pull requests from GitHub..." FontSize="12" Opacity="0.7" HorizontalAlignment="Center" />
-        </StackPanel>
+             one that fills in underneath keeps its place. A reload has rows underneath it -
+             a veil in the background colour puts them behind the message rather than through
+             it, and leaves them recognisable as the list that is being replaced. -->
+        <Panel IsVisible="{Binding PrList.State.Loading}" IsHitTestVisible="False">
+          <Rectangle Fill="{DynamicResource ThemeBackgroundBrush}" Opacity="0.9" />
+          <StackPanel HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,24,0,0" Spacing="8">
+            <controls:WaveSpinner SquareSize="4" Width="60" HorizontalAlignment="Center" />
+            <TextBlock Text="Reading the open pull requests from GitHub..." FontSize="12" HorizontalAlignment="Center" />
+          </StackPanel>
+        </Panel>
       </Panel>
     </DockPanel>
     <DockPanel Grid.Column="4">
@@ -278,8 +298,39 @@
           </Button>
         </StackPanel>
       </Grid>
-      <TextBlock DockPanel.Dock="Bottom" Margin="0,4,0,0" FontSize="12" Opacity="0.85" TextWrapping="Wrap"
-                 Text="{Binding State.Status}"
+      <!-- Only while there is something to abandon. One row: the headline is kept short and the
+           path lives in the tooltip, because a wrapping sentence pushed the buttons around and
+           the reader is being told which checkout rather than given a path to copy. -->
+      <Border DockPanel.Dock="Top" Margin="0,0,0,4" Padding="8,5" CornerRadius="4"
+              Classes="progress" Classes.conflicted="{Binding State.InProgressConflicted}"
+              BorderThickness="1"
+              ToolTip.Tip="{Binding State.InProgressDetail}"
+              IsVisible="{Binding State.InProgress, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+        <DockPanel LastChildFill="True">
+          <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="4" Margin="8,0,0,0"
+                      VerticalAlignment="Center">
+            <Button Click="OnResolveInProgress" Content="Resolve" IsEnabled="{Binding State.CanResolve}"
+                    ToolTip.Tip="Open the merge tool on the files still conflicted. It is a window of its own and may not come to the front." />
+            <Button Click="OnContinueInProgress" Content="Continue" IsEnabled="{Binding State.CanContinue}"
+                    ToolTip.Tip="Carry on past the step it stopped at. Available once nothing is conflicted." />
+            <Button Click="OnSkipInProgress" Content="Skip" IsEnabled="{Binding State.CanSkip}"
+                    ToolTip.Tip="Drop the step it stopped at and carry on with the rest. Asks first: that commit's changes are lost." />
+            <Button Click="OnAbortInProgress" Content="Abort"
+                    ToolTip.Tip="Abandon it and put the branch back where it started. Asks first." />
+          </StackPanel>
+          <StackPanel VerticalAlignment="Center">
+            <TextBlock FontWeight="SemiBold" FontSize="12" TextTrimming="CharacterEllipsis"
+                       Text="{Binding State.InProgress}" />
+            <TextBlock FontSize="11" Opacity="0.65" TextTrimming="CharacterEllipsis"
+                       Text="{Binding State.InProgressWhere}" />
+          </StackPanel>
+        </DockPanel>
+      </Border>
+      <!-- Two lines at most, with the whole of it on hover: a git fatal is several lines of
+           advice, and letting it wrap freely pushed the list it is reporting about off screen. -->
+      <TextBlock DockPanel.Dock="Bottom" Margin="0,4,0,0" FontSize="12" Opacity="0.85"
+                 TextWrapping="Wrap" MaxLines="2" TextTrimming="CharacterEllipsis"
+                 Text="{Binding State.Status}" ToolTip.Tip="{Binding State.Status}"
                  IsVisible="{Binding State.Status, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
       <Panel>
       <ListBox x:Name="BranchList" ItemsSource="{Binding Branches}" DoubleTapped="OnBranchDoubleTapped"
@@ -386,12 +437,16 @@
         </ListBox.ItemTemplate>
       </ListBox>
         <!-- Over the list, near its top: the first rows are where a reader is looking, and
-             one that fills in underneath keeps its place. -->
-        <StackPanel IsVisible="{Binding State.RefsLoading}" IsHitTestVisible="False"
-                    HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,24,0,0" Spacing="8">
-          <controls:WaveSpinner SquareSize="4" Width="60" HorizontalAlignment="Center" />
-          <TextBlock Text="Reading branches and stashes..." FontSize="12" Opacity="0.7" HorizontalAlignment="Center" />
-        </StackPanel>
+             one that fills in underneath keeps its place. A reload has rows underneath it -
+             a veil in the background colour puts them behind the message rather than through
+             it, and leaves them recognisable as the list that is being replaced. -->
+        <Panel IsVisible="{Binding State.RefsLoading}" IsHitTestVisible="False">
+          <Rectangle Fill="{DynamicResource ThemeBackgroundBrush}" Opacity="0.9" />
+          <StackPanel HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,24,0,0" Spacing="8">
+            <controls:WaveSpinner SquareSize="4" Width="60" HorizontalAlignment="Center" />
+            <TextBlock Text="Reading branches and stashes..." FontSize="12" HorizontalAlignment="Center" />
+          </StackPanel>
+        </Panel>
       </Panel>
     </DockPanel>
   </Grid>

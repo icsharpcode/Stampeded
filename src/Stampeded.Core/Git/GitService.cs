@@ -60,6 +60,91 @@ public sealed record RebaseResult(string Before, string? Checkout, RebaseOutcome
 			: $"git -C {Checkout} reset --hard {Before[..9]}";
 }
 
+/// <summary>What git is in the middle of in one checkout, and cannot be talked to normally
+/// until it is finished or abandoned.</summary>
+public enum GitOperation
+{
+	Rebase,
+	Merge,
+	CherryPick,
+	Revert,
+	Bisect,
+}
+
+/// <summary>
+/// An operation git has half-finished somewhere. <paramref name="WorkingDirectory"/> is the
+/// checkout it is in, which is not always the one the reader is looking at: a rebase of a
+/// branch no checkout holds runs in a worktree made for it, and that worktree is deliberately
+/// left behind when the rebase stops on a conflict, so the work is still there to finish.
+/// </summary>
+/// <param name="IsScratch">The checkout exists only for this operation, so abandoning the
+/// operation should take the checkout with it rather than leave it to be found later.</param>
+/// <param name="Unmerged">How many files are still conflicted. It decides which way out is
+/// open: what is conflicted has to be resolved before it can be continued.</param>
+public sealed record InProgressOperation(
+	GitOperation Kind, string WorkingDirectory, string? Branch, bool IsScratch, int Unmerged)
+{
+	/// <summary>Resolving means running the merge tool over what is still conflicted.</summary>
+	public bool CanResolve => Unmerged > 0 && Kind is not GitOperation.Bisect;
+
+	/// <summary>Only once nothing is conflicted: git refuses otherwise, and offering a button
+	/// that git will refuse is how the merge tool came to look optional.</summary>
+	public bool CanContinue => Unmerged == 0 && Kind is not GitOperation.Bisect;
+
+	/// <summary>A merge has one commit to make, so there is nothing to skip past.</summary>
+	public bool CanSkip => Kind is GitOperation.Rebase or GitOperation.CherryPick or GitOperation.Revert;
+
+	/// <summary>What abandoning it would run, for a status line that says what it did.</summary>
+	public string AbortCommand => Kind switch {
+		GitOperation.Rebase => "git rebase --abort",
+		GitOperation.Merge => "git merge --abort",
+		GitOperation.CherryPick => "git cherry-pick --abort",
+		GitOperation.Revert => "git revert --abort",
+		_ => "git bisect reset",
+	};
+
+	public string Name => Kind switch {
+		GitOperation.Rebase => "Rebase",
+		GitOperation.Merge => "Merge",
+		GitOperation.CherryPick => "Cherry-pick",
+		GitOperation.Revert => "Revert",
+		_ => "Bisect",
+	};
+
+	/// <summary>
+	/// One line, short enough to sit beside the buttons that act on it. The path is the least
+	/// useful part of the sentence and the longest, so it is not in here: <see cref="Describe"/>
+	/// has it for the tooltip, and a checkout that exists only for the operation has a name
+	/// worth less than saying so.
+	/// </summary>
+	public string Headline => $"{Name}{(Branch is { Length: > 0 } b ? $" of {b}" : "")}"
+		+ (Unmerged > 0
+			// What is conflicted is a decision waiting to be made; what is not is simply
+			// stopped part-way, which is a different thing to tell somebody.
+			? $" - {Unmerged} file{(Unmerged == 1 ? "" : "s")} conflicted"
+			: " - paused, nothing conflicted");
+
+	/// <summary>Where it is, in as few characters as still identify the place.</summary>
+	public string Where => IsScratch
+		? "a worktree made for it"
+		: ShortPath(WorkingDirectory);
+
+	public string Describe => $"{Headline}, in {(IsScratch ? "a worktree made for it: " : "")}{WorkingDirectory}";
+
+	/// <summary>Home collapsed to ~, and a long path down to its last two segments: the reader
+	/// is being told which checkout, not being given something to copy.</summary>
+	static string ShortPath(string path)
+	{
+		string home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+		string shown = home.Length > 0 && path.StartsWith(home, StringComparison.Ordinal)
+			? "~" + path[home.Length..] : path;
+		if (shown.Length <= 48)
+			return shown;
+		var parts = shown.Split(Path.DirectorySeparatorChar, StringSplitOptions.RemoveEmptyEntries);
+		return parts.Length <= 2 ? shown : ".../" + string.Join('/', parts[^2..]);
+	}
+}
+
 /// <summary>
 /// Git access for one local clone, via the git CLI. Reads never touch the user's working
 /// tree or index: they come from the object database (fetch, merge-base, diff, show) or,
@@ -500,14 +585,30 @@ public sealed class GitService(string repoPath)
 	/// for the user to finish or abort, because discarding it would throw away the
 	/// resolutions they just made.
 	/// </summary>
-	public async Task<RebaseResult> RebaseBranchAsync(string branch, string onto, CancellationToken ct = default)
+	/// <param name="progress">Where the rebase has got to, in words. The merge tool is a child
+	/// process with no terminal of its own and a window that need not come to the front, so a
+	/// rebase that stops on a conflict otherwise looks like one that stopped responding.</param>
+	public async Task<RebaseResult> RebaseBranchAsync(string branch, string onto,
+		IProgress<string>? progress = null, CancellationToken ct = default)
 	{
+		progress?.Report($"Rebasing {branch} onto {onto}...");
+		// Before anything else, and by the branch rather than by the checkout: a checkout in
+		// the middle of a rebase is detached, so it does not look like it holds the branch at
+		// all - which is how a retry used to reach git and come back with a fatal about a
+		// rebase-merge directory, having never run the merge tool.
+		if ((await ListInProgressAsync(ct)).FirstOrDefault(o => o.Branch == branch) is { } already)
+		{
+			throw new RefusedException(
+				$"A {already.Name.ToLowerInvariant()} of {branch} is already in progress in "
+				+ $"{already.Where}. Finish it or abandon it first.");
+		}
 		string before = await RevParseAsync(branch, ct);
 		var checkout = await FindCheckoutAsync(branch, ct);
 		string dir = checkout?.Path
 			?? Path.Combine(Path.GetTempPath(), "stampeded-rebase-" + Guid.NewGuid().ToString("N")[..8]);
 		if (checkout is null)
 			await RunAsync(ct, "worktree", "add", "--quiet", dir, branch);
+
 		bool leaveInPlace = false;
 		try
 		{
@@ -522,7 +623,7 @@ public sealed class GitService(string repoPath)
 				// whole answer.
 				if (!await HasUnmergedFilesAsync(dir, ct))
 					throw;
-				if (!await ResolveConflictsAsync(dir, ct))
+				if (!await ResolveConflictsAsync(dir, progress, ct))
 				{
 					leaveInPlace = true;
 					return new RebaseResult(before, checkout?.Path, RebaseOutcome.Conflicted, dir);
@@ -541,6 +642,16 @@ public sealed class GitService(string repoPath)
 				catch (ToolFailedException)
 				{
 					await RunAsync(CancellationToken.None, "worktree", "prune");
+					// Pruning deregisters the worktree; it does not remove the directory, and a
+					// checkout left in a temporary directory forever is nobody's to find later.
+					try
+					{
+						Directory.Delete(dir, recursive: true);
+					}
+					catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+					{
+						CliLog.Write("worktree", $"could not remove {dir}: {e.Message}");
+					}
 				}
 			}
 		}
@@ -548,19 +659,129 @@ public sealed class GitService(string repoPath)
 
 	/// <summary>Paths git reports as unmerged - the conflicts a rebase stopped on.</summary>
 	async Task<bool> HasUnmergedFilesAsync(string dir, CancellationToken ct)
-		=> (await ExternalTool.RunAsync("git", ["diff", "--name-only", "--diff-filter=U"], dir, ct)).Trim().Length > 0;
+		=> await CountUnmergedAsync(dir, ct) > 0;
+
+	/// <summary>The paths git reports as unmerged, one per line.</summary>
+	static async Task<IReadOnlyList<string>> UnmergedPathsAsync(string dir, CancellationToken ct)
+	{
+		try
+		{
+			return [.. (await ExternalTool.RunAsync("git", ["diff", "--name-only", "--diff-filter=U"], dir, ct))
+				.ReplaceLineEndings("\n").Split('\n').Select(l => l.Trim()).Where(l => l.Length > 0)];
+		}
+		catch (ToolFailedException)
+		{
+			return [];
+		}
+	}
+
+	/// <summary>
+	/// Which of these files still carry the markers git writes into a conflict. This is the
+	/// check that a resolution actually happened: a merge tool reports success by exiting, and
+	/// an editor somebody closed exits just as cleanly as one they finished.
+	/// </summary>
+	static async Task<IReadOnlyList<string>> WithConflictMarkersAsync(
+		string dir, IReadOnlyList<string> paths, CancellationToken ct)
+	{
+		var left = new List<string>();
+		foreach (string path in paths)
+		{
+			try
+			{
+				string full = Path.Combine(dir, path);
+				if (!File.Exists(full))
+					continue;
+				string text = await File.ReadAllTextAsync(full, ct);
+				// Both ends, at the start of a line: one alone is ordinary text often enough
+				// (a diff quoted in a comment), and both is what git actually leaves.
+				if (HasMarker(text, "<<<<<<<") && HasMarker(text, ">>>>>>>"))
+					left.Add(path);
+			}
+			catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+			{
+				// A file that cannot be read is not one this can vouch for either way.
+			}
+		}
+		return left;
+
+		static bool HasMarker(string text, string marker)
+			=> text.ReplaceLineEndings("\n").Split('\n').Any(l => l.StartsWith(marker, StringComparison.Ordinal));
+	}
+
+	async Task<int> CountUnmergedAsync(string dir, CancellationToken ct)
+	{
+		try
+		{
+			return (await ExternalTool.RunAsync("git", ["diff", "--name-only", "--diff-filter=U"], dir, ct))
+				.ReplaceLineEndings("\n").Split('\n').Count(l => l.Trim().Length > 0);
+		}
+		catch (ToolFailedException)
+		{
+			return 0;
+		}
+	}
+
+	/// <summary>
+	/// Runs the configured merge tool over what is still conflicted. The tool is a window of its
+	/// own that need not come to the front, which is why this is a button rather than something
+	/// a rebase does silently on the reader's behalf.
+	/// </summary>
+	public Task RunMergeToolAsync(InProgressOperation operation, CancellationToken ct = default)
+		// -y: git otherwise prompts on a terminal this process does not have.
+		=> ExternalTool.RunAsync("git", ["mergetool", "-y"], operation.WorkingDirectory, ct);
+
+	/// <summary>Carries the operation on past the step it stopped at.</summary>
+	public Task ContinueAsync(InProgressOperation operation, CancellationToken ct = default)
+		=> ExternalTool.RunAsync("git", [Verb(operation.Kind), "--continue"], operation.WorkingDirectory, ct,
+			// The operation is being driven from a UI with nowhere to show an editor, so the
+			// message git would open one for is accepted as it stands.
+			env: new Dictionary<string, string> { ["GIT_EDITOR"] = "true" });
+
+	/// <summary>Drops the step it stopped at and carries on with the rest.</summary>
+	public Task SkipAsync(InProgressOperation operation, CancellationToken ct = default)
+		=> ExternalTool.RunAsync("git", [Verb(operation.Kind), "--skip"], operation.WorkingDirectory, ct,
+			env: new Dictionary<string, string> { ["GIT_EDITOR"] = "true" });
+
+	static string Verb(GitOperation kind) => kind switch {
+		GitOperation.Rebase => "rebase",
+		GitOperation.Merge => "merge",
+		GitOperation.CherryPick => "cherry-pick",
+		GitOperation.Revert => "revert",
+		_ => "bisect",
+	};
 
 	/// <summary>
 	/// Runs the user's merge tool over each conflicted step and continues the rebase, until
 	/// it finishes or the tool leaves something unresolved (the user closed it without
 	/// deciding, or none is configured). True only when the rebase ran to completion.
 	/// </summary>
-	async Task<bool> ResolveConflictsAsync(string dir, CancellationToken ct)
+	async Task<bool> ResolveConflictsAsync(string dir, IProgress<string>? progress, CancellationToken ct)
 	{
+		// Which tool, by name, because the answer to "why is nothing happening" is usually
+		// either that it is a window that did not come to the front or that there is none.
+		string tool = "";
+		try
+		{
+			tool = (await ExternalTool.RunAsync("git", ["config", "merge.tool"], dir, ct,
+				okExitCodes: [1])).Trim();
+		}
+		catch (ToolFailedException)
+		{
+			// Not configured is an answer, not a failure; the message below says so.
+		}
+		string named = tool.Length > 0 ? $"'{tool}'" : "your merge tool";
+
 		// A rebase stops once per conflicting commit, so this is a loop, not one pass. The
 		// bound is a backstop against a tool that exits without ever resolving anything.
 		for (int step = 0; step < 50; step++)
 		{
+			// The paths the tool is about to be given, so what it leaves behind can be checked.
+			var conflicted = await UnmergedPathsAsync(dir, ct);
+			progress?.Report(tool.Length == 0
+				? "Conflicted, and no merge tool is configured (git config merge.tool). "
+					+ "The rebase will be left in progress."
+				: $"Conflicted - waiting for {named} to resolve conflict {step + 1}. "
+					+ "It runs as a separate window and may not come to the front.");
 			try
 			{
 				// -y: git otherwise prompts on a terminal this process does not have.
@@ -572,6 +793,18 @@ public sealed class GitService(string repoPath)
 			}
 			if (await HasUnmergedFilesAsync(dir, ct))
 				return false;
+			// git marks a file resolved when the tool exits without saying otherwise - for most
+			// tools that means "the file was touched", which an editor closed without a decision
+			// also does. Continuing on that word commits the markers themselves, and the rebase
+			// reports success. What the file says is the only thing that cannot be faked.
+			if (await WithConflictMarkersAsync(dir, conflicted, ct) is { Count: > 0 } unresolved)
+			{
+				progress?.Report($"{named} left conflict markers in {string.Join(", ", unresolved.Take(3))}"
+					+ (unresolved.Count > 3 ? $" and {unresolved.Count - 3} more" : "")
+					+ ". The rebase is left in progress rather than committing them.");
+				return false;
+			}
+			progress?.Report($"Conflict {step + 1} resolved; continuing the rebase...");
 			bool continued;
 			try
 			{
@@ -652,6 +885,151 @@ public sealed class GitService(string repoPath)
 	/// <summary>The checkout that has this branch, if any. A branch can be in only one.</summary>
 	async Task<WorktreeCheckout?> FindCheckoutAsync(string branch, CancellationToken ct)
 		=> (await ListWorktreesAsync(ct)).FirstOrDefault(w => w.Branch == branch);
+
+	/// <summary>
+	/// Everything git has half-finished in this clone, in any of its checkouts. A rebase that
+	/// stopped on a conflict is the one this tool can leave behind itself, but a reader who
+	/// merged by hand in their own checkout is stuck in exactly the same way, so every checkout
+	/// git knows about is asked rather than only the ones we made.
+	/// </summary>
+	public async Task<IReadOnlyList<InProgressOperation>> ListInProgressAsync(CancellationToken ct = default)
+	{
+		var found = new List<InProgressOperation>();
+		foreach (var checkout in await ListWorktreesAsync(ct))
+		{
+			// The admin directory, not the working tree: a linked worktree keeps its
+			// half-finished state under .git/worktrees/<name>, not beside its files. A worktree
+			// whose directory is gone is git's to prune, not ours to report.
+			if (await InProgressInAsync(checkout.Path, ct) is not { } kind)
+				continue;
+			bool scratch = Path.GetFileName(checkout.Path.TrimEnd(Path.DirectorySeparatorChar))
+				.StartsWith("stampeded-rebase-", StringComparison.Ordinal);
+			// A rebase detaches HEAD while it runs, so the worktree listing reports no branch
+			// for exactly the checkout that has one at stake. Git wrote it down; read it.
+			string? branch = checkout.Branch ?? await RebasingBranchAsync(checkout.Path, ct);
+			found.Add(new InProgressOperation(kind, checkout.Path, branch, scratch,
+				await CountUnmergedAsync(checkout.Path, ct)));
+		}
+		return found;
+	}
+
+	/// <summary>
+	/// Where a checkout keeps its half-finished state, without asking git: a repository with
+	/// forty worktrees is a repository where one process per worktree is the difference between
+	/// a check that can run whenever the window is focused and one that cannot. The main
+	/// worktree has .git as a directory; a linked one has it as a file naming the real place.
+	/// </summary>
+	static async Task<string?> AdminDirectoryAsync(string workingDirectory, CancellationToken ct)
+	{
+		try
+		{
+			string dotGit = Path.Combine(workingDirectory, ".git");
+			if (Directory.Exists(dotGit))
+				return dotGit;
+			if (!File.Exists(dotGit))
+				return null;
+			string text = (await File.ReadAllTextAsync(dotGit, ct)).Trim();
+			const string Marker = "gitdir:";
+			if (!text.StartsWith(Marker, StringComparison.Ordinal))
+				return null;
+			string path = text[Marker.Length..].Trim();
+			return Path.IsPathRooted(path) ? path : Path.GetFullPath(Path.Combine(workingDirectory, path));
+		}
+		catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+		{
+			// A worktree whose directory is gone is git's to prune, not ours to report.
+			return null;
+		}
+	}
+
+	/// <summary>The branch a rebase in this checkout is rebasing, which git keeps in the state
+	/// directory because HEAD itself is detached for the duration.</summary>
+	async Task<string?> RebasingBranchAsync(string workingDirectory, CancellationToken ct)
+	{
+		try
+		{
+			if (await AdminDirectoryAsync(workingDirectory, ct) is not { } admin)
+				return null;
+			foreach (string state in new[] { "rebase-merge", "rebase-apply" })
+			{
+				string file = Path.Combine(admin, state, "head-name");
+				if (File.Exists(file))
+				{
+					string name = (await File.ReadAllTextAsync(file, ct)).Trim();
+					return name.StartsWith("refs/heads/", StringComparison.Ordinal)
+						? name["refs/heads/".Length..] : name;
+				}
+			}
+		}
+		catch (Exception e) when (e is ToolFailedException or IOException)
+		{
+			// The state is git's to keep; not being able to read it only costs the name.
+		}
+		return null;
+	}
+
+	/// <summary>What git has half-finished in one checkout, or null when it is idle.</summary>
+	public async Task<GitOperation?> InProgressInAsync(string workingDirectory, CancellationToken ct = default)
+	{
+		string? admin = await AdminDirectoryAsync(workingDirectory, ct);
+		return admin is null ? null : FindOperation(admin);
+
+		static GitOperation? FindOperation(string admin)
+		{
+			if (Directory.Exists(Path.Combine(admin, "rebase-merge"))
+				|| Directory.Exists(Path.Combine(admin, "rebase-apply")))
+				return GitOperation.Rebase;
+			if (File.Exists(Path.Combine(admin, "MERGE_HEAD")))
+				return GitOperation.Merge;
+			if (File.Exists(Path.Combine(admin, "CHERRY_PICK_HEAD")))
+				return GitOperation.CherryPick;
+			if (File.Exists(Path.Combine(admin, "REVERT_HEAD")))
+				return GitOperation.Revert;
+			if (File.Exists(Path.Combine(admin, "BISECT_LOG")))
+				return GitOperation.Bisect;
+			return null;
+		}
+	}
+
+
+	/// <summary>
+	/// Abandons a half-finished operation, putting the checkout back where it started. A
+	/// checkout that existed only to carry the operation goes with it: leaving it behind is
+	/// what turns one conflicted rebase into a directory nobody remembers making.
+	/// </summary>
+	public async Task AbortAsync(InProgressOperation operation, CancellationToken ct = default)
+	{
+		string[] args = operation.Kind is GitOperation.Bisect
+			? ["bisect", "reset"] : [Verb(operation.Kind), "--abort"];
+		await ExternalTool.RunAsync("git", args, operation.WorkingDirectory, ct);
+		if (!operation.IsScratch)
+			return;
+		try
+		{
+			await RunAsync(CancellationToken.None, "worktree", "remove", "--force", operation.WorkingDirectory);
+		}
+		catch (ToolFailedException)
+		{
+			await RunAsync(CancellationToken.None, "worktree", "prune");
+		}
+	}
+
+	/// <summary>The account origin belongs to on GitHub, or null when origin is missing or is
+	/// not a GitHub remote. This is who the local branches belong to: they are pushed to
+	/// origin, so a pull request whose head repository has another owner is from a fork and
+	/// names a branch that is not one of these.</summary>
+	public async Task<string?> GetOriginOwnerAsync(CancellationToken ct = default)
+	{
+		try
+		{
+			string url = (await RunAsync(ct, "remote", "get-url", "origin")).Trim();
+			return GitHub.GitHubUrl.TryParse(url, out string owner, out _, out _) ? owner : null;
+		}
+		catch (Infra.ToolFailedException)
+		{
+			return null;
+		}
+	}
 
 	/// <summary>The review base for local branches: origin's default branch when known,
 	/// else origin/master.</summary>

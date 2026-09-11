@@ -35,6 +35,13 @@ public class HistoryPaneViewModel : Tool
 		this.workspace = workspace;
 		DiffDocumentView.ActiveViewChanged += () => Dispatcher.UIThread.Post(FollowActiveView);
 		workspace.PickaxeRequested += (text, path) => PickaxeAsync(text, path).HandleExceptions();
+		workspace.ReviewReset += () => Dispatcher.UIThread.Post(() => {
+			// The path goes with the rows: the next review can open the same file, and a pane
+			// that still thought it was showing it would never load it again.
+			currentPath = null;
+			Commits.Clear();
+			State.Status = "Focus a diff to see its file's history; select text and use 'History of Selection' for a pickaxe search.";
+		});
 	}
 
 	void FollowActiveView()
@@ -62,7 +69,7 @@ public class HistoryPaneViewModel : Tool
 		}
 		catch (ToolFailedException ex)
 		{
-			State.Status = ex.Message;
+			State.Status = ExternalTool.Explain(ex);
 		}
 		Commits.Replace(rows);
 	}
@@ -82,7 +89,7 @@ public class HistoryPaneViewModel : Tool
 		}
 		catch (ToolFailedException ex)
 		{
-			State.Status = ex.Message;
+			State.Status = ExternalTool.Explain(ex);
 		}
 		Commits.Replace(rows);
 	}

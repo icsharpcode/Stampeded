@@ -59,7 +59,7 @@ public class TestsPaneViewModel : Tool
 	public TestsPaneViewModel(ReviewWorkspace workspace)
 	{
 		this.workspace = workspace;
-		workspace.ReviewChanged += OnReviewChanged;
+		workspace.ReviewReset += OnReviewReset;
 		flushTimer.Tick += (_, _) => FlushOutput();
 		spinnerTimer.Tick += (_, _) => {
 			spinnerFrame = (spinnerFrame + 1) % SpinnerFrames.Length;
@@ -80,7 +80,7 @@ public class TestsPaneViewModel : Tool
 		};
 	}
 
-	void OnReviewChanged()
+	void OnReviewReset()
 	{
 		Failures.Clear();
 		State.Output = "";

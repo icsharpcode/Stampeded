@@ -200,7 +200,7 @@ public sealed class ReviewDocumentViewModel : Document
 			}
 			var merge = await workspace.GitHub.GetMergeStateAsync(pr.Number);
 			State.IsDraft = merge.IsDraft;
-			State.MergeState = $"merge: {merge.Describe}";
+			State.MergeState = $"merge: {merge.Summary}";
 			State.MergeExplanation = merge.Explain
 				+ (State.MergeMethods.Count == 0
 					? "\n- This repository allows no merge method through the API."
@@ -210,8 +210,8 @@ public sealed class ReviewDocumentViewModel : Document
 		catch (ToolFailedException ex)
 		{
 			State.CanMerge = false;
-			State.MergeState = $"merge state unknown ({ex.Message})";
-			State.MergeExplanation = $"Asking GitHub about the merge state failed:\n{ex.Message}";
+			State.MergeState = $"merge state unknown ({ExternalTool.Explain(ex)})";
+			State.MergeExplanation = $"Asking GitHub about the merge state failed:\n{ExternalTool.Explain(ex)}";
 		}
 	}
 
@@ -314,7 +314,7 @@ public sealed class ReviewDocumentViewModel : Document
 		catch (ToolFailedException ex)
 		{
 			// Rebuild would otherwise overwrite this with a count that did not change.
-			State.Status = $"Refresh failed: {ex.Message}";
+			State.Status = $"Refresh failed: {ExternalTool.Explain(ex)}";
 		}
 	}
 }

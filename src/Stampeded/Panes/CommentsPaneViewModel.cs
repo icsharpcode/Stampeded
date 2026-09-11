@@ -138,7 +138,7 @@ public class CommentsPaneViewModel : Tool
 			catch (ToolFailedException ex)
 			{
 				// Rebuild would otherwise overwrite this with a count that did not change.
-				State.Status = $"Refresh failed: {ex.Message}";
+				State.Status = $"Refresh failed: {ExternalTool.Explain(ex)}";
 			}
 		}
 	}

@@ -99,6 +99,37 @@ public sealed partial class StartState : ObservableObject
 	[ObservableProperty]
 	bool selectedPrIsDraft;
 
+	/// <summary>What git has half-finished, or empty when it has not. Doubles as the banner's
+	/// visibility: there is nothing to abandon most of the time, and a permanent row of buttons
+	/// invites a press that would only report that.</summary>
+	[ObservableProperty]
+	string inProgress = "";
+
+	/// <summary>Where it is, and the whole of it, for the banner's tooltip. The line itself
+	/// stays short enough to sit on one row beside four buttons.</summary>
+	[ObservableProperty]
+	string inProgressWhere = "";
+
+	[ObservableProperty]
+	string inProgressDetail = "";
+
+	/// <summary>Something is conflicted and wants a decision, as opposed to merely stopped
+	/// part-way. Only the first is worth alarming anybody about.</summary>
+	[ObservableProperty]
+	bool inProgressConflicted;
+
+	/// <summary>Which ways out git will actually accept right now. What is conflicted must be
+	/// resolved before it can be continued, and offering both at once is how a reader learns
+	/// that half the buttons here lie.</summary>
+	[ObservableProperty]
+	bool canResolve;
+
+	[ObservableProperty]
+	bool canContinue;
+
+	[ObservableProperty]
+	bool canSkip;
+
 	[ObservableProperty]
 	string prColumnHeader = "Pull Requests";
 
@@ -256,13 +287,27 @@ public class StartDocumentViewModel : Document
 		{
 			// Not a repo, or no origin to ask about the default branch: the list is empty, and
 			// saying why beats an empty box.
-			State.RefsStatus = ex.Message;
+			State.RefsStatus = ExternalTool.Explain(ex);
 		}
 		finally
 		{
 			State.RefsLoading = false;
+			// Both load paths ask, and both from the finally: the start page is exactly where a
+			// reader lands after a rebase stopped on conflicts, and reading the refs is what
+			// fails first in the clone that is in that state.
+			await RefreshInProgressAsync();
 		}
 		AnnotateBranches();
+	}
+
+	/// <summary>Re-reads everything the page shows after it has been away. The pull requests
+	/// are asked for again too: nothing tells this page that one was merged or opened while a
+	/// review was in front of it. With no network the load reports why in the status line and
+	/// leaves the list it had, which is the same thing it does at startup.</summary>
+	public void Refresh()
+	{
+		ReloadRefs();
+		PrList.LoadAsync().HandleExceptions();
 	}
 
 	public void ReloadRefs() => ReloadRefsAsync().HandleExceptions();
@@ -278,6 +323,10 @@ public class StartDocumentViewModel : Document
 		finally
 		{
 			State.RefsLoading = false;
+			// In the finally, not after the reload: reading the refs is what fails in a clone
+			// with no origin, and a half-finished operation is exactly the thing still worth
+			// reporting when the rest of the page could not be built.
+			await RefreshInProgressAsync();
 		}
 	}
 
@@ -337,7 +386,12 @@ public class StartDocumentViewModel : Document
 			}
 			return;
 		}
+		// Only pull requests whose head branch is a branch of this repository: a fork's
+		// "master" is named like the one checked out here and is a different branch, so
+		// tagging that branch with the pull request would label - and then pull, and report
+		// the sync state of - the wrong thing.
 		var prsByBranch = PrList.Items
+			.Where(p => !p.HeadIsFork)
 			.GroupBy(p => p.HeadRefName, StringComparer.Ordinal)
 			.ToDictionary(g => g.Key, g => g.First(), StringComparer.Ordinal);
 		Branches.Clear();
@@ -487,7 +541,7 @@ public class StartDocumentViewModel : Document
 			}
 			catch (ToolFailedException ex)
 			{
-				State.Status = $"Could not create the branch: {ex.Message}";
+				State.Status = $"Could not create the branch: {ExternalTool.Explain(ex)}";
 			}
 		}
 	}
@@ -504,9 +558,14 @@ public class StartDocumentViewModel : Document
 		async Task RebaseAsync()
 		{
 			State.Status = $"Rebasing {row.Info.Name} onto {defaultBase}...";
+			// Progress marshals to the UI thread, and the phases matter here: the merge tool is
+			// a window of its own that need not come to the front, so a rebase waiting on it is
+			// indistinguishable from one that hung unless it says which it is.
+			var phases = new Progress<string>(phase => State.Status = phase);
+			using var busy = workspace.Busy.Begin($"Rebasing {row.Info.Name}");
 			try
 			{
-				var result = await workspace.Git.RebaseBranchAsync(row.Info.Name, defaultBase);
+				var result = await workspace.Git.RebaseBranchAsync(row.Info.Name, defaultBase, phases);
 				await ReloadRefsAsync();
 				State.Status = result.Outcome == RebaseOutcome.Conflicted
 					? $"Rebase of {row.Info.Name} stopped on conflicts the merge tool did not resolve. "
@@ -517,7 +576,21 @@ public class StartDocumentViewModel : Document
 			}
 			catch (ToolFailedException ex)
 			{
-				State.Status = $"Rebase of {row.Info.Name} failed, branch left unchanged: {ex.Message}";
+				State.Status = $"Rebase of {row.Info.Name} failed, branch left unchanged: {ExternalTool.Explain(ex)}";
+			}
+			catch (RefusedException ex)
+			{
+				// Refused rather than attempted: something is already half-finished, and the
+				// banner below is the way out of it.
+				State.Status = ex.Message;
+			}
+			finally
+			{
+				// Whatever happened, ask again what git is in the middle of. A rebase that
+				// failed is the likeliest way to end up with something half-finished, so
+				// refreshing only after one that worked hid the Abort button exactly when it
+				// was the thing to press.
+				await RefreshInProgressAsync();
 			}
 		}
 	}
@@ -542,7 +615,7 @@ public class StartDocumentViewModel : Document
 			}
 			catch (ToolFailedException ex)
 			{
-				State.Status = $"Fetch failed: {ex.Message}";
+				State.Status = $"Fetch failed: {ExternalTool.Explain(ex)}";
 			}
 		}
 	}
@@ -550,6 +623,19 @@ public class StartDocumentViewModel : Document
 	/// <summary>Brings origin's copy of a branch in: creates it locally when it is not there
 	/// yet, fast-forwards it when it is behind. Diverged branches are left alone - that is
 	/// what the rebase command is for.</summary>
+	/// <summary>Pulls the branch a pull request is from. A fork's branch is not on origin,
+	/// and a local branch of that name is somebody else's branch entirely.</summary>
+	public void PullPrBranch(PrSummary pr)
+	{
+		if (pr.HeadIsFork)
+		{
+			State.Status = $"#{pr.Number} is from a fork; {pr.HeadRefName} is not a branch of "
+				+ "this repository. Open it for review instead.";
+			return;
+		}
+		PullBranch(pr.HeadRefName);
+	}
+
 	public void PullBranch(string branch)
 	{
 		PullAsync().HandleExceptions();
@@ -572,9 +658,32 @@ public class StartDocumentViewModel : Document
 			}
 			catch (ToolFailedException ex)
 			{
-				State.Status = $"Pull of {branch} failed, branch left unchanged: {ex.Message}";
+				State.Status = $"Pull of {branch} failed, branch left unchanged: {ExternalTool.Explain(ex)}";
 			}
 		}
+	}
+
+	/// <summary>
+	/// Puts a pull request in the merge queue straight from the list, without opening it for
+	/// review. The queue pane does the work and is brought to the front to do it: everything
+	/// that happens next - what GitHub says the head is, whose turn it is, why one was passed
+	/// over - is written there, and a start page reporting a one-line summary of it would be a
+	/// second account of the same thing.
+	///
+	/// Merge method and delete-branch are the remembered ones, the same two the pane's own
+	/// button uses. Choosing them per pull request is what the review document is for.
+	/// </summary>
+	public void EnqueuePr(PrSummary pr)
+	{
+		if (workspace.Factory?.Pane<MergeQueuePaneViewModel>("MergeQueue") is not { } queue)
+		{
+			State.Status = "This window has no merge queue pane.";
+			return;
+		}
+		workspace.Factory.ShowPane("MergeQueue");
+		State.Status = $"Queueing #{pr.Number} - the Merge Queue pane has it.";
+		queue.EnqueueAsync(pr.Number, pr.Title, MergeMethodPreference.Load(), DeleteBranchPreference.Load())
+			.HandleExceptions();
 	}
 
 	/// <summary>
@@ -597,7 +706,154 @@ public class StartDocumentViewModel : Document
 			}
 			catch (ToolFailedException ex)
 			{
-				State.Status = $"Could not mark #{pr.Number} ready: {ex.Message}";
+				State.Status = $"Could not mark #{pr.Number} ready: {ExternalTool.Explain(ex)}";
+			}
+		}
+	}
+
+	/// <summary>
+	/// Abandons whatever git has half-finished, wherever it is. Asks first: a conflicted rebase
+	/// holds the resolutions already made in it, and they go with it.
+	/// </summary>
+	public void AbortInProgress()
+	{
+		AbortAsync().HandleExceptions();
+
+		async Task AbortAsync()
+		{
+			var pending = await workspace.Git.ListInProgressAsync();
+			if (pending.Count == 0)
+			{
+				State.Status = "Nothing is half-finished.";
+				await RefreshInProgressAsync();
+				return;
+			}
+			if (ReviewWorkspace.MainWindowOrNull() is { } owner)
+			{
+				bool go = await new ConfirmWindow("Abandon what git is in the middle of",
+					string.Join("\n\n", pending.Select(o => o.Describe))
+						+ "\n\nAnything already resolved in it is discarded. The branches themselves "
+						+ "go back to where they were before the operation started.",
+					pending.Count == 1 ? "Abandon it" : $"Abandon all {pending.Count}")
+					.ShowDialog<bool>(owner);
+				if (!go)
+					return;
+			}
+			var done = new List<string>();
+			foreach (var operation in pending)
+			{
+				try
+				{
+					await workspace.Git.AbortAsync(operation);
+					CliLog.Write("action", $"aborted: {operation.AbortCommand} in {operation.WorkingDirectory}");
+					done.Add(operation.AbortCommand);
+				}
+				catch (ToolFailedException ex)
+				{
+					State.Status = $"Could not abandon it: {ExternalTool.Explain(ex)}";
+					await RefreshInProgressAsync();
+					return;
+				}
+			}
+			await ReloadRefsAsync();
+			State.Status = $"Abandoned {done.Count} operation(s): {string.Join(", ", done)}.";
+		}
+	}
+
+	/// <summary>Whether anything is half-finished, and which ways out of it are open.</summary>
+	public async Task RefreshInProgressAsync()
+	{
+		try
+		{
+			var pending = await workspace.Git.ListInProgressAsync();
+			State.InProgress = pending.Count switch {
+				0 => "",
+				1 => pending[0].Headline,
+				_ => $"{pending[0].Headline} (and {pending.Count - 1} more)",
+			};
+			State.InProgressWhere = pending.Count == 0 ? "" : "in " + pending[0].Where;
+			State.InProgressConflicted = pending.Any(o => o.Unmerged > 0);
+			State.InProgressDetail = string.Join("\n", pending.Select(o => o.Describe));
+			// The buttons act on the first, which is the one the line describes.
+			var first = pending.FirstOrDefault();
+			State.CanResolve = first?.CanResolve ?? false;
+			State.CanContinue = first?.CanContinue ?? false;
+			State.CanSkip = first?.CanSkip ?? false;
+		}
+		catch (ToolFailedException)
+		{
+			State.InProgress = State.InProgressWhere = State.InProgressDetail = "";
+			State.InProgressConflicted = false;
+			State.CanResolve = State.CanContinue = State.CanSkip = false;
+		}
+	}
+
+	/// <summary>Opens the merge tool on what is still conflicted. Named for what the reader
+	/// wants rather than for the command, and reported while it runs because the tool is a
+	/// window of its own that need not come to the front.</summary>
+	public void ResolveInProgress()
+		=> StepAsync("Resolve", (git, op) => git.RunMergeToolAsync(op),
+			op => $"Waiting for the merge tool on {op.Unmerged} conflicted file(s). "
+				+ "It opens as a separate window and may not come to the front.");
+
+	public void ContinueInProgress()
+		=> StepAsync("Continue", (git, op) => git.ContinueAsync(op),
+			op => $"Continuing the {op.Kind.ToString().ToLowerInvariant()}...");
+
+	public void SkipInProgress()
+	{
+		AskThenSkipAsync().HandleExceptions();
+
+		async Task AskThenSkipAsync()
+		{
+			// Skipping drops the commit it stopped on, which is the one destructive way out
+			// that does not look destructive: the operation carries on and nothing says a
+			// change went missing.
+			if (ReviewWorkspace.MainWindowOrNull() is { } owner
+				&& (await workspace.Git.ListInProgressAsync()).FirstOrDefault() is { } operation)
+			{
+				bool go = await new ConfirmWindow("Skip this step",
+					$"The step the {operation.Kind.ToString().ToLowerInvariant()} stopped on is "
+						+ "dropped, and what it changed is not applied. The rest carries on.\n\n"
+						+ "This cannot be undone from here.",
+					"Skip it").ShowDialog<bool>(owner);
+				if (!go)
+					return;
+			}
+			StepAsync("Skip", (git, op) => git.SkipAsync(op),
+				op => $"Skipping this step of the {op.Kind.ToString().ToLowerInvariant()}...");
+		}
+	}
+
+	void StepAsync(string what, Func<GitService, InProgressOperation, Task> step, Func<InProgressOperation, string> saying)
+	{
+		RunAsync().HandleExceptions();
+
+		async Task RunAsync()
+		{
+			var pending = await workspace.Git.ListInProgressAsync();
+			if (pending.FirstOrDefault() is not { } operation)
+			{
+				State.Status = "Nothing is half-finished.";
+				await RefreshInProgressAsync();
+				return;
+			}
+			State.Status = saying(operation);
+			using var busy = workspace.Busy.Begin(what);
+			try
+			{
+				await step(workspace.Git, operation);
+				CliLog.Write("action", $"{what.ToLowerInvariant()} in {operation.WorkingDirectory}");
+				await ReloadRefsAsync();
+				State.Status = (await workspace.Git.ListInProgressAsync()).Count == 0
+					? $"The {operation.Kind.ToString().ToLowerInvariant()} of "
+						+ $"{operation.Branch ?? "it"} finished."
+					: State.InProgress;
+			}
+			catch (ToolFailedException ex)
+			{
+				State.Status = $"{what} failed: {ExternalTool.Explain(ex)}";
+				await RefreshInProgressAsync();
 			}
 		}
 	}
@@ -637,7 +893,7 @@ public class StartDocumentViewModel : Document
 			}
 			catch (ToolFailedException ex)
 			{
-				State.Status = $"Push of {branch} failed, origin unchanged: {ex.Message}";
+				State.Status = $"Push of {branch} failed, origin unchanged: {ExternalTool.Explain(ex)}";
 			}
 		}
 	}

@@ -180,7 +180,7 @@ public partial class CallGraphPaneViewModel : Tool
 			Root = null;
 			State.Status = message;
 		});
-		workspace.ReviewChanged += () => Dispatcher.UIThread.Post(() => {
+		workspace.ReviewReset += () => Dispatcher.UIThread.Post(() => {
 			currentRoot = null;
 			Root = null;
 			State.Status = "Right-click a symbol in a diff and choose Show Call Graph.";

@@ -569,7 +569,7 @@ public sealed class ReviewScopes(ReviewWorkspace workspace)
 			}
 			catch (ToolFailedException ex)
 			{
-				workspace.PostStatus($"Diff since last pass failed: {ex.Message}");
+				workspace.PostStatus($"Diff since last pass failed: {ExternalTool.Explain(ex)}");
 				return;
 			}
 		}

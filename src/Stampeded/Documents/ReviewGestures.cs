@@ -99,11 +99,12 @@ static class ReviewGestures
 		{
 			workspace.SetViewed(finished.Path, viewed: true);
 			// Off the end of the last file there is no next one, and what follows reading a
-			// change is saying something about it: the review page, rather than a key that
-			// stops answering at the moment the pass is over.
+			// change is saying something about it - the next commit of a series being read
+			// commit by commit, and the review page when the whole of it is read. The same
+			// step 'v' takes on the last file, because it is the same moment.
 			if (workspace.ReadingOrder is [.., var last] && last.Path == finished.Path)
 			{
-				workspace.OpenReviewDocument();
+				await workspace.FinishReadingAsync();
 				return;
 			}
 		}

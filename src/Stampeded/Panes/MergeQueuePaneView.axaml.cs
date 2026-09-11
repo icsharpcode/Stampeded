@@ -19,7 +19,7 @@ public partial class MergeQueuePaneView : UserControl
 	void OnEnqueue(object? sender, RoutedEventArgs e)
 	{
 		if (DataContext is MergeQueuePaneViewModel vm)
-			vm.EnqueueCurrentAsync(MergeMethodPreference.Load()).HandleExceptions();
+			vm.EnqueueCurrentAsync(MergeMethodPreference.Load(), vm.State.DeleteBranch).HandleExceptions();
 	}
 
 	void OnBreakLock(object? sender, RoutedEventArgs e)

@@ -5,6 +5,9 @@
         WindowStartupLocation="CenterOwner" CanResize="False">
   <StackPanel Margin="12" Spacing="10">
     <TextBlock x:Name="MessageText" TextWrapping="Wrap" />
+    <!-- A second decision the action carries, for the dialogs that have one. Hidden unless the
+         caller names it, so every other confirmation keeps the shape it had. -->
+    <CheckBox x:Name="OptionCheck" IsVisible="False" />
     <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
       <Button x:Name="ConfirmButton" IsDefault="True" Click="OnConfirm" />
       <Button Content="Cancel" IsCancel="True" Click="OnCancel" />

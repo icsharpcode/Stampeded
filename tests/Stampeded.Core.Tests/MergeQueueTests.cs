@@ -334,6 +334,90 @@ public class MergeQueueTests
 		Assert.That(log, Does.Contain("remove #142: merged"));
 	}
 
+	[Test]
+	public async Task WhyAnEntryIsGoneComesFromTheQueuesOwnHistory()
+	{
+		var queue = Queue(alice);
+		await queue.EnqueueAsync(142, "Fix blame gutter", Head, "squash");
+		await queue.RemoveAsync(142, "already merged");
+
+		// Bob's clone made none of those changes and has never read the queue; the answer still
+		// has to come, because an entry the drainer workflow took out looks exactly like this.
+		Assert.That(await Queue(bob).WhyGoneAsync(142), Is.EqualTo("remove #142: already merged"));
+	}
+
+	[Test]
+	public async Task AnEntryStillQueuedHasNoDepartureToExplain()
+	{
+		var queue = Queue(alice);
+		await queue.EnqueueAsync(142, "Fix blame gutter", Head, "squash");
+		await queue.TryAcquireAsync(142);
+
+		Assert.That(await queue.WhyGoneAsync(142), Is.Null,
+			"being queued and being locked are not things that took it out");
+	}
+
+	[Test]
+	public async Task ANumberIsNotAnsweredForByOneThatStartsWithIt()
+	{
+		var queue = Queue(alice);
+		await queue.EnqueueAsync(14, "Shorter", Head, "squash");
+		await queue.EnqueueAsync(142, "Longer", Head, "squash");
+		await queue.RemoveAsync(142, "already merged");
+
+		Assert.That(await queue.WhyGoneAsync(14), Is.Null, "#142 leaving says nothing about #14");
+		Assert.That(await queue.WhyGoneAsync(142), Does.Contain("already merged"));
+	}
+
+	[Test]
+	public async Task AQueueEmptiedByHandSaysSoForEveryEntryItTookOut()
+	{
+		var queue = Queue(alice);
+		await queue.EnqueueAsync(1, "A change", Head, "squash");
+		await queue.EnqueueAsync(2, "Another change", Head, "squash");
+
+		await queue.RemoveAsync([1, 2], "queue emptied by hand");
+
+		Assert.That(await queue.WhyGoneAsync(1), Does.Contain("queue emptied by hand"));
+		Assert.That(await queue.WhyGoneAsync(2), Does.Contain("queue emptied by hand"));
+	}
+
+	[Test]
+	public async Task WhetherToDeleteTheBranchTravelsWithTheEntry()
+	{
+		await Queue(alice).EnqueueAsync(142, "Fix blame gutter", Head, "squash", deleteBranch: true);
+
+		var entry = (await Queue(bob).ReadAsync()).Document.Find(142);
+
+		Assert.That(entry!.DeleteBranch, Is.True,
+			"whoever drains the queue has to merge it the way the enqueuer meant");
+	}
+
+	[Test]
+	public async Task AnEntryQueuedBeforeTheOptionExistedLeavesTheBranchAlone()
+	{
+		// What a client that predates the field published: the same document without it. Written
+		// straight onto the ref, because nothing here can produce one any more.
+		await PublishRawDocument("enqueue #7 by carol@host",
+			"""{"version":1,"entries":[{"pr":7,"title":"Older","headSha":"","method":"squash","by":"carol@host","at":"2026-01-01T00:00:00+00:00"}],"lock":null}""");
+
+		var entry = (await Queue(alice).ReadAsync()).Document.Find(7);
+
+		Assert.That(entry, Is.Not.Null, "an older document still has to read");
+		Assert.That(entry!.DeleteBranch, Is.False);
+	}
+
+	/// <summary>Puts a document on the queue ref as it stands, bypassing the serializer - the
+	/// only way to test reading something this build would not write.</summary>
+	async Task PublishRawDocument(string subject, string json)
+	{
+		// The empty tree, by the sha every sha-1 repository gives it: a commit has to point at
+		// one, and the queue's own commits point at nothing else either.
+		const string EmptyTree = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
+		string sha = (await Git(alice, "commit-tree", EmptyTree, "-m", subject + "\n\n" + json)).Trim();
+		await Git(alice, "push", "--quiet", "origin", $"{sha}:{MergeQueueService.QueueRef}");
+	}
+
 	/// <summary>Puts a lock of somebody who is no longer around on the queue, stamped far enough
 	/// in the past that the lease decides the outcome.</summary>
 	async Task LeaveLockAgedBy(TimeSpan age)

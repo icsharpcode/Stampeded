@@ -68,6 +68,12 @@ public sealed class ReviewWorkspace(string repoPath)
 	/// the diff is really against, which is not what the user typed.</summary>
 	public (string Base, string Head)? LocalRange { get; private set; }
 
+	/// <summary>What the change on screen is diffed against. A commit, except in the
+	/// since-last-pass scope, where it is the tree that scope replayed the read work onto -
+	/// there is no commit whose diff to the head is the author's own edits. Reading a blob out
+	/// of it works either way; anything that wants history or a checkout - blame, a worktree -
+	/// has to ask <see cref="ReviewScopes.InSinceLastPass"/> first, because git answers a tree
+	/// with "Non commit" and "invalid reference".</summary>
 	public string? BaseSha { get; private set; }
 	public string? HeadSha { get; private set; }
 	public IReadOnlyList<FileDiff> Files { get; private set; } = [];
@@ -306,6 +312,14 @@ public sealed class ReviewWorkspace(string repoPath)
 
 	public event Action? ReviewChanged;
 
+	/// <summary>A different review is in front now, or none at all. Everything derived from
+	/// the last one and not rebuilt from this one is stale: find-references results, a call
+	/// graph, a file's history, the structure of a document that is no longer open.
+	/// <see cref="ReviewChanged"/> is not that signal - it also fires while one review is
+	/// being read, when generated sources join its files or the issue prefix arrives, and a
+	/// pane that emptied itself on it would go blank under the reader's hands.</summary>
+	public event Action? ReviewReset;
+
 	/// <summary>The open pull request changed in a way that is not a reload: it stopped being a
 	/// draft. What a reader may do with it changed, so the views that offer those things listen.</summary>
 	public event Action? PrStateChanged;
@@ -400,6 +414,7 @@ public sealed class ReviewWorkspace(string repoPath)
 		HeadSha = headSha;
 		Files = files;
 		changed = ChangedLines.From(files);
+		ReviewReset?.Invoke();
 		Store.OpenLocal(Path.GetFileName(RepoPath), $"{baseRef}..{headRef}", headSha, baseSha);
 		await ApplyReReviewCarryOverAsync(ct);
 		await PinReviewHeadsAsync(ct);
@@ -476,6 +491,7 @@ public sealed class ReviewWorkspace(string repoPath)
 		HeadSha = headSha;
 		Files = files;
 		changed = ChangedLines.From(files);
+		ReviewReset?.Invoke();
 		Store.Open(Path.GetFileName(RepoPath), number, headSha, baseSha);
 		await ApplyReReviewCarryOverAsync(ct);
 		await PinReviewHeadsAsync(ct);
@@ -554,6 +570,9 @@ public sealed class ReviewWorkspace(string repoPath)
 	{
 		DisposeSemantics();
 		SemanticsChanged?.Invoke();
+		// Both are answers about this revision pair; the base one is made on demand, so it
+		// has to go now rather than be replaced later.
+		BaseWorktreePath = null;
 		WorktreePath = await Worktrees.GetOrCreateAsync(headSha, ct);
 		if (CSharpOutOfProcess)
 			await LoadCSharpOverLspAsync(baseSha, ct);
@@ -632,6 +651,15 @@ public sealed class ReviewWorkspace(string repoPath)
 			return existing;
 		if (BaseSha is not { } baseSha)
 			return null;
+		if (Scopes.InSinceLastPass)
+		{
+			// A worktree is checked out from a commit, and the base of this scope is a tree
+			// built for it. Answering "there is none" beats letting git refuse the reference
+			// four callers deep.
+			CliLog.Write("review", "no base worktree in the since-last-pass scope: its base "
+				+ $"({baseSha[..9]}) is a tree, and a checkout needs a commit");
+			return null;
+		}
 		using var busy = Busy.Begin("Checking out the base");
 		BaseWorktreePath = await Worktrees.GetOrCreateAsync(baseSha, ct);
 		return BaseWorktreePath;
@@ -872,8 +900,18 @@ public sealed class ReviewWorkspace(string repoPath)
 	/// <summary>The file being read, in whichever layout it is being read in. Asked of the
 	/// document interface rather than of the unified type: everything that acts on "the file in
 	/// front" - marking it viewed, commenting, stepping to the next one - went dead in the
-	/// side-by-side layout while this answered null there.</summary>
-	public FileDiff? CurrentFile => (Documents?.ActiveDockable as Documents.IDiffDocument)?.File;
+	/// side-by-side layout while this answered null there.
+	///
+	/// Only a file of what is in scope. A commit, an interdiff, a file at an older revision and
+	/// a definition read outside the change are all diffs in a tab, and each carries a
+	/// stand-in file that no row of the list answers to: marking one viewed wrote a flag
+	/// against a path the review does not have, and stepping on from one stepped on from a
+	/// place the list does not have either.</summary>
+	public FileDiff? CurrentFile
+		=> Documents?.ActiveDockable is Documents.IDiffDocument document
+			&& document.Id is { } id && id.StartsWith("diff:", StringComparison.Ordinal)
+			? Files.FirstOrDefault(f => f.Path == document.File.Path)
+			: null;
 
 	/// <summary>Whether the tests of a change are read before the code they are about. A
 	/// review's own setting rather than the file list's: it decides the order the change is
@@ -888,8 +926,14 @@ public sealed class ReviewWorkspace(string repoPath)
 	/// jumped somewhere else in the list, and "the last file" - where a pass ends and the
 	/// verdict page opens - was a file in the middle of it, so the end of the pass never
 	/// arrived. One order, asked for here, is what keeps the two in step.
+	///
+	/// The sort keys below each pull files out of their directory - generated output to the
+	/// back, the tests and what a new push touched to the front - and the list they feed is a
+	/// tree, which groups them straight back. So the order is grouped here the way the tree
+	/// groups it: without that the list shows one order and every key that walks it follows
+	/// another.
 	/// </summary>
-	public IReadOnlyList<FileDiff> ReadingOrder => [.. Files
+	public IReadOnlyList<FileDiff> ReadingOrder => [.. Core.Review.FolderOrder.ByFolder(Files
 		// Generator output goes last whatever else is true of it: it is what the change
 		// caused, and reaching the cause should never mean scrolling past the effect.
 		.OrderBy(f => f.IsGenerated ? 1 : 0)
@@ -897,7 +941,7 @@ public sealed class ReviewWorkspace(string repoPath)
 		// the list is - so ordering by it there orders nothing.
 		.ThenBy(f => !Scopes.InSinceLastPass && IsTouchedSinceLastPass(f.Path) ? 0 : 1)
 		.ThenBy(f => Core.Review.TestPaths.IsTestPath(f.Path) == TestsFirst ? 0 : 1)
-		.ThenBy(f => f.Path, StringComparer.Ordinal)];
+		.ThenBy(f => f.Path, StringComparer.Ordinal), f => f.Path)];
 
 	public event Action<string>? StatusMessage;
 
@@ -1025,7 +1069,7 @@ public sealed class ReviewWorkspace(string repoPath)
 		catch (ToolFailedException ex)
 		{
 			// Losing the pin costs the next pass its comparison point, not this one its review.
-			StatusMessage?.Invoke($"Could not pin the reviewed head {head[..9]}: {ex.Message} "
+			StatusMessage?.Invoke($"Could not pin the reviewed head {head[..9]}: {ExternalTool.Explain(ex)} "
 				+ "A later force-push may leave nothing to compare against.");
 		}
 	}
@@ -1047,7 +1091,7 @@ public sealed class ReviewWorkspace(string repoPath)
 		}
 		catch (ToolFailedException ex)
 		{
-			StatusMessage?.Invoke($"Interdiff failed: {ex.Message}");
+			StatusMessage?.Invoke($"Interdiff failed: {ExternalTool.Explain(ex)}");
 		}
 	}
 
@@ -1168,7 +1212,7 @@ public sealed class ReviewWorkspace(string repoPath)
 		}
 		catch (ToolFailedException ex)
 		{
-			StatusMessage?.Invoke($"Rebase of #{number} failed: {ex.Message}");
+			StatusMessage?.Invoke($"Rebase of #{number} failed: {ExternalTool.Explain(ex)}");
 		}
 	}
 
@@ -1189,7 +1233,7 @@ public sealed class ReviewWorkspace(string repoPath)
 		}
 		catch (ToolFailedException ex)
 		{
-			StatusMessage?.Invoke($"Rebase failed: {ex.Message}");
+			StatusMessage?.Invoke($"Rebase failed: {ExternalTool.Explain(ex)}");
 		}
 	}
 
@@ -1248,7 +1292,7 @@ public sealed class ReviewWorkspace(string repoPath)
 			// Without the overlay the workspaces still answer, but about the review's head
 			// rather than what is on screen - which is worth saying rather than leaving the
 			// reader to wonder why a symbol resolves oddly.
-			StatusMessage?.Invoke($"Semantics for this scope are the review's, not the scope's: {ex.Message}");
+			StatusMessage?.Invoke($"Semantics for this scope are the review's, not the scope's: {ExternalTool.Explain(ex)}");
 			return;
 		}
 		Semantics?.SetTextOverlay(headText);
@@ -1365,7 +1409,10 @@ public sealed class ReviewWorkspace(string repoPath)
 		string? root = oldSide ? await EnsureBaseWorktreeAsync() : WorktreePath;
 		if (root is null)
 		{
-			StatusMessage?.Invoke("No worktree yet - open a review first.");
+			StatusMessage?.Invoke(oldSide && Scopes.InSinceLastPass
+				? "The work since your last pass is read against a tree built for it, not a commit, so "
+					+ "there is no base revision to check out. Press 'Whole change' to open the base side."
+				: "No worktree yet - open a review first.");
 			return;
 		}
 		LinkVsCodeConfig(root);
@@ -1446,7 +1493,7 @@ public sealed class ReviewWorkspace(string repoPath)
 			}
 			catch (ToolFailedException ex)
 			{
-				StatusMessage?.Invoke($"ILSpy build failed: {ex.Message}");
+				StatusMessage?.Invoke($"ILSpy build failed: {ExternalTool.Explain(ex)}");
 				return;
 			}
 		}
@@ -1469,8 +1516,15 @@ public sealed class ReviewWorkspace(string repoPath)
 
 	public void OpenStart()
 	{
+		// A start page that sat behind a review is showing the branches and pull requests as
+		// they were when it was built. Coming back to it - closing the review, or the menu -
+		// is exactly when that is stale, so it re-reads. A page being created reads in its
+		// own constructor and needs no second pass.
+		bool stale = StartPage is not null;
 		StartPage ??= new Documents.StartDocumentViewModel(this);
 		ShowDocument("start", () => StartPage);
+		if (stale)
+			StartPage.Refresh();
 	}
 
 	/// <summary>Ends the review session: background work cancelled, semantics released,
@@ -1554,10 +1608,22 @@ public sealed class ReviewWorkspace(string repoPath)
 		LastPassHead = null;
 		TouchedSinceLastPass = null;
 		ResetChangeMap();
+		WorktreePath = null;
+		BaseWorktreePath = null;
+		// Everything GitHub answered about the review that is going, including how old those
+		// answers were. Both opens clear the same things; closing left them to be inherited by
+		// whatever opened next.
+		Reviewers = null;
+		IssueUrlPrefix = null;
+		snapshot = null;
+		Offline = false;
+		OfflineSince = null;
 		history.Clear();
 		CloseDocumentsExceptStart();
 		OpenStart();
+		ReviewReset?.Invoke();
 		ReviewChanged?.Invoke();
+		ReviewersChanged?.Invoke();
 		SemanticsChanged?.Invoke();
 		CoverageChanged?.Invoke();
 		ChecksLoaded?.Invoke();
@@ -1752,11 +1818,29 @@ public sealed class ReviewWorkspace(string repoPath)
 		if (!viewed)
 			return;
 		// The end of what is being read: the last file of the list, or the last one of it that
-		// was still unread. Either way there is nothing left below to advance into.
+		// was still unread. Either way there is nothing left below to advance into, and an
+		// advance would silently do nothing - leaving 'v' pressed once more to un-view the
+		// file just finished.
 		var order = ReadingOrder;
-		bool through = order.Count > 0
-			&& (order[^1].Path == file.Path || order.All(f => Store.IsViewed(f.Path)));
-		if (through && Scopes.Commit is not null)
+		if (order.Count > 0 && (order[^1].Path == file.Path || order.All(f => Store.IsViewed(f.Path))))
+		{
+			await FinishReadingAsync();
+			return;
+		}
+		await OpenAdjacentFileAsync(1);
+	}
+
+	/// <summary>
+	/// What follows the last file of what is being read: the next commit while a series is
+	/// being stepped through, and the page where a verdict is given when there is nothing after
+	/// it. Both keys that reach the end of the list end here - 'v' on the last file and 'n' off
+	/// the end of it - so a change reads the same way whichever one walks it, in whichever
+	/// scope. The scopes used to disagree: only the commit-by-commit one carried on to what
+	/// came next, and only 'v' asked.
+	/// </summary>
+	public async Task FinishReadingAsync()
+	{
+		if (Scopes.Commit is not null)
 		{
 			int unread = Files.Count(f => !Store.IsViewed(f.Path));
 			if (Scopes.CommitIndex + 1 < Scopes.Series.Count)
@@ -1764,7 +1848,7 @@ public sealed class ReviewWorkspace(string repoPath)
 				await Scopes.StepCommitAsync(1);
 				// Straight into the next commit's first file. Stepping on its own opens the
 				// overview, which is right when the step was asked for - the message is worth
-				// reading before the diff - but reading the series with 'v' is one continuous
+				// reading before the diff - but reading the series through is one continuous
 				// pass, and a stop at the overview between every commit is a key pressed for
 				// nothing.
 				if (ReadingOrder is [var firstOfCommit, ..] && await OpenFileAsync(firstOfCommit, record: true) is { } first)
@@ -1781,17 +1865,11 @@ public sealed class ReviewWorkspace(string repoPath)
 			StatusMessage?.Invoke("Last commit read; back to the whole change, where the verdict is given.");
 			return;
 		}
-		// Outside a scope the last file has nowhere to advance to, and the advance would
-		// silently do nothing - leaving 'v' pressed once more to un-view the file just
-		// finished. The read is over at that point, so it ends on the page where a verdict is
-		// given, which is what 'n' off the end of the last file does as well.
-		if (order.Count > 0 && order[^1].Path == file.Path)
-		{
-			OpenReviewDocument();
-			StatusMessage?.Invoke($"Last file read; {Files.Count(f => Store.IsViewed(f.Path))} of {Files.Count} viewed.");
-			return;
-		}
-		await OpenAdjacentFileAsync(1);
+		OpenReviewDocument();
+		int viewed = Files.Count(f => Store.IsViewed(f.Path));
+		StatusMessage?.Invoke(viewed == Files.Count
+			? $"All {Files.Count} file(s) read; this is where the verdict is given."
+			: $"Last file read; {viewed} of {Files.Count} viewed.");
 	}
 
 	/// <summary>The file a pass continues at: the first one not marked viewed. Null once every
@@ -1956,7 +2034,7 @@ public sealed class ReviewWorkspace(string repoPath)
 		}
 		catch (ToolFailedException ex)
 		{
-			StatusMessage?.Invoke($"The Roslyn language server did not start ({ex.Message}); reading in process.");
+			StatusMessage?.Invoke($"The Roslyn language server did not start ({ExternalTool.Explain(ex)}); reading in process.");
 			await LoadCSharpInProcessAsync(baseSha, ct);
 		}
 	}
@@ -2659,10 +2737,10 @@ public sealed class ReviewWorkspace(string repoPath)
 			return $"Could not read the merge state: {ex.Message}";
 		}
 		if (!state.CanMerge)
-			return $"GitHub will not merge #{pr.Number} right now ({state.Describe}).";
+			return $"GitHub will not merge #{pr.Number} right now: {state.Summary}.";
 		if (MainWindowOrNull() is not { } owner)
 			return "";
-		bool merge = await new ConfirmWindow("Merge pull request",
+		var dialog = new ConfirmWindow("Merge pull request",
 			$"#{pr.Number} {pr.Title}\n\n"
 				+ $"{pr.HeadRefName}  ->  {pr.BaseRefName}, by {method}.\n\n"
 				+ (LocalHead
@@ -2670,15 +2748,26 @@ public sealed class ReviewWorkspace(string repoPath)
 						+ "been reading, which is ahead of it.\n\n"
 					: "")
 				+ "This merges on GitHub, for everyone. It cannot be undone from here.",
-			$"Merge ({method})").ShowDialog<bool>(owner);
+			$"Merge ({method})",
+			$"Delete {pr.HeadRefName} after merging",
+			DeleteBranchPreference.Load(),
+			"Takes the head branch off the remote and out of this clone once it has landed. "
+				+ "A branch some checkout still has is left alone, and gh says so.");
+		bool merge = await dialog.ShowDialog<bool>(owner);
+		bool deleteBranch = dialog.OptionChecked;
 		if (!merge)
 			return $"#{pr.Number} not merged.";
+		// Saved from the merge that went ahead, not from the box being ticked: what is worth
+		// remembering is what the reader decided to do, not what they looked at and cancelled.
+		DeleteBranchPreference.Save(deleteBranch);
 		try
 		{
 			using var busy = Busy.Begin($"Merging #{pr.Number}");
-			await GitHub.MergePrAsync(pr.Number, method);
-			CliLog.Write("action", $"merged #{pr.Number} by {method}");
-			return $"#{pr.Number} merged into {pr.BaseRefName} by {method}.";
+			await GitHub.MergePrAsync(pr.Number, method, deleteBranch);
+			CliLog.Write("action",
+				$"merged #{pr.Number} by {method}{(deleteBranch ? ", deleting " + pr.HeadRefName : "")}");
+			return $"#{pr.Number} merged into {pr.BaseRefName} by {method}"
+				+ (deleteBranch ? $"; {pr.HeadRefName} deleted." : ".");
 		}
 		catch (ToolFailedException ex)
 		{

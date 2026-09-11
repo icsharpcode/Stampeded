@@ -61,6 +61,18 @@ public static class ExternalTool
 	}
 
 	/// <summary>
+	/// What to put in front of a reader when a command failed. The exception's own message
+	/// carries the tool, the exit code and the whole of stderr, which is what the log wants
+	/// and what a status line cannot hold: git says "fatal: ..." and then three more lines of
+	/// advice, and all of it lands in one sentence somewhere it does not fit.
+	/// </summary>
+	public static string Explain(ToolFailedException failure)
+	{
+		string reason = FailureReason(failure.StdErr, "");
+		return reason == "no output" ? failure.Message : reason;
+	}
+
+	/// <summary>
 	/// The reason to put on a failed command's log line. Without it the log records only an
 	/// exit code, which says that something failed but never what - and the tools already
 	/// explain themselves in one line ("fatal: 'x' is already checked out at ...",

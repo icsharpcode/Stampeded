@@ -20,6 +20,11 @@
       <Setter Property="Foreground" Value="#c0392b" />
       <Setter Property="Opacity" Value="1" />
     </Style>
+    <!-- What has left the queue stays readable but steps back: it is the record of what
+         happened, under the entries that have still to happen. -->
+    <Style Selector="DockPanel.departed">
+      <Setter Property="Opacity" Value="0.6" />
+    </Style>
   </UserControl.Styles>
   <DockPanel>
     <!-- Above the list, like every other pane's commands: a row that sits under a list moves
@@ -35,6 +40,9 @@
         <Image Source="{x:Static app:Images.Refresh}" />
       </Button>
       <CheckBox DockPanel.Dock="Right" Margin="8,2,4,2" VerticalAlignment="Center"
+                IsChecked="{Binding State.DeleteBranch}" Content="Delete branch"
+                ToolTip.Tip="What Add current PR records with the entry: the merge that lands it also takes its head branch off the remote. Whoever drains the queue merges it the way it was queued." />
+      <CheckBox DockPanel.Dock="Right" Margin="8,2,4,2" VerticalAlignment="Center"
                 IsChecked="{Binding State.Driving}" Content="Drive"
                 ToolTip.Tip="Take turns merging the front of the queue, checking every 30 seconds. This is the only thing in the application that polls, so it starts off - though adding a pull request turns it on." />
       <Button DockPanel.Dock="Right" Classes="tool" Margin="0,2,8,2"
@@ -49,7 +57,7 @@
       <Button DockPanel.Dock="Right" Classes="tool" Margin="0,2,4,2"
               VerticalAlignment="Center" Click="OnClearErrors"
               IsEnabled="{Binding State.HasErrors}"
-              ToolTip.Tip="Clear errors - take out the entries the last turn could not merge, leaving the ones still waiting">
+              ToolTip.Tip="Clear errors - take out the entries the last turn could not merge and the rows of the ones that have left the queue, leaving the entries still waiting">
         <Panel>
           <Image Source="{x:Static app:Images.Clear}" />
           <Rectangle Classes="veil" Fill="{DynamicResource ThemeBackgroundBrush}" Opacity="0.65" />
@@ -131,7 +139,7 @@
         <DataTemplate x:DataType="panes:MergeQueueRow">
           <!-- The note is its own column so a long reason cannot push the entry off the row:
                the entry is what the reader is looking for, the note is why it is still there. -->
-          <DockPanel>
+          <DockPanel Classes.departed="{Binding Departed}">
             <TextBlock DockPanel.Dock="Left" Text="{Binding Display}" />
             <TextBlock Margin="8,0,0,0" Opacity="0.7" Text="{Binding Note}"
                        Classes.failed="{Binding Failed}" TextTrimming="CharacterEllipsis" />

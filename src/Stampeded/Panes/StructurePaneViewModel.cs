@@ -68,7 +68,7 @@ public partial class StructurePaneViewModel : Tool
 	{
 		this.workspace = workspace;
 		DiffDocumentView.ActiveViewChanged += () => Dispatcher.UIThread.Post(Rebuild);
-		workspace.ReviewChanged += () => Dispatcher.UIThread.Post(() => {
+		workspace.ReviewReset += () => Dispatcher.UIThread.Post(() => {
 			currentPath = null;
 			Root = null;
 			State.Status = "The structure of the active document appears here.";

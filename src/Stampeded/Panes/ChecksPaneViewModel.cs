@@ -77,7 +77,7 @@ public partial class ChecksPaneViewModel : Tool
 		}
 		catch (ToolFailedException ex)
 		{
-			State.Status = ex.Message;
+			State.Status = ExternalTool.Explain(ex);
 		}
 		Items.Replace(rows);
 	}
@@ -103,7 +103,7 @@ public partial class ChecksPaneViewModel : Tool
 		}
 		catch (ToolFailedException ex)
 		{
-			State.Status = ex.Message;
+			State.Status = ExternalTool.Explain(ex);
 		}
 	}
 }

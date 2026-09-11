@@ -352,7 +352,7 @@ public sealed class ReviewComments(ReviewWorkspace workspace)
 		}
 		catch (ToolFailedException ex)
 		{
-			workspace.PostStatus($"Thread resolution failed: {ex.Message}");
+			workspace.PostStatus($"Thread resolution failed: {ExternalTool.Explain(ex)}");
 		}
 	}
 

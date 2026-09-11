@@ -100,7 +100,7 @@ public class CommitsPaneViewModel : Tool
 		}
 		catch (ToolFailedException ex)
 		{
-			State.Status = ex.Message;
+			State.Status = ExternalTool.Explain(ex);
 		}
 		Commits.Replace(rows);
 	}

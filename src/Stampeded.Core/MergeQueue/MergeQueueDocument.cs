@@ -10,13 +10,18 @@ namespace Stampeded.Core.MergeQueue;
 /// entry stale: what a reviewer cleared was this revision and not whatever replaced it.</param>
 /// <param name="Method">A gh merge flag name: merge, squash or rebase. The enqueuer's choice,
 /// carried along so whichever client drains the queue merges the way they meant.</param>
+/// <param name="DeleteBranch">Whether the merge should take the head branch away with it. Also
+/// the enqueuer's choice, and for the same reason: a window, another reader's window and the
+/// drainer workflow all merge this entry the one way it was queued. Defaulted, so an entry
+/// written before this existed reads back as leaving the branch alone.</param>
 public sealed record MergeQueueEntry(
 	int Pr,
 	string Title,
 	string HeadSha,
 	string Method,
 	string By,
-	DateTimeOffset At);
+	DateTimeOffset At,
+	bool DeleteBranch = false);
 
 /// <summary>
 /// The client currently merging. <paramref name="Holder"/> is who to name in the UI;

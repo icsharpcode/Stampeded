@@ -40,16 +40,27 @@ public sealed partial class MergeQueueState : ObservableObject
 	/// a button that can be pressed to be told so is a button that lied.</summary>
 	[ObservableProperty]
 	bool canEnqueue;
+
+	/// <summary>What Add current PR writes into the entry: whether the merge, whoever runs it,
+	/// also takes the head branch away. It belongs here rather than in a dialog because the
+	/// button has none - the queue is a list to add to, not a decision to confirm.</summary>
+	[ObservableProperty]
+	bool deleteBranch = DeleteBranchPreference.Load();
 }
 
 /// <summary>What an entry is doing, kept apart from the entry itself: the queue on the remote
 /// records what was decided, not what some window is in the middle of finding out.</summary>
 public sealed record MergeQueueNote(string Text, bool Working);
 
-public sealed partial class MergeQueueRow(int position, MergeQueueEntry entry, bool locked, bool pending)
-	: ObservableObject
+public sealed partial class MergeQueueRow(int position, MergeQueueEntry entry, bool locked, bool pending,
+	bool departed = false) : ObservableObject
 {
 	public MergeQueueEntry Entry { get; } = entry;
+
+	/// <summary>No longer in the queue: merged, closed or taken out. Kept on the list anyway,
+	/// under the entries still waiting, with the reason in its note - an entry that vanished
+	/// while the reader was looking elsewhere is the one thing a shared queue must not do.</summary>
+	public bool Departed { get; } = departed;
 
 	/// <summary>Put here by this window and not yet on the remote. Shown at once anyway: the
 	/// round trip takes a second or two, and a list that stays empty that long reads as a button
@@ -73,10 +84,12 @@ public sealed partial class MergeQueueRow(int position, MergeQueueEntry entry, b
 		{
 			// A fixed title column keeps the columns behind it lined up, which is what makes a
 			// queue scannable; narrow enough that an ordinary pane width needs no scrolling.
-			string where = Pending ? " . " : $"{position,2}.";
+			string where = Departed ? " - " : Pending ? " . " : $"{position,2}.";
 			string line = $"{(locked ? ">" : " ")} {where} #{Entry.Pr,-5} {Entry.Title}";
 			line = line.Length > 44 ? line[..41] + "..." : line.PadRight(44);
-			return $"{line} {Entry.Method,-6} {Entry.By}";
+			// A method that also deletes reads as one word: the column is what happens when this
+			// entry lands, and the branch going is part of that.
+			return $"{line} {Entry.Method + (Entry.DeleteBranch ? "+del" : ""),-10} {Entry.By}";
 		}
 	}
 }
@@ -102,6 +115,14 @@ public partial class MergeQueuePaneViewModel : Tool
 
 	/// <summary>Queued by this window a moment ago and not yet read back off the remote.</summary>
 	MergeQueueEntry? pending;
+
+	/// <summary>Entries that were in the queue and are not any more, kept to be shown with what
+	/// became of them. Their reasons live in <see cref="notes"/> like every other row's.</summary>
+	readonly Dictionary<int, MergeQueueEntry> departed = [];
+
+	/// <summary>Pull requests this window is in the middle of taking out on purpose. They are
+	/// not a disappearance to explain to the reader who asked for it.</summary>
+	readonly HashSet<int> takenOutHere = [];
 	MergeQueueDocument shown = MergeQueueDocument.Empty;
 
 	/// <summary>Whether a workflow on GitHub empties this queue, once it has been asked.</summary>
@@ -119,6 +140,10 @@ public partial class MergeQueuePaneViewModel : Tool
 		State.PropertyChanged += (_, e) => {
 			if (e.PropertyName == nameof(MergeQueueState.Driving))
 				OnDrivingChanged();
+			// The same choice the merge dialog offers, remembered in the same place: a reader
+			// who wants their branches tidied wants it whichever way the merge is reached.
+			else if (e.PropertyName == nameof(MergeQueueState.DeleteBranch))
+				DeleteBranchPreference.Save(State.DeleteBranch);
 		};
 		// The application already animates one spinner for everything that takes a while. A clock
 		// of our own would run beside it a few milliseconds out of step, for no gain.
@@ -161,7 +186,7 @@ public partial class MergeQueuePaneViewModel : Tool
 		}
 		catch (ToolFailedException ex)
 		{
-			State.Status = $"Could not read the queue: {ex.Message}";
+			State.Status = $"Could not read the queue: {ExternalTool.Explain(ex)}";
 		}
 		finally
 		{
@@ -178,55 +203,65 @@ public partial class MergeQueuePaneViewModel : Tool
 	/// from the review, because what goes in the queue has to be the revision GitHub would merge
 	/// and not the one this window happens to be showing.
 	/// </summary>
-	public async Task EnqueueCurrentAsync(string method)
+	public Task EnqueueCurrentAsync(string method, bool deleteBranch)
 	{
 		if (workspace.CurrentPr is not { } pr)
 		{
 			State.Status = "No pull request is open.";
-			return;
+			return Task.CompletedTask;
 		}
-		if (workspace.Offline)
+		return EnqueueAsync(pr.Number, pr.Title, method, deleteBranch);
+	}
+
+	/// <summary>The same, for a pull request nobody has opened for review - the start page's
+	/// list. Queueing one is a decision about the pull request, not about the review of it.</summary>
+	public async Task EnqueueAsync(int number, string title, string method, bool deleteBranch)
+	{
+		// Only when this is the review that came out of a snapshot: another pull request's place
+		// in the queue has nothing to do with how this window read that one.
+		if (workspace.Offline && workspace.CurrentPr?.Number == number)
 		{
 			State.Status = "Offline: this review was opened from a snapshot, and a queue nobody "
 				+ "can reach is not one to add to. Reload (F5) first.";
 			return;
 		}
-		if (shown.Find(pr.Number) is not null)
+		departed.Remove(number);
+		if (shown.Find(number) is not null)
 		{
-			State.Status = $"#{pr.Number} is already in the queue.";
+			State.Status = $"#{number} is already in the queue.";
 			if (!drained)
 				State.Driving = true;
 			return;
 		}
 
 		string me = await workspace.MergeQueue.HolderAsync();
-		pending = new MergeQueueEntry(pr.Number, pr.Title, "", method, me, DateTimeOffset.UtcNow);
-		Note(pr.Number, "adding to the queue", working: true);
+		pending = new MergeQueueEntry(number, title, "", method, me, DateTimeOffset.UtcNow, deleteBranch);
+		Note(number, "adding to the queue", working: true);
 		Show(shown);
-		State.Status = $"Adding #{pr.Number} to the queue...";
+		State.Status = $"Adding #{number} to the queue...";
 
-		using var scope = workspace.Busy.Begin($"Queueing #{pr.Number}");
+		using var scope = workspace.Busy.Begin($"Queueing #{number}");
 		try
 		{
-			Note(pr.Number, "asking GitHub what it points at", working: true);
-			var state = await workspace.GitHub.GetMergeStateAsync(pr.Number);
+			Note(number, "asking GitHub what it points at", working: true);
+			var state = await workspace.GitHub.GetMergeStateAsync(number);
 			// A draft is not up for merging, and queueing one only puts something in front of
 			// everybody that can never reach the front. Ready for Review is the thing to press
 			// first, and saying so is more use than queueing it and reporting a block every turn.
 			if (state.IsDraft)
 			{
-				Give(pr.Number, $"#{pr.Number} is a draft, so it cannot be queued. "
+				Give(number, $"#{number} is a draft, so it cannot be queued. "
 					+ "Ready for Review takes it out of draft; queue it after that.");
 				return;
 			}
 			if (state.HeadRefOid is not { Length: > 0 } head)
 			{
-				Give(pr.Number, $"GitHub did not say what #{pr.Number} points at; it cannot be queued.");
+				Give(number, $"GitHub did not say what #{number} points at; it cannot be queued.");
 				return;
 			}
-			Note(pr.Number, "publishing to the remote", working: true);
-			await workspace.MergeQueue.EnqueueAsync(pr.Number, pr.Title, head, method);
-			notes.Remove(pr.Number);
+			Note(number, "publishing to the remote", working: true);
+			await workspace.MergeQueue.EnqueueAsync(number, title, head, method, deleteBranch);
+			notes.Remove(number);
 			pending = null;
 			// A repository with a drainer gets an event instead of a driver: the workflow merges
 			// whether or not this window stays open, and two things draining one queue would only
@@ -238,7 +273,7 @@ public partial class MergeQueuePaneViewModel : Tool
 		}
 		catch (ToolFailedException ex)
 		{
-			Give(pr.Number, $"Could not queue #{pr.Number}: {ex.Message}");
+			Give(number, $"Could not queue #{number}: {ex.Message}");
 		}
 
 		void Give(int number, string message)
@@ -288,7 +323,7 @@ public partial class MergeQueuePaneViewModel : Tool
 		}
 		catch (ToolFailedException ex)
 		{
-			State.Status = $"Could not clear the lock: {ex.Message}";
+			State.Status = $"Could not clear the lock: {ExternalTool.Explain(ex)}";
 		}
 	}
 
@@ -329,9 +364,18 @@ public partial class MergeQueuePaneViewModel : Tool
 	{
 		var failed = shown.Entries.Where(e => notes.TryGetValue(e.Pr, out var n) && !n.Working)
 			.Select(e => e.Pr).ToList();
+		// The rows of entries that have already left take no write to clear: they are this
+		// window's record of what happened, not part of the queue on the remote.
+		int gone = departed.Count;
+		foreach (int pr in departed.Keys.ToList())
+			notes.Remove(pr);
+		departed.Clear();
 		if (failed.Count == 0)
 		{
-			State.Status = "Nothing in the queue has failed.";
+			Show(shown);
+			State.Status = gone > 0
+				? $"Cleared {Count(gone)} that had left the queue."
+				: "Nothing in the queue has failed.";
 			return;
 		}
 		await RemoveManyAsync(failed, "could not be merged");
@@ -343,13 +387,16 @@ public partial class MergeQueuePaneViewModel : Tool
 		{
 			await workspace.MergeQueue.RemoveAsync(prs, reason);
 			foreach (int pr in prs)
+			{
 				notes.Remove(pr);
+				takenOutHere.Add(pr);
+			}
 			await LoadAsync();
 			State.Status = $"Took {Count(prs.Count)} out of the queue.";
 		}
 		catch (ToolFailedException ex)
 		{
-			State.Status = $"Could not take them out: {ex.Message}";
+			State.Status = $"Could not take them out: {ExternalTool.Explain(ex)}";
 		}
 	}
 
@@ -357,15 +404,26 @@ public partial class MergeQueuePaneViewModel : Tool
 
 	public async Task RemoveAsync(MergeQueueRow row)
 	{
+		// A row that has already left the queue is this window's record of it; taking it out is
+		// dropping the record, and asking the remote to remove what is not there says nothing.
+		if (row.Departed)
+		{
+			departed.Remove(row.Entry.Pr);
+			notes.Remove(row.Entry.Pr);
+			Show(shown);
+			State.Status = $"Cleared the record of #{row.Entry.Pr}.";
+			return;
+		}
 		try
 		{
 			await workspace.MergeQueue.RemoveAsync(row.Entry.Pr, "taken out by hand");
 			notes.Remove(row.Entry.Pr);
+			takenOutHere.Add(row.Entry.Pr);
 			await LoadAsync();
 		}
 		catch (ToolFailedException ex)
 		{
-			State.Status = $"Could not take #{row.Entry.Pr} out: {ex.Message}";
+			State.Status = $"Could not take #{row.Entry.Pr} out: {ExternalTool.Explain(ex)}";
 		}
 	}
 
@@ -378,7 +436,7 @@ public partial class MergeQueuePaneViewModel : Tool
 		}
 		catch (ToolFailedException ex)
 		{
-			State.Status = $"Could not move #{row.Entry.Pr}: {ex.Message}";
+			State.Status = $"Could not move #{row.Entry.Pr}: {ExternalTool.Explain(ex)}";
 		}
 	}
 
@@ -404,7 +462,7 @@ public partial class MergeQueuePaneViewModel : Tool
 		}
 		catch (ToolFailedException ex)
 		{
-			State.Status = $"Driving the queue failed: {ex.Message}";
+			State.Status = $"Driving the queue failed: {ExternalTool.Explain(ex)}";
 		}
 		finally
 		{
@@ -436,6 +494,17 @@ public partial class MergeQueuePaneViewModel : Tool
 
 	void Show(MergeQueueDocument document)
 	{
+		// An entry that was here a moment ago and is not now was merged, closed or taken out -
+		// by this window, by another reader's, or by the drainer workflow on GitHub. Which of
+		// those it was is read off the queue's own history; until then the row says it is asking.
+		foreach (var gone in shown.Entries.Where(e => document.Find(e.Pr) is null))
+		{
+			if (takenOutHere.Remove(gone.Pr))
+				continue;
+			departed[gone.Pr] = gone;
+			Note(gone.Pr, "gone from the queue; reading why", working: true);
+			ExplainDepartureAsync(gone.Pr).HandleExceptions();
+		}
 		shown = document;
 		Items.Clear();
 		int position = 1;
@@ -446,14 +515,33 @@ public partial class MergeQueuePaneViewModel : Tool
 			Items.Add(new MergeQueueRow(0, waiting, locked: false, pending: true));
 		else
 			pending = null;
+		// Under the queue, in the order they left it: they are what happened, not what is next.
+		foreach (var entry in departed.Values)
+			Items.Add(new MergeQueueRow(0, entry, locked: false, pending: false, departed: true));
 
 		// Notes outlive the rows they were on: rebuilding the list must not wipe what the last
-		// turn found out about an entry that is still in the queue.
-		foreach (int gone in notes.Keys.Where(pr => document.Find(pr) is null && pending?.Pr != pr).ToList())
+		// turn found out about an entry that is still in the queue, or what became of one that
+		// is not.
+		foreach (int gone in notes.Keys
+			.Where(pr => document.Find(pr) is null && pending?.Pr != pr && !departed.ContainsKey(pr))
+			.ToList())
+		{
 			notes.Remove(gone);
+		}
 		PaintNotes();
 
 		State.Holder = Describe(document);
+	}
+
+	/// <summary>Puts the queue's own account of a departure on its row. The ref records the
+	/// subject of every change made to it, so this answers for changes no window here made.</summary>
+	async Task ExplainDepartureAsync(int pr)
+	{
+		string? why = await workspace.MergeQueue.WhyGoneAsync(pr);
+		if (!departed.ContainsKey(pr))
+			return;
+		Note(pr, why ?? "no longer in the queue; its history does not say why", working: false);
+		PaintNotes();
 	}
 
 	/// <summary>Puts the current spinner frame in front of every note still waiting on something.
@@ -469,11 +557,13 @@ public partial class MergeQueuePaneViewModel : Tool
 				: "";
 			if (row.Note != text)
 				row.Note = text;
-			row.Failed = note is { Working: false, Text.Length: > 0 };
+			// A row that has left the queue is history, whatever became of it; only an entry
+			// still waiting its turn can be one that will not go.
+			row.Failed = !row.Departed && note is { Working: false, Text.Length: > 0 };
 		}
 		RefreshCanEnqueue();
 		State.HasEntries = shown.Entries.Count > 0;
-		State.HasErrors = Items.Any(r => r.Failed);
+		State.HasErrors = Items.Any(r => r.Failed) || departed.Count > 0;
 		State.HasLock = shown.Lock is not null;
 	}
 

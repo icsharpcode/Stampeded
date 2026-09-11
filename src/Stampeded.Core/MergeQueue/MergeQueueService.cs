@@ -127,13 +127,66 @@ public sealed class MergeQueueService(GitService git, GitHubService gitHub, stri
 	/// <summary>Adds a pull request at the back of the queue. Queueing one twice is not an
 	/// error and does not move it: its place is the one it was given.</summary>
 	public async Task<MergeQueueDocument> EnqueueAsync(
-		int pr, string title, string headSha, string method, CancellationToken ct = default)
+		int pr, string title, string headSha, string method, bool deleteBranch = false,
+		CancellationToken ct = default)
 	{
 		string by = await HolderAsync(ct);
 		return await UpdateAsync(doc => doc.Find(pr) is not null
 			? null
-			: (doc.With([.. doc.Entries, new MergeQueueEntry(pr, title, headSha, method, by, DateTimeOffset.UtcNow)]),
+			: (doc.With([.. doc.Entries,
+					new MergeQueueEntry(pr, title, headSha, method, by, DateTimeOffset.UtcNow, deleteBranch)]),
 				$"enqueue #{pr} by {by}"), ct);
+	}
+
+	/// <summary>How far back the ref's own history is read to explain a missing entry. Deep
+	/// enough to cover a busy afternoon, shallow enough to stay one cheap command.</summary>
+	const int HistoryDepth = 100;
+
+	/// <summary>
+	/// What became of a pull request that is no longer in the queue, in the words of the change
+	/// that took it out. Every write to the queue is a commit on the ref whose subject says what
+	/// it did and names the entries it did it to, so this answers whoever made the change: this
+	/// window, another reader's, or the drainer workflow on GitHub.
+	///
+	/// Null when the history says nothing about it, which is the honest answer - an entry can
+	/// also disappear because somebody rewrote the ref, and inventing a reason for that would be
+	/// worse than admitting there is none.
+	/// </summary>
+	public async Task<string?> WhyGoneAsync(int pr, CancellationToken ct = default)
+	{
+		string log;
+		try
+		{
+			// Mirrored again first rather than trusting whatever the last read left behind: the
+			// change that took the entry out may be the one this clone has not seen, and asking
+			// only when something has actually gone missing makes this a rare command.
+			await Git(ct, "fetch", "origin", $"+{QueueRef}:{QueueRef}");
+			log = await Git(ct, "log", "--format=%s", $"-{HistoryDepth}", QueueRef);
+		}
+		catch (ToolFailedException)
+		{
+			return null;
+		}
+		return log.ReplaceLineEndings("\n").Split('\n')
+			.FirstOrDefault(subject => Mentions(subject, pr) && !IsAbout(subject, "enqueue ", "lock "));
+	}
+
+	static bool IsAbout(string subject, params string[] prefixes)
+		=> prefixes.Any(p => subject.StartsWith(p, StringComparison.Ordinal));
+
+	/// <summary>Whether a subject is about this pull request rather than one whose number starts
+	/// with the same digits - "#14" must not answer for "#142".</summary>
+	static bool Mentions(string subject, int pr)
+	{
+		string token = "#" + pr;
+		for (int at = subject.IndexOf(token, StringComparison.Ordinal); at >= 0;
+			at = subject.IndexOf(token, at + 1, StringComparison.Ordinal))
+		{
+			int after = at + token.Length;
+			if (after >= subject.Length || !char.IsAsciiDigit(subject[after]))
+				return true;
+		}
+		return false;
 	}
 
 	/// <summary>Drops a pull request from the queue. Dropping one that is not in it is a no-op:
@@ -282,7 +335,7 @@ public sealed class MergeQueueService(GitService git, GitHubService gitHub, stri
 
 			if (!state.CanMerge)
 			{
-				Pass(entry.Pr, state.Explain.ReplaceLineEndings(" ").Split(". ")[0]);
+				Pass(entry.Pr, state.Summary);
 				continue;
 			}
 
@@ -292,7 +345,7 @@ public sealed class MergeQueueService(GitService git, GitHubService gitHub, stri
 			try
 			{
 				progress?.Report(new MergeQueueProgress(entry.Pr, $"merging ({entry.Method})", Working: true));
-				await gitHub.MergePrAsync(entry.Pr, entry.Method, ct);
+				await gitHub.MergePrAsync(entry.Pr, entry.Method, entry.DeleteBranch, ct);
 				CliLog.Write("mergequeue", $"merged #{entry.Pr} by {entry.Method}");
 				await UpdateAsync(doc => (
 					doc with {
