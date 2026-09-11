@@ -10,7 +10,7 @@
     <DockPanel DockPanel.Dock="Top">
       <Button DockPanel.Dock="Right" Classes="tool" Margin="0,2,4,2"
               VerticalAlignment="Center" Click="OnRefresh"
-              ToolTip.Tip="Refresh - re-fetch CI check state from GitHub">
+              ToolTip.Tip="{Binding HostName, StringFormat='Refresh - re-fetch CI check state from {0}'}">
         <Image Source="{x:Static app:Images.Refresh}" />
       </Button>
       <TextBlock Margin="6,4" Opacity="0.7" TextWrapping="Wrap" Text="{Binding State.Status}" />

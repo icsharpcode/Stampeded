@@ -4,6 +4,8 @@ using Avalonia.Interactivity;
 
 using Stampeded.Core.GitHub;
 
+using Stampeded.Core.PullRequests;
+
 namespace Stampeded.Panes;
 
 public partial class PrListPaneView : UserControl
@@ -29,10 +31,10 @@ public partial class PrListPaneView : UserControl
 			vm.Open(pr);
 	}
 
-	void OnOpenOnGitHubClicked(object? sender, RoutedEventArgs e)
+	void OnOpenOnHostClicked(object? sender, RoutedEventArgs e)
 	{
 		if (PullRequestList.SelectedItem is PrSummary pr)
-			App.Workspace?.OpenOnGitHubAsync(pr.Number).HandleExceptions();
+			App.Workspace?.OpenPrOnHostAsync(pr.Number).HandleExceptions();
 	}
 
 	void OnRefreshClicked(object? sender, RoutedEventArgs e)

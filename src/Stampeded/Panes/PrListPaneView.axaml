@@ -1,6 +1,6 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:gh="using:Stampeded.Core.GitHub"
+             xmlns:pr="using:Stampeded.Core.PullRequests"
              xmlns:panes="using:Stampeded.Panes"
              x:Class="Stampeded.Panes.PrListPaneView"
              x:DataType="panes:PrListPaneViewModel">
@@ -20,11 +20,11 @@
       <ListBox.ContextMenu>
         <ContextMenu>
           <MenuItem Header="Open Review (double-click)" Click="OnOpenClicked" />
-          <MenuItem Header="Open on GitHub" Click="OnOpenOnGitHubClicked" />
+          <MenuItem Header="{Binding HostName, StringFormat='Open on {0}'}" Click="OnOpenOnHostClicked" />
         </ContextMenu>
       </ListBox.ContextMenu>
       <ListBox.ItemTemplate>
-        <DataTemplate x:DataType="gh:PrSummary">
+        <DataTemplate x:DataType="pr:PrSummary">
           <StackPanel Margin="2">
             <TextBlock FontWeight="SemiBold" TextTrimming="CharacterEllipsis">
               <Run Text="{Binding NumberDisplay}" /> <Run Text="{Binding Title}" />

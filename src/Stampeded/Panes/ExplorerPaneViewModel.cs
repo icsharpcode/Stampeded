@@ -13,6 +13,9 @@ namespace Stampeded.Panes;
 public partial class ExplorerPaneViewModel : Tool
 {
 	readonly ReviewWorkspace workspace;
+	/// <summary>Whose pull request it is - "GitHub", "Azure DevOps" - for the headers and
+	/// tooltips that name the host.</summary>
+	public string HostName => workspace.HostName;
 
 	public PrFilesPaneViewModel Files { get; }
 	public FileBrowserPaneViewModel Browser { get; }
@@ -149,16 +152,16 @@ public partial class ExplorerPaneViewModel : Tool
 	// deciding about the change, not to reading it.
 	public void OpenInVsCode() => workspace.OpenInVsCodeAsync(oldSide: false).HandleExceptions();
 
-	public void OpenPrOnGitHub()
+	public void OpenPrOnHost()
 	{
 		if (workspace.CurrentPr is { } pr)
-			workspace.OpenOnGitHubAsync(pr.Number).HandleExceptions();
+			workspace.OpenPrOnHostAsync(pr.Number).HandleExceptions();
 	}
 
-	public void OpenCommitOnGitHub()
+	public void OpenCommitOnHost()
 	{
 		if (ShortSha.Length > 0)
-			workspace.OpenCommitOnGitHubAsync(ShortSha).HandleExceptions();
+			workspace.OpenCommitOnHostAsync(ShortSha).HandleExceptions();
 	}
 
 	public void OpenReview() => workspace.OpenReviewDocument();

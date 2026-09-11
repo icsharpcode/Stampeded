@@ -3,7 +3,7 @@
              xmlns:docs="using:Stampeded.Documents"
              xmlns:app="using:Stampeded"
              xmlns:controls="using:Stampeded.Controls"
-             xmlns:gh="using:Stampeded.Core.GitHub"
+             xmlns:pr="using:Stampeded.Core.PullRequests"
              x:Class="Stampeded.Documents.StartDocumentView"
              x:DataType="docs:StartDocumentViewModel"
              FontSize="14">
@@ -142,13 +142,13 @@
             <Image Source="{x:Static app:Images.Filter}" />
           </ToggleButton>
           <Button Classes="tool" Click="OnPrRefresh"
-                  ToolTip.Tip="Refresh - re-read the open pull requests from GitHub">
+                  ToolTip.Tip="{Binding HostName, StringFormat='Refresh - re-read the open pull requests from {0}'}">
             <Image Source="{x:Static app:Images.Refresh}" />
           </Button>
         </StackPanel>
       </Grid>
       <!-- An empty list is an answer only when it says which one: no pull requests, or no
-           GitHub to ask. -->
+           host to ask. -->
       <TextBlock DockPanel.Dock="Bottom" Margin="2,4,0,0" FontSize="12" Opacity="0.75"
                  TextWrapping="Wrap" Text="{Binding PrList.State.Status}"
                  IsVisible="{Binding !PrList.Items.Count}" />
@@ -162,12 +162,12 @@
         <ListBox.ContextMenu>
           <ContextMenu>
             <MenuItem Header="Open Review (double-click)" Click="OnPrOpen" />
-            <MenuItem Header="Open on GitHub" Click="OnPrOpenOnGitHub" />
+            <MenuItem Header="{Binding HostName, StringFormat='Open on {0}'}" Click="OnPrOpenOnHost" />
             <!-- Only on a draft: there is nothing to take out of draft otherwise, and an item
                  that would report that is worse than one that is not offered. -->
             <MenuItem Header="Ready for Review" Click="OnPrMarkReady"
                       IsVisible="{Binding State.SelectedPrIsDraft}"
-                      ToolTip.Tip="Take this pull request out of draft. GitHub then asks for the reviews its rules require." />
+                      ToolTip.Tip="{Binding HostName, StringFormat='Take this pull request out of draft. {0} then asks for the reviews its rules require.'}" />
             <!-- A draft cannot be queued, and the item that would only report that is not
                  offered - the same rule Ready for Review is shown by. -->
             <MenuItem Header="Add to Merge Queue" Click="OnPrEnqueue"
@@ -182,7 +182,7 @@
           </Style>
         </ListBox.Styles>
         <ListBox.ItemTemplate>
-          <DataTemplate x:DataType="gh:PrSummary">
+          <DataTemplate x:DataType="pr:PrSummary">
             <StackPanel Margin="2" Classes.draftpr="{Binding IsDraft}">
               <DockPanel>
                 <Panel DockPanel.Dock="Left" Width="14" VerticalAlignment="Center"
@@ -214,7 +214,7 @@
                           ToolTip.Tip="Pull - bring this PR's head branch into the local repository: created if it is not there yet, fast-forwarded if it is behind. Nothing is checked out.">
                     <Image Source="{x:Static app:Images.Pull}" />
                   </Button>
-                  <Button Classes="tool" Click="OnRowPrGitHub"
+                  <Button Classes="tool" Click="OnRowPrHost"
                           ToolTip.Tip="Open this pull request in the browser">
                     <Image Source="{x:Static app:Images.GitHub}" />
                   </Button>
@@ -259,7 +259,7 @@
           <Rectangle Fill="{DynamicResource ThemeBackgroundBrush}" Opacity="0.9" />
           <StackPanel HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,24,0,0" Spacing="8">
             <controls:WaveSpinner SquareSize="4" Width="60" HorizontalAlignment="Center" />
-            <TextBlock Text="Reading the open pull requests from GitHub..." FontSize="12" HorizontalAlignment="Center" />
+            <TextBlock Text="{Binding HostName, StringFormat='Reading the open pull requests from {0}...'}" FontSize="12" HorizontalAlignment="Center" />
           </StackPanel>
         </Panel>
       </Panel>
@@ -360,7 +360,7 @@
                       ToolTip.Tip="Rebase this branch onto the default base. A branch no checkout has is rebased in a throwaway worktree; one that a checkout has is rebased there, so that checkout moves with it" />
             <MenuItem Header="Rebase PR onto its Target (server-side)" Click="OnRebasePr"
                       IsVisible="{Binding !State.ShowStashes}" />
-            <MenuItem Header="Open PR on GitHub" Click="OnBranchPrOnGitHub"
+            <MenuItem Header="{Binding HostName, StringFormat='Open PR on {0}'}" Click="OnBranchPrOnHost"
                       IsVisible="{Binding !State.ShowStashes}" />
           </ContextMenu>
         </ListBox.ContextMenu>
@@ -391,7 +391,7 @@
                 <TextBlock DockPanel.Dock="Right" FontSize="11" Opacity="0.8" VerticalAlignment="Center"
                            Margin="0,0,6,0" Foreground="#8B949E" Text="default"
                            IsVisible="{Binding ShowDefault}"
-                           ToolTip.Tip="The repository's default branch on GitHub, and what everything else is reviewed and rebased against" />
+                           ToolTip.Tip="The repository's default branch on the remote, and what everything else is reviewed and rebased against" />
                 <StackPanel DockPanel.Dock="Right" Classes="rowactions" Orientation="Horizontal"
                             Spacing="4" Margin="6,0">
                   <Button Content="Review" FontWeight="SemiBold" Click="OnRowBranchReview"
@@ -422,7 +422,7 @@
                           ToolTip.Tip="Branch - point a new branch at this stash; the stash is kept and nothing is checked out">
                     <Image Source="{x:Static app:Images.Branch}" />
                   </Button>
-                  <Button Classes="tool" Click="OnRowBranchPrGitHub" IsVisible="{Binding HasPrTag}"
+                  <Button Classes="tool" Click="OnRowBranchPrHost" IsVisible="{Binding HasPrTag}"
                           ToolTip.Tip="Open this branch's pull request in the browser">
                     <Image Source="{x:Static app:Images.GitHub}" />
                   </Button>

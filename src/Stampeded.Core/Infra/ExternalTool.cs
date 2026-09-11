@@ -39,16 +39,29 @@ public static class ExternalTool
 		IReadOnlyDictionary<string, string>? env = null, IReadOnlyList<int>? okExitCodes = null)
 	{
 		var watch = System.Diagnostics.Stopwatch.StartNew();
-		var result = await CliWrap.Cli.Wrap(exe)
-			.WithArguments(args)
-			.WithWorkingDirectory(workingDir)
-			.WithEnvironmentVariables(builder => {
-				StripMsBuildLocatorVariables(builder);
-				foreach (var (key, value) in env ?? System.Collections.Immutable.ImmutableDictionary<string, string>.Empty)
-					builder.Set(key, value);
-			})
-			.WithValidation(CommandResultValidation.None)
-			.ExecuteBufferedAsync(ct);
+		CliWrap.Buffered.BufferedCommandResult result;
+		try
+		{
+			result = await CliWrap.Cli.Wrap(exe)
+				.WithArguments(args)
+				.WithWorkingDirectory(workingDir)
+				.WithEnvironmentVariables(builder => {
+					StripMsBuildLocatorVariables(builder);
+					foreach (var (key, value) in env ?? System.Collections.Immutable.ImmutableDictionary<string, string>.Empty)
+						builder.Set(key, value);
+				})
+				.WithValidation(CommandResultValidation.None)
+				.ExecuteBufferedAsync(ct);
+		}
+		catch (System.ComponentModel.Win32Exception)
+		{
+			// The tool is not installed, or not on this process's PATH. Every caller is written
+			// to report a command that failed; one that never started would otherwise escape
+			// as an exception nobody catches and leave a pane loading forever.
+			CliLog.Write(exe, $"{string.Join(' ', args)} -> {exe} did not start");
+			throw new ToolFailedException(exe, -1,
+				$"{exe} is not installed, or not on PATH.");
+		}
 		string argsText = string.Join(' ', args);
 		if (argsText.Length > 160)
 			argsText = argsText[..160] + "...";

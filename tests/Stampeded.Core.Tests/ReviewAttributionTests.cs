@@ -1,6 +1,6 @@
 using NUnit.Framework;
 
-using Stampeded.Core.GitHub;
+using Stampeded.Core.PullRequests;
 
 namespace Stampeded.Core.Tests;
 
@@ -13,7 +13,7 @@ public class ReviewAttributionTests
 	[Test]
 	public void MarksOnlyTheFirstCommentOfAReview()
 	{
-		var submitted = GitHubService.Attributed(
+		var submitted = ReviewAttribution.Attributed(
 			new ReviewSubmission("", "COMMENT", [Comment("first"), Comment("second"), Comment("third")]));
 
 		Assert.That(submitted.Comments[0].Body, Is.EqualTo("first\n\n" + Mark));
@@ -26,7 +26,7 @@ public class ReviewAttributionTests
 	[Test]
 	public void MarksTheSummaryWhenAReviewHasNoLineComments()
 	{
-		var withSummary = GitHubService.Attributed(new ReviewSubmission("Looks good.", "APPROVE", []));
+		var withSummary = ReviewAttribution.Attributed(new ReviewSubmission("Looks good.", "APPROVE", []));
 
 		Assert.That(withSummary.Body, Is.EqualTo("Looks good.\n\n" + Mark));
 	}
@@ -35,8 +35,8 @@ public class ReviewAttributionTests
 	public void LeavesAVerdictWithNothingWrittenUnmarked()
 	{
 		// The mark would be the whole review: who ran it, and nothing about the change.
-		Assert.That(GitHubService.Attributed(new ReviewSubmission("", "APPROVE", [])).Body, Is.EqualTo(""));
-		Assert.That(GitHubService.Attributed(new ReviewSubmission("  \n ", "REQUEST_CHANGES", [])).Body,
+		Assert.That(ReviewAttribution.Attributed(new ReviewSubmission("", "APPROVE", [])).Body, Is.EqualTo(""));
+		Assert.That(ReviewAttribution.Attributed(new ReviewSubmission("  \n ", "REQUEST_CHANGES", [])).Body,
 			Is.EqualTo("  \n "));
 	}
 }

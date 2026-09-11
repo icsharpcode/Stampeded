@@ -1,6 +1,6 @@
 using NUnit.Framework;
 
-using Stampeded.Core.GitHub;
+using Stampeded.Core.PullRequests;
 
 namespace Stampeded.Core.Tests;
 

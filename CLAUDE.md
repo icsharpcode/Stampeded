@@ -35,9 +35,9 @@ results and coverage, in one Avalonia window. See `README.md` for the pitch.
 
 ## Project layout
 
-- `src/Stampeded.Core/` - everything that does not need a UI: git and GitHub access, diff and
-  fold building, Roslyn hosting, the LSP client, the review store. No Avalonia reference; keep
-  it that way.
+- `src/Stampeded.Core/` - everything that does not need a UI: git and pull-request-host access,
+  diff and fold building, Roslyn hosting, the LSP client, the review store. No Avalonia
+  reference; keep it that way.
 - `src/Stampeded/` - the Avalonia app: panes, documents, controls, view models.
 - `src/Stampeded.RoslynLsp/` - Roslyn as a language server, for reading C# out of process.
 - `tests/Stampeded.Core.Tests/` - NUnit, covering `Stampeded.Core` only. The UI layer has no
@@ -46,11 +46,11 @@ results and coverage, in one Avalonia window. See `README.md` for the pitch.
 
 ## Everything external is a CLI
 
-`git`, `gh`, `dotnet`, `code` and `xdg-open` are the only ways out of the process, all through
-`ExternalTool.RunAsync` (which logs the command, and on failure the first line of its output -
-an exit code alone never says what went wrong). There are no API tokens of the tool's own: auth,
-SSO and token refresh ride on the user's `gh` login. Keep it that way; do not add an HTTP client
-for GitHub.
+`git`, `gh`, `az`, `dotnet`, `code` and `xdg-open` are the only ways out of the process, all
+through `ExternalTool.RunAsync` (which logs the command, and on failure the first line of its
+output - an exit code alone never says what went wrong). There are no API tokens of the tool's
+own: auth, SSO and token refresh ride on the user's `gh auth` and `az login`. Keep it that way;
+do not add an HTTP client for any host.
 
 A language server is the one exception, because it is not a command with an exit code: it
 starts once and answers until the review closes, over JSON-RPC on its stdin and stdout
@@ -59,6 +59,34 @@ requests that take a noticeable while, every line of its stderr.
 
 `CliLog.Write` is the log sink the Log pane shows. Anything a user might have to explain to
 someone else belongs in it.
+
+## A pull request comes from a host, not from GitHub
+
+Everything a review asks about a pull request - the open list, its branches and description, its
+checks, merge state, posted comments and thread resolution, the reviews, a verdict, a merge -
+goes through `IPullRequestHost` (`Stampeded.Core/PullRequests/`). There are two:
+`GitHubService` over `gh`, and `AzureDevOpsService` over `az` with its `azure-devops` extension
+(`az repos pr ...`, `az repos policy ...`, and `az devops invoke` for the REST surface the
+extension has no verb for - the analogue of `gh api`).
+
+Which one answers is decided once per workspace, in `PullRequestHosts.ForAsync`, from origin's
+URL: what `AzureDevOpsUrl` parses is Azure DevOps, anything else is GitHub on purpose - `gh`
+also serves GitHub Enterprise hosts, which nothing here can enumerate, and a clone with no
+origin behaves as it always did. `STAMPEDED_PR_HOST=github|azdo` overrides it. The answer is a
+property of the repository, so it sits on `Program.Host` beside `Program.RepoPath` and reaches
+the review as `ReviewWorkspace.Host`.
+
+**GitHub's words are the model's words.** `APPROVE` / `REQUEST_CHANGES` / `COMMENT`, `APPROVED`
+/ `CHANGES_REQUESTED`, `LEFT` / `RIGHT`, `MERGEABLE` / `BLOCKED`: the panes and the pure
+functions under them already speak them, and Azure DevOps - which counts votes from 10 to -10
+and has no review object at all - maps onto them inside its own implementation and nowhere
+else. Nothing above `IPullRequestHost` knows which host answered; what a pane shows the reader
+comes from `HostName`.
+
+Not on Azure DevOps, and refused with a reason rather than hidden: pull requests from forks,
+line totals and check state in the pull-request list (a call per row), and the server-side
+branch update, for which there is no API. A ```suggestion``` block is GitHub's alone, and posts
+as a plain code block elsewhere.
 
 ## Semantics come from a provider, not from Roslyn
 
@@ -137,7 +165,7 @@ than with a tree at the wrong lines. A parser in this process answers before it 
   `~/.cache/stampeded/prs`, and `OpenPrAsync` falls back to it when `gh` fails and the commits
   are still in the object database. The change itself is never cached: it is read from those
   commits. An offline review says so and refuses to submit a verdict or a merge.
-- **GitHub is the authority for facts git cannot know**: the viewer's login, a repository's
+- **The host is the authority for facts git cannot know**: the viewer's login, a repository's
   default branch. The local `origin/HEAD` is a clone-time snapshot and goes stale.
 - **`Stampeded.Core/TreeView/` and `Stampeded/Controls/TreeView/` are vendored from ILSpy.** They
   are meant to stay close to upstream so fixes can move both ways - read

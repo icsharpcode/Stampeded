@@ -1,4 +1,4 @@
-using Stampeded.Core.GitHub;
+using Stampeded.Core.PullRequests;
 
 namespace Stampeded.Core.Review;
 

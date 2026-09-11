@@ -1,4 +1,4 @@
-using Stampeded.Core.GitHub;
+using Stampeded.Core.PullRequests;
 using Stampeded.Core.Infra;
 using Stampeded.Core.Review;
 
@@ -210,13 +210,13 @@ public sealed class ReviewComments(ReviewWorkspace workspace)
 			// opened online keeps what it read, for the next time it cannot be.
 			var raw = workspace.Offline
 				? workspace.SnapshotComments ?? []
-				: await workspace.GitHub.GetReviewCommentsAsync(number, ct);
+				: await workspace.Host.GetReviewCommentsAsync(number, ct);
 			if (!workspace.Offline)
 				workspace.KeepComments(raw);
 			Dictionary<long, (string ThreadId, bool Resolved)> resolutionByComment = [];
 			try
 			{
-				foreach (var thread in await workspace.GitHub.GetThreadResolutionsAsync(number, ct))
+				foreach (var thread in await workspace.Host.GetThreadResolutionsAsync(number, ct))
 				{
 					foreach (long id in thread.CommentIds)
 						resolutionByComment[id] = (thread.ThreadId, thread.IsResolved);
@@ -347,7 +347,7 @@ public sealed class ReviewComments(ReviewWorkspace workspace)
 			return;
 		try
 		{
-			await workspace.GitHub.SetThreadResolvedAsync(threadId, resolved);
+			await workspace.Host.SetThreadResolvedAsync(threadId, resolved);
 			await LoadPostedAsync(pr.Number, CancellationToken.None);
 		}
 		catch (ToolFailedException ex)
@@ -356,18 +356,21 @@ public sealed class ReviewComments(ReviewWorkspace workspace)
 		}
 	}
 
-	/// <summary>Whether the open review is of the user's own pull request. GitHub rejects
-	/// APPROVE and REQUEST_CHANGES on those, so only a plain comment review can be
-	/// submitted. False when nothing is open, or when gh cannot say who it is - the
-	/// submission itself is the real gate, this only keeps the UI from offering what would
-	/// certainly fail.</summary>
-	public async Task<bool> IsOwnPullRequestAsync()
+	/// <summary>Whether a verdict would be refused because the pull request is the reader's
+	/// own. GitHub rejects APPROVE and REQUEST_CHANGES on those, so only a plain comment
+	/// review can be submitted; Azure DevOps takes an author's own vote and this is always
+	/// false there. False as well when nothing is open, or when the host cannot say who the
+	/// reader is - the submission itself is the real gate, this only keeps the UI from
+	/// offering what would certainly fail.</summary>
+	public async Task<bool> OwnPullRequestBlocksVerdictAsync()
 	{
+		if (workspace.Host.AcceptsOwnApproval)
+			return false;
 		if (workspace.CurrentPr?.Author?.Login is not { Length: > 0 } author)
 			return false;
 		try
 		{
-			return string.Equals(author, await workspace.GitHub.GetViewerLoginAsync(), StringComparison.OrdinalIgnoreCase);
+			return string.Equals(author, await workspace.Host.GetViewerLoginAsync(), StringComparison.OrdinalIgnoreCase);
 		}
 		catch (ToolFailedException)
 		{
@@ -385,11 +388,11 @@ public sealed class ReviewComments(ReviewWorkspace workspace)
 		if (workspace.Offline)
 		{
 			return $"Offline: this review was opened from a snapshot taken {workspace.OfflineSince:g}, and a "
-				+ $"verdict has to go to GitHub. Reload (F5) when there is a connection; your "
+				+ $"verdict has to go to {workspace.HostName}. Reload (F5) when there is a connection; your "
 				+ $"{Drafts.Count} draft(s) are kept.";
 		}
 		// A line comment names a path and a line of the pull request's own head. Read against a
-		// branch that has moved past it, the lines on screen are lines GitHub does not have, and
+		// branch that has moved past it, the lines on screen are lines the host does not have, and
 		// a comment posted from here would land on whatever text now sits at that number - or be
 		// refused for being outside the diff. A reply names a thread instead and is unaffected.
 		if (workspace.LocalHead)
@@ -400,7 +403,7 @@ public sealed class ReviewComments(ReviewWorkspace workspace)
 				return $"This review is reading the local branch, which is ahead of what #{workspace.CurrentPr?.Number} "
 					+ $"shows ({workspace.PrHeadSha?[..9]}). "
 					+ (placed > 0
-						? $"{placed} draft(s) sit on lines GitHub does not have; push the branch, then submit. "
+						? $"{placed} draft(s) sit on lines {workspace.HostName} does not have; push the branch, then submit. "
 						: "A verdict is given on the pushed head; push the branch, then submit. ")
 					+ "Replies to existing threads can be submitted as a comment review from here.";
 			}
@@ -414,9 +417,10 @@ public sealed class ReviewComments(ReviewWorkspace workspace)
 			return $"Approval blocked by the review guide - incomplete: {gate.Detail}  (override in the Guide pane)";
 		// The buttons are disabled for these on your own pull request, but the check that
 		// disables them is asynchronous, so a submission can still get here first.
-		if (eventType is "APPROVE" or "REQUEST_CHANGES" && await IsOwnPullRequestAsync())
+		if (eventType is "APPROVE" or "REQUEST_CHANGES" && await OwnPullRequestBlocksVerdictAsync())
 		{
-			return $"GitHub does not accept {(eventType == "APPROVE" ? "an approval" : "a change request")} "
+			return $"{workspace.HostName} does not accept "
+				+ $"{(eventType == "APPROVE" ? "an approval" : "a change request")} "
 				+ "on your own pull request. Submit it as a comment instead; the drafts are kept.";
 		}
 		// Drafts are matched against the files in scope and the lines of the head on screen, so
@@ -496,12 +500,12 @@ public sealed class ReviewComments(ReviewWorkspace workspace)
 		// carries the mark the review body would have.
 		bool reviewSubmitted = payload.Count > 0 || body.Trim().Length > 0 || replies.Count == 0;
 		if (reviewSubmitted)
-			await workspace.GitHub.SubmitReviewAsync(pr.Number, new ReviewSubmission(body, eventType, payload));
+			await workspace.Host.SubmitReviewAsync(pr.Number, new ReviewSubmission(body, eventType, payload));
 		for (int i = 0; i < replies.Count; i++)
 		{
 			var (inReplyTo, replyBody, id) = replies[i];
-			await workspace.GitHub.ReplyToCommentAsync(pr.Number, inReplyTo,
-				!reviewSubmitted && i == 0 ? GitHubService.AttributedReply(replyBody) : replyBody);
+			await workspace.Host.ReplyToCommentAsync(pr.Number, inReplyTo,
+				!reviewSubmitted && i == 0 ? ReviewAttribution.AttributedReply(replyBody) : replyBody);
 			submitted.Add(id);
 		}
 		foreach (var id in submitted)

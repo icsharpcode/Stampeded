@@ -3,7 +3,7 @@ using System.Text.Json.Serialization;
 
 using Stampeded.Core.Infra;
 
-namespace Stampeded.Core.GitHub;
+namespace Stampeded.Core.PullRequests;
 
 /// <summary>
 /// What GitHub said about a pull request the last time it could be reached: enough to open the

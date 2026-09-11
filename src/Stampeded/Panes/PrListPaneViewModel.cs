@@ -4,7 +4,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 
 using Dock.Model.Mvvm.Controls;
 
-using Stampeded.Core.GitHub;
+using Stampeded.Core.PullRequests;
 using Stampeded.Core.Infra;
 
 namespace Stampeded.Panes;
@@ -26,6 +26,9 @@ public sealed partial class PrListState : ObservableObject
 public class PrListPaneViewModel : Tool
 {
 	readonly ReviewWorkspace workspace;
+	/// <summary>Whose pull request it is - "GitHub", "Azure DevOps" - for the headers and
+	/// tooltips that name the host.</summary>
+	public string HostName => workspace.HostName;
 
 	public ObservableCollection<PrSummary> Items { get; } = [];
 	public PrListState State { get; } = new();
@@ -76,12 +79,12 @@ public class PrListPaneViewModel : Tool
 				State.Status = $"Not a git repository: {workspace.RepoPath}";
 				return;
 			}
-			var prs = await workspace.GitHub.ListOpenPrsAsync();
+			var prs = await workspace.Host.ListOpenPrsAsync();
 			string? originOwner = await workspace.Git.GetOriginOwnerAsync();
 			string viewer = "";
 			try
 			{
-				viewer = await workspace.GitHub.GetViewerLoginAsync();
+				viewer = await workspace.Host.GetViewerLoginAsync();
 			}
 			catch (ToolFailedException)
 			{

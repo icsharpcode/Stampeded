@@ -145,7 +145,7 @@
         </Panel>
         <Button DockPanel.Dock="Left" Classes="tool" Margin="6,0,0,0"
                 VerticalAlignment="Center" Click="OnRefreshChecks"
-                ToolTip.Tip="Re-fetch CI check state from GitHub">
+                ToolTip.Tip="{Binding HostName, StringFormat='Re-fetch CI check state from {0}'}">
           <Image Source="{x:Static app:Images.Refresh}" />
         </Button>
         <ItemsControl ItemsSource="{Binding CheckLines}" Margin="10,0,0,0">
@@ -157,7 +157,7 @@
           <ItemsControl.ItemTemplate>
             <DataTemplate x:DataType="docs:CheckLine">
               <Button Background="Transparent" Padding="2,0" Margin="0,0,8,0" Click="OnCheckClick"
-                      Cursor="Hand" ToolTip.Tip="Open this check run on GitHub">
+                      Cursor="Hand" ToolTip.Tip="Open this check run in the browser">
                 <TextBlock Classes="mono" Foreground="#F85149">
                   <Run Text="{Binding Marker}" /> <Run Text="{Binding Name}" />
                 </TextBlock>
@@ -227,7 +227,7 @@
         <StackPanel>
           <ListBox x:Name="CommitsList" ScrollViewer.VerticalScrollBarVisibility="Disabled"
                    ScrollViewer.HorizontalScrollBarVisibility="Disabled" ItemsSource="{Binding CommitLines}" DoubleTapped="OnCommitDoubleTapped"
-                   ToolTip.Tip="Double-click opens the commit on GitHub">
+                   ToolTip.Tip="Double-click opens the commit in the browser">
             <ListBox.ItemTemplate>
               <DataTemplate x:DataType="docs:CommitLine">
                 <StackPanel Orientation="Horizontal" ToolTip.Tip="{Binding Message}">

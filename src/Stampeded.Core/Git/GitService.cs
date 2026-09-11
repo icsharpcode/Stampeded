@@ -253,10 +253,12 @@ public sealed class GitService(string repoPath)
 	public Task FetchAsync(CancellationToken ct = default)
 		=> RunAsync(ct, "fetch", "origin");
 
-	/// <summary>Fetches the PR head into refs/stampeded/pr/N and returns its SHA.</summary>
-	public async Task<string> FetchPrHeadAsync(int number, CancellationToken ct = default)
+	/// <summary>Fetches the PR head into refs/stampeded/pr/N and returns its SHA. The refspec
+	/// comes from the host: GitHub advertises every pull request's head as a ref of its own,
+	/// Azure DevOps does not and the source branch is fetched instead.</summary>
+	public async Task<string> FetchPrHeadAsync(string refspec, int number, CancellationToken ct = default)
 	{
-		await RunAsync(ct, "fetch", "origin", $"+refs/pull/{number}/head:refs/stampeded/pr/{number}");
+		await RunAsync(ct, "fetch", "origin", refspec);
 		return (await RunAsync(ct, "rev-parse", $"refs/stampeded/pr/{number}")).Trim();
 	}
 

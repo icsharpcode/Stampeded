@@ -8,7 +8,7 @@
     <DockPanel Grid.Row="0" Margin="0,0,0,6">
       <Button DockPanel.Dock="Right" Classes="tool" Margin="6,0,0,0"
               Click="OnRefresh" IsEnabled="{Binding State.CanComment}"
-              ToolTip.Tip="Refresh - re-read the posted comments from GitHub">
+              ToolTip.Tip="{Binding HostName, StringFormat='Refresh - re-read the posted comments from {0}'}">
         <Image Source="{x:Static app:Images.Refresh}" />
       </Button>
       <TextBlock Opacity="0.8" TextWrapping="Wrap" VerticalAlignment="Center" Text="{Binding State.Status}" />
@@ -50,11 +50,12 @@
     <DockPanel Grid.Row="2" Margin="0,8,0,0" Background="{Binding State.OutcomeBackground}">
       <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="6" Margin="6,0,0,0"
                   VerticalAlignment="Bottom">
-        <!-- GitHub rejects a verdict on your own pull request; a comment review is all it takes. -->
+        <!-- GitHub rejects a verdict on your own pull request, which is what disables these two;
+             a comment review is all it takes. A host that accepts one leaves them enabled. -->
         <Button Content="Approve" FontWeight="SemiBold" Click="OnApprove" IsEnabled="{Binding State.CanGiveVerdict}"
-                ToolTip.Tip="Approve, posting every draft below. GitHub does not allow this on your own pull request." />
+                ToolTip.Tip="{Binding HostName, StringFormat='Approve, posting every draft below. {0} may not allow this on your own pull request.'}" />
         <Button Content="Request Changes" Click="OnRequestChanges" IsEnabled="{Binding State.CanGiveVerdict}"
-                ToolTip.Tip="Decline, posting every draft below. GitHub does not allow this on your own pull request." />
+                ToolTip.Tip="{Binding HostName, StringFormat='Decline, posting every draft below. {0} may not allow this on your own pull request.'}" />
         <Button Content="Comment" Click="OnComment" IsEnabled="{Binding State.CanComment}"
                 ToolTip.Tip="Post the drafts without a verdict" />
         <!-- Merging is not a verdict: it ends the pull request for everyone, so it stands
@@ -76,7 +77,7 @@
             <!-- Only while it is one. A draft is the one thing in the merge explanation that the
                  reader can lift from here, so the lifting sits next to the explanation. -->
             <Button x:Name="MarkReadyButton" Click="OnMarkReady" IsVisible="{Binding State.IsDraft}"
-                    ToolTip.Tip="Take this pull request out of draft. GitHub then asks for the reviews its rules require; it can be made a draft again on GitHub.">
+                    ToolTip.Tip="{Binding HostName, StringFormat='Take this pull request out of draft. {0} then asks for the reviews its rules require; it can be made a draft again there.'}">
               <StackPanel Orientation="Horizontal" Spacing="5">
                 <Image Source="{x:Static app:Images.Checkmark}" Width="16" Height="16" />
                 <TextBlock Text="Ready for Review" />

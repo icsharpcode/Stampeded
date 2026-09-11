@@ -264,7 +264,7 @@ public partial class MainWindow : Window
 	async Task PromptUrlAsync()
 	{
 		string? url = await new TextPromptWindow("Open from URL",
-			"GitHub repository or pull request URL (also accepts owner/repo). A repository not cloned yet is cloned via gh into ~/Projects.",
+			"GitHub or Azure DevOps repository or pull request URL (also accepts owner/repo). A repository not cloned yet is cloned into a folder you pick.",
 			"Open", "https://github.com/owner/repo/pull/123").ShowDialog<string?>(this);
 		if (!string.IsNullOrWhiteSpace(url))
 			await App.OpenFromUrlAsync(url);
@@ -392,10 +392,10 @@ public partial class MainWindow : Window
 
 	void OnContinueFromPrepare(object? s, RoutedEventArgs e) => App.Workspace?.StartPage?.ContinueNow();
 
-	void OnOpenOnGitHub(object? s, EventArgs e)
+	void OnOpenOnHost(object? s, EventArgs e)
 	{
 		if (App.Workspace is { CurrentPr: { } pr } ws)
-			ws.OpenOnGitHubAsync(pr.Number).HandleExceptions();
+			ws.OpenPrOnHostAsync(pr.Number).HandleExceptions();
 	}
 
 	void OnShowSemanticLog(object? s, EventArgs e)

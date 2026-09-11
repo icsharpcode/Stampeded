@@ -126,6 +126,10 @@ public partial class MainViewModel : ObservableObject
 		ZoomPreference.Save(value);
 	}
 
+	/// <summary>Whose pull request it is - "GitHub", "Azure DevOps" - for the menu items that
+	/// name the host.</summary>
+	public string HostName => App.Workspace?.HostName ?? "GitHub";
+
 	public MainViewModel()
 	{
 		// Before anything reads the list. Both views that show it - this menu and the start
@@ -136,7 +140,7 @@ public partial class MainViewModel : ObservableObject
 		ZoomState.Set(Zoom);
 		RecentRepos.Record(Program.RepoPath);
 		Recent = new(RecentRepos.Load());
-		var workspace = new ReviewWorkspace(Program.RepoPath);
+		var workspace = new ReviewWorkspace(Program.RepoPath, Program.Host);
 		Busy = workspace.Busy;
 		App.Workspace = workspace;
 		var factory = new StampededDockFactory(workspace);

@@ -5,8 +5,11 @@ using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
 
+using Stampeded.Core.AzureDevOps;
 using Stampeded.Core.GitHub;
 using Stampeded.Core.Infra;
+
+using Stampeded.Core.PullRequests;
 
 namespace Stampeded;
 
@@ -36,6 +39,7 @@ public class App : Application
 		CliLog.Write("action", $"open repository {path}");
 		Workspace?.Shutdown();
 		Program.RepoPath = path;
+		Program.Host = await PullRequestHosts.ForAsync(path);
 		window.DataContext = new MainViewModel();
 		if (prNumber is { } pr)
 			await (Workspace?.OpenPrAsync(pr) ?? Task.CompletedTask);
@@ -58,7 +62,7 @@ public class App : Application
 	/// </summary>
 	internal static (string? Folder, bool Answered) NextFolderAnswer;
 
-	static async Task<string?> AskWhereToCloneAsync(Window window, string owner, string repo)
+	static async Task<string?> AskWhereToCloneAsync(Window window, string name)
 	{
 		if (NextFolderAnswer.Answered)
 		{
@@ -69,7 +73,7 @@ public class App : Application
 		}
 		string projects = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Projects");
 		var options = new Avalonia.Platform.Storage.FolderPickerOpenOptions {
-			Title = $"Clone {owner}/{repo} into which folder?",
+			Title = $"Clone {name} into which folder?",
 			AllowMultiple = false,
 		};
 		if (Directory.Exists(projects))
@@ -78,16 +82,44 @@ public class App : Application
 		return picks.Count == 1 ? picks[0].Path.LocalPath : null;
 	}
 
-	/// <summary>Opens a GitHub repo/PR URL: an already-cloned repository (origin remote
-	/// matched against the current and recent repos) is reused; otherwise the folder to clone
-	/// into is asked for, and gh makes a blobless partial clone there.</summary>
+	/// <summary>Opens a repository or pull-request URL of either host: an already-cloned
+	/// repository (any remote matched against the current and recent repos) is reused;
+	/// otherwise the folder to clone into is asked for, and a blobless partial clone is made
+	/// there.</summary>
 	public static async Task OpenFromUrlAsync(string input)
 	{
 		CliLog.Write("action", $"open from URL {input}");
-		if (!GitHubUrl.TryParse(input, out string owner, out string repo, out int? prNumber))
+		int? prNumber;
+		// Azure DevOps first: its URLs have no scheme-less form GitHub's grammar refuses, and
+		// GitHub's - which also accepts a bare "owner/repo" - would read "dev.azure.com/org/..."
+		// as a repository called org owned by dev.azure.com.
+		string name, folder;
+		Func<string, bool> remoteMatches;
+		// The command that makes the clone, given the target directory - which is only known
+		// once the reader has said where it goes, and which each of the two spells in its own
+		// place on the line.
+		Func<string, (string Tool, string[] Args)> clone;
+		if (AzureDevOpsUrl.TryParse(input, out string org, out string project, out string adoRepo, out prNumber))
 		{
-			CliLog.Write("action", $"not a GitHub repository or PR URL: {input}");
-			Workspace?.PostStatus($"Not a GitHub repository or PR URL: {input}");
+			name = $"{org}/{project}/{adoRepo}";
+			folder = adoRepo;
+			remoteMatches = remotes => AzureDevOpsUrl.AnyRemoteMatches(remotes, org, project, adoRepo);
+			// az has no clone verb, and git's credential helper answers for the login.
+			clone = target => ("git", ["clone", "--filter=blob:none",
+				$"https://dev.azure.com/{Uri.EscapeDataString(org)}/{Uri.EscapeDataString(project)}"
+					+ $"/_git/{Uri.EscapeDataString(adoRepo)}", target]);
+		}
+		else if (GitHubUrl.TryParse(input, out string owner, out string repo, out prNumber))
+		{
+			name = $"{owner}/{repo}";
+			folder = repo;
+			remoteMatches = remotes => GitHubUrl.AnyRemoteMatches(remotes, owner, repo);
+			clone = target => ("gh", ["repo", "clone", $"{owner}/{repo}", target, "--", "--filter=blob:none"]);
+		}
+		else
+		{
+			CliLog.Write("action", $"not a GitHub or Azure DevOps repository or PR URL: {input}");
+			Workspace?.PostStatus($"Not a GitHub or Azure DevOps repository or PR URL: {input}");
 			return;
 		}
 		var candidates = new List<string> { Program.RepoPath };
@@ -100,9 +132,9 @@ public class App : Application
 				// a fork of it is the right checkout for a URL naming either.
 				string remotes = await ExternalTool.RunAsync(
 					"git", ["-C", candidate, "config", "--get-regexp", @"^remote\..*\.url"], candidate);
-				if (GitHubUrl.AnyRemoteMatches(remotes, owner, repo))
+				if (remoteMatches(remotes))
 				{
-					CliLog.Write("action", $"{owner}/{repo} is checked out at {candidate}");
+					CliLog.Write("action", $"{name} is checked out at {candidate}");
 					await OpenRepositoryAsync(candidate, prNumber);
 					return;
 				}
@@ -116,28 +148,29 @@ public class App : Application
 		// user's business, not a guess about how their disk is arranged.
 		if ((Current?.ApplicationLifetime as IClassicDesktopStyleApplicationLifetime)?.MainWindow is not { } window)
 			return;
-		string? parent = await AskWhereToCloneAsync(window, owner, repo);
+		string? parent = await AskWhereToCloneAsync(window, name);
 		if (parent is null)
 		{
-			Workspace?.PostStatus($"Opening {owner}/{repo} cancelled: no folder chosen to clone into.");
+			Workspace?.PostStatus($"Opening {name} cancelled: no folder chosen to clone into.");
 			return;
 		}
-		string target = Path.Combine(parent, repo);
+		string target = Path.Combine(parent, folder);
 		if (Directory.Exists(target) && !IsRepository(target))
-			target = Path.Combine(parent, $"{owner}-{repo}");
+			target = Path.Combine(parent, $"{name.Replace('/', '-')}");
 		if (!Directory.Exists(target))
 		{
-			using var busy = Workspace?.Busy.Begin($"Cloning {owner}/{repo}");
-			Workspace?.PostStatus($"Cloning {owner}/{repo} into {target}...");
+			using var busy = Workspace?.Busy.Begin($"Cloning {name}");
+			Workspace?.PostStatus($"Cloning {name} into {target}...");
 			try
 			{
 				// Blobless partial clone: fast even for large repos; worktree checkouts
 				// fetch missing blobs on demand.
-				await ExternalTool.RunAsync("gh", ["repo", "clone", $"{owner}/{repo}", target, "--", "--filter=blob:none"], parent);
+				var (tool, args) = clone(target);
+				await ExternalTool.RunAsync(tool, args, parent);
 			}
 			catch (ToolFailedException ex)
 			{
-				CliLog.Write("action", $"clone of {owner}/{repo} failed: {ex.Message}");
+				CliLog.Write("action", $"clone of {name} failed: {ex.Message}");
 				Workspace?.PostStatus($"Clone failed: {ExternalTool.Explain(ex)}");
 				return;
 			}

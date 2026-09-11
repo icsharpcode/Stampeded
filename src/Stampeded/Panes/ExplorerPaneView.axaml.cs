@@ -48,9 +48,9 @@ public partial class ExplorerPaneView : UserControl
 
 	void OnOpenVsCode(object? sender, Avalonia.Interactivity.RoutedEventArgs e) => Vm?.OpenInVsCode();
 
-	void OnOpenOnGitHub(object? sender, Avalonia.Interactivity.RoutedEventArgs e) => Vm?.OpenPrOnGitHub();
+	void OnOpenOnHost(object? sender, Avalonia.Interactivity.RoutedEventArgs e) => Vm?.OpenPrOnHost();
 
-	void OnOpenCommitOnGitHub(object? sender, Avalonia.Interactivity.RoutedEventArgs e) => Vm?.OpenCommitOnGitHub();
+	void OnOpenCommitOnHost(object? sender, Avalonia.Interactivity.RoutedEventArgs e) => Vm?.OpenCommitOnHost();
 
 	void OnOpenReview(object? sender, Avalonia.Interactivity.RoutedEventArgs e) => Vm?.OpenReview();
 

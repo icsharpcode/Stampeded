@@ -37,11 +37,11 @@ public sealed partial class ReviewDocumentState : ObservableObject
 	[ObservableProperty]
 	bool isEmpty = true;
 
-	/// <summary>False unless a pull request is open and GitHub says it would take a merge.</summary>
+	/// <summary>False unless a pull request is open and the host says it would take a merge.</summary>
 	[ObservableProperty]
 	bool canMerge;
 
-	/// <summary>GitHub's own words for the merge state, shown whether or not it allows one:
+	/// <summary>The host's own words for the merge state, shown whether or not it allows one:
 	/// a disabled button that says nothing leaves the reader guessing at a repository
 	/// setting, a branch that is behind, or missing push access.</summary>
 	[ObservableProperty]
@@ -54,7 +54,7 @@ public sealed partial class ReviewDocumentState : ObservableObject
 
 	/// <summary>The button says what pressing it would do, and then why it can or cannot be
 	/// pressed: one hover, both halves of the question.</summary>
-	public string MergeButtonTip => "Merge this pull request on GitHub, for everyone. Asks first.\n\n"
+	public string MergeButtonTip => $"Merge this pull request on {App.Workspace?.HostName ?? "GitHub"}, for everyone. Asks first.\n\n"
 		+ MergeExplanation;
 
 	partial void OnMergeExplanationChanged(string value) => OnPropertyChanged(nameof(MergeButtonTip));
@@ -105,6 +105,9 @@ public sealed partial class ReviewDocumentState : ObservableObject
 public sealed class ReviewDocumentViewModel : Document
 {
 	readonly ReviewWorkspace workspace;
+	/// <summary>Whose pull request it is - "GitHub", "Azure DevOps" - for the headers and
+	/// tooltips that name the host.</summary>
+	public string HostName => workspace.HostName;
 
 	/// <summary>Blob text per revision and path: several comments usually land in the same
 	/// file, and each one only needs a handful of lines out of it.</summary>
@@ -134,7 +137,7 @@ public sealed class ReviewDocumentViewModel : Document
 	async Task RefreshVerdictAsync()
 	{
 		State.CanComment = workspace.Comments.CanComment;
-		State.CanGiveVerdict = workspace.Comments.CanComment && !await workspace.Comments.IsOwnPullRequestAsync();
+		State.CanGiveVerdict = workspace.Comments.CanComment && !await workspace.Comments.OwnPullRequestBlocksVerdictAsync();
 	}
 
 	async Task RebuildAsync()
@@ -188,7 +191,7 @@ public sealed class ReviewDocumentViewModel : Document
 		{
 			if (State.MergeMethods.Count == 0)
 			{
-				foreach (var method in (await workspace.GitHub.GetMergeMethodsAsync()).Allowed)
+				foreach (var method in (await workspace.Host.GetMergeMethodsAsync()).Allowed)
 					State.MergeMethods.Add(method);
 				// Whatever was chosen last, if this repository allows it; a merge commit
 				// otherwise, because the series a review was read as is worth keeping.
@@ -198,7 +201,7 @@ public sealed class ReviewDocumentViewModel : Document
 					?? State.MergeMethods.FirstOrDefault() ?? "";
 				State.RememberMergeMethod = true;
 			}
-			var merge = await workspace.GitHub.GetMergeStateAsync(pr.Number);
+			var merge = await workspace.Host.GetMergeStateAsync(pr.Number);
 			State.IsDraft = merge.IsDraft;
 			State.MergeState = $"merge: {merge.Summary}";
 			State.MergeExplanation = merge.Explain
@@ -211,7 +214,7 @@ public sealed class ReviewDocumentViewModel : Document
 		{
 			State.CanMerge = false;
 			State.MergeState = $"merge state unknown ({ExternalTool.Explain(ex)})";
-			State.MergeExplanation = $"Asking GitHub about the merge state failed:\n{ExternalTool.Explain(ex)}";
+			State.MergeExplanation = $"Asking {workspace.HostName} about the merge state failed:\n{ExternalTool.Explain(ex)}";
 		}
 	}
 

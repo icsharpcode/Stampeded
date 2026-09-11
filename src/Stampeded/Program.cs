@@ -1,5 +1,7 @@
 using Avalonia;
 
+using Stampeded.Core.PullRequests;
+
 namespace Stampeded;
 
 internal static class Program
@@ -7,6 +9,13 @@ internal static class Program
 	/// <summary>The repository under review: first non-option argument, else the CWD;
 	/// changed at runtime by "Open Repository".</summary>
 	public static string RepoPath { get; set; } = Environment.CurrentDirectory;
+
+	/// <summary>
+	/// Which host the repository's pull requests live on. A property of the repository, like
+	/// <see cref="RepoPath"/> beside it: decided from origin's URL here, before any window
+	/// exists, and again whenever another repository is opened.
+	/// </summary>
+	public static IPullRequestHost Host { get; set; } = null!;
 
 	/// <summary>PR to open right after startup (--pr N), for scripted/diagnostic runs.</summary>
 	public static int? AutoOpenPr { get; private set; }
@@ -34,6 +43,9 @@ internal static class Program
 			.FirstOrDefault();
 		if (repoArg is not null)
 			RepoPath = Path.GetFullPath(repoArg);
+		// Waited for rather than awaited: there is no dispatcher to deadlock against yet, and
+		// the first window is built from the answer.
+		Host = PullRequestHosts.ForAsync(RepoPath).GetAwaiter().GetResult();
 		BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
 	}
 
