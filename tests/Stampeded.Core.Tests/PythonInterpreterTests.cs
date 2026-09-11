@@ -53,7 +53,7 @@ public class PythonInterpreterTests
 	[Test]
 	public async Task AnImportResolvesIntoAnEnvironmentThatIsNotInTheWorktree()
 	{
-		if (LanguageServers.Python() is not { } spec)
+		if (await PythonServer.ResolveAsync() is not { } spec)
 		{
 			Assert.Ignore("no Python language server available");
 			return;
