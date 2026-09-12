@@ -294,10 +294,12 @@ public sealed class GitService(string repoPath)
 		return checkouts;
 	}
 
-	/// <summary>Whether a checkout has changes that are not committed - staged, unstaged
-	/// or untracked.</summary>
+	/// <summary>Whether a checkout has changes that are not committed - staged or unstaged.
+	/// Untracked files do not count: they are not part of the change under review, and a
+	/// checkout that has nothing but build output in it is not a review step.</summary>
 	public async Task<bool> IsDirtyAsync(string worktreePath, CancellationToken ct = default)
-		=> (await ExternalTool.RunAsync("git", ["status", "--porcelain"], worktreePath, ct)).Trim().Length > 0;
+		=> (await ExternalTool.RunAsync(
+			"git", ["status", "--porcelain", "--untracked-files=no"], worktreePath, ct)).Trim().Length > 0;
 
 	/// <summary>
 	/// Every file a revision has, repository-relative. Read from the object database rather
@@ -311,26 +313,15 @@ public sealed class GitService(string repoPath)
 	}
 
 	/// <summary>
-	/// A checkout's current contents against a commit: everything `git diff &lt;base&gt;` reports
-	/// (staged and unstaged alike, since the comparison is with the working tree), plus the
-	/// untracked files, which that diff omits and which are read individually so the index
-	/// is never touched.
+	/// A checkout's current contents against a commit: everything `git diff &lt;base&gt;` reports,
+	/// staged and unstaged alike, since the comparison is with the working tree. Untracked
+	/// files are not in it - git does not track them and neither does a review.
 	/// </summary>
 	public async Task<IReadOnlyList<FileDiff>> DiffWorkingTreeAsync(
 		string worktreePath, string baseRev, CancellationToken ct = default)
 	{
 		var files = GitDiffParser.Parse(await ExternalTool.RunAsync(
 			"git", ["diff", "-U3", "--find-renames", baseRev], worktreePath, ct)).ToList();
-		string untracked = await ExternalTool.RunAsync(
-			"git", ["ls-files", "--others", "--exclude-standard"], worktreePath, ct);
-		foreach (var relPath in untracked.ReplaceLineEndings("\n").Split('\n', StringSplitOptions.RemoveEmptyEntries))
-		{
-			// --no-index reports "differences found" as exit 1, which is the normal case here.
-			string diff = await ExternalTool.RunAsync(
-				"git", ["diff", "-U3", "--no-index", "--", "/dev/null", relPath],
-				worktreePath, ct, okExitCodes: [1]);
-			files.AddRange(GitDiffParser.Parse(diff));
-		}
 		return [.. files.OrderBy(f => f.Path, StringComparer.Ordinal)];
 	}
 
