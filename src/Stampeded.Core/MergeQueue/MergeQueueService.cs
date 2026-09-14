@@ -1,7 +1,7 @@
 using System.Text.Json;
 
 using Stampeded.Core.Git;
-using Stampeded.Core.GitHub;
+using Stampeded.Core.PullRequests;
 using Stampeded.Core.Infra;
 
 namespace Stampeded.Core.MergeQueue;
@@ -40,7 +40,7 @@ public sealed record MergeQueueDriveResult(string Status, IReadOnlyList<(int Pr,
 /// </summary>
 /// <param name="identity">Who this client calls itself in the queue. Left out, it is asked of
 /// gh once and remembered.</param>
-public sealed class MergeQueueService(GitService git, GitHubService gitHub, string? identity = null)
+public sealed class MergeQueueService(GitService git, IPullRequestHost host, string? identity = null)
 {
 	/// <summary>
 	/// Where the queue lives on the remote. Outside refs/heads and refs/tags on purpose: no
@@ -310,7 +310,7 @@ public sealed class MergeQueueService(GitService git, GitHubService gitHub, stri
 			MergeState state;
 			try
 			{
-				state = await gitHub.GetMergeStateAsync(entry.Pr, ct);
+				state = await host.GetMergeStateAsync(entry.Pr, ct);
 			}
 			catch (ToolFailedException ex)
 			{
@@ -345,7 +345,7 @@ public sealed class MergeQueueService(GitService git, GitHubService gitHub, stri
 			try
 			{
 				progress?.Report(new MergeQueueProgress(entry.Pr, $"merging ({entry.Method})", Working: true));
-				await gitHub.MergePrAsync(entry.Pr, entry.Method, entry.DeleteBranch, ct);
+				await host.MergePrAsync(entry.Pr, entry.Method, entry.DeleteBranch, ct);
 				CliLog.Write("mergequeue", $"merged #{entry.Pr} by {entry.Method}");
 				await UpdateAsync(doc => (
 					doc with {
@@ -386,11 +386,11 @@ public sealed class MergeQueueService(GitService git, GitHubService gitHub, stri
 	/// </summary>
 	public async Task<bool> NudgeDrainerAsync(CancellationToken ct = default)
 	{
-		if (!await gitHub.HasMergeQueueWorkflowAsync(ct))
+		if (!await host.HasMergeQueueWorkflowAsync(ct))
 			return false;
 		try
 		{
-			await gitHub.DispatchMergeQueueAsync(ct);
+			await host.DispatchMergeQueueAsync(ct);
 		}
 		catch (ToolFailedException ex)
 		{
@@ -401,7 +401,7 @@ public sealed class MergeQueueService(GitService git, GitHubService gitHub, stri
 
 	/// <summary>Whether a workflow on GitHub empties this queue.</summary>
 	public Task<bool> HasDrainerAsync(CancellationToken ct = default)
-		=> gitHub.HasMergeQueueWorkflowAsync(ct);
+		=> host.HasMergeQueueWorkflowAsync(ct);
 
 	/// <summary>Who this client is, in the queue's own words. The GitHub login says which
 	/// person and the machine name says which of their windows; without the login - offline, or
@@ -413,7 +413,7 @@ public sealed class MergeQueueService(GitService git, GitHubService gitHub, stri
 		string login;
 		try
 		{
-			login = await gitHub.GetViewerLoginAsync(ct);
+			login = await host.GetViewerLoginAsync(ct);
 		}
 		catch (ToolFailedException)
 		{

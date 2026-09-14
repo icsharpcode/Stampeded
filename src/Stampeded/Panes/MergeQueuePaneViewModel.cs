@@ -243,8 +243,8 @@ public partial class MergeQueuePaneViewModel : Tool
 		using var scope = workspace.Busy.Begin($"Queueing #{number}");
 		try
 		{
-			Note(number, "asking GitHub what it points at", working: true);
-			var state = await workspace.GitHub.GetMergeStateAsync(number);
+			Note(number, $"asking {workspace.HostName} what it points at", working: true);
+			var state = await workspace.Host.GetMergeStateAsync(number);
 			// A draft is not up for merging, and queueing one only puts something in front of
 			// everybody that can never reach the front. Ready for Review is the thing to press
 			// first, and saying so is more use than queueing it and reporting a block every turn.
@@ -256,7 +256,7 @@ public partial class MergeQueuePaneViewModel : Tool
 			}
 			if (state.HeadRefOid is not { Length: > 0 } head)
 			{
-				Give(number, $"GitHub did not say what #{number} points at; it cannot be queued.");
+				Give(number, $"{workspace.HostName} did not say what #{number} points at; it cannot be queued.");
 				return;
 			}
 			Note(number, "publishing to the remote", working: true);
@@ -307,7 +307,7 @@ public partial class MergeQueuePaneViewModel : Tool
 				$"{held.Holder} took the lock for #{held.Pr} {Ago(held.At)} ago and it has not run "
 					+ "out yet, so that window may still be merging.\n\n"
 					+ "Clearing it lets this window - or any other - start on the queue as well. "
-					+ "GitHub refuses a second merge of one pull request, so the worst case is a "
+					+ $"{workspace.HostName} refuses a second merge of one pull request, so the worst case is a "
 					+ "failed attempt rather than a double merge.",
 				"Clear lock").ShowDialog<bool>(owner);
 			if (!go)

@@ -146,7 +146,7 @@
           <NativeMenuItemSeparator />
           <NativeMenuItem Header="Open Head Worktree in VS Code" Click="OnOpenVsCode" IsEnabled="{Binding HasReview}" />
           <NativeMenuItem Header="Debug Here in VS Code" CommandParameter="DebugHereItem" Click="OnDebugHere" />
-          <NativeMenuItem Header="Open PR on GitHub" Click="OnOpenOnGitHub" IsEnabled="{Binding HasPullRequest}" />
+          <NativeMenuItem Header="{Binding HostName, StringFormat='Open PR on {0}'}" Click="OnOpenOnHost" IsEnabled="{Binding HasPullRequest}" />
           <NativeMenuItem Header="Open Affected Fixtures in ILSpy" Click="OnOpenFixtures"
                           IsEnabled="{Binding HasDecompilerTestCases}" />
         </NativeMenu>

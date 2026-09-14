@@ -25,10 +25,10 @@ public partial class CommentsPaneView : UserControl
 			vm.Open(row);
 	}
 
-	void OnOpenOnGitHub(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+	void OnOpenOnHost(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
 	{
 		if (DataContext is CommentsPaneViewModel vm && CommentList.SelectedItem is CommentRow row)
-			vm.OpenOnGitHub(row);
+			vm.OpenOnHost(row);
 	}
 
 	/// <summary>Offers only what the selected comment can be: a draft is deletable and has no
@@ -38,7 +38,7 @@ public partial class CommentsPaneView : UserControl
 		var row = CommentList.SelectedItem as CommentRow;
 		GoToItem.IsEnabled = row is not null;
 		DeleteDraftItem.IsEnabled = row?.IsDraft == true;
-		OpenOnGitHubItem.IsEnabled = row?.Url is { Length: > 0 };
+		OpenOnHostItem.IsEnabled = row?.Url is { Length: > 0 };
 		// One entry per direction rather than a toggle: which one is offered says what the
 		// thread is now, without the reader having to read the row's badge first.
 		ResolveItem.IsEnabled = row is { CanResolve: true, IsResolved: false };

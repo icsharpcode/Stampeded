@@ -8,7 +8,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using Dock.Model.Mvvm.Controls;
 
 using Stampeded.Core.Git;
-using Stampeded.Core.GitHub;
+using Stampeded.Core.PullRequests;
 using Stampeded.Core.Infra;
 using Stampeded.Panes;
 
@@ -178,6 +178,9 @@ public sealed partial class StartState : ObservableObject
 public class StartDocumentViewModel : Document
 {
 	readonly ReviewWorkspace workspace;
+	/// <summary>Whose pull request it is - "GitHub", "Azure DevOps" - for the headers and
+	/// tooltips that name the host.</summary>
+	public string HostName => workspace.HostName;
 	bool openOverviewWhenReady;
 
 	public StartState State { get; } = new();
@@ -699,7 +702,7 @@ public class StartDocumentViewModel : Document
 			State.Status = $"Marking #{pr.Number} ready for review...";
 			try
 			{
-				await workspace.GitHub.MarkReadyForReviewAsync(pr.Number);
+				await workspace.Host.MarkReadyForReviewAsync(pr.Number);
 				CliLog.Write("action", $"marked #{pr.Number} ready for review");
 				State.Status = $"#{pr.Number} is ready for review.";
 				await PrList.LoadAsync();
@@ -954,13 +957,13 @@ public class StartDocumentViewModel : Document
 
 	public void OpenRecent(string path) => App.OpenRepositoryAsync(path).HandleExceptions();
 
-	public void OpenPrOnGitHub(PrSummary pr)
-		=> workspace.OpenOnGitHubAsync(pr.Number).HandleExceptions();
+	public void OpenPrOnHost(PrSummary pr)
+		=> workspace.OpenPrOnHostAsync(pr.Number).HandleExceptions();
 
-	public void OpenBranchPrOnGitHub(BranchRow row)
+	public void OpenBranchPrOnHost(BranchRow row)
 	{
 		if (row.PrNumber is { } number)
-			workspace.OpenOnGitHubAsync(number).HandleExceptions();
+			workspace.OpenPrOnHostAsync(number).HandleExceptions();
 	}
 
 	void BeginPreparation()

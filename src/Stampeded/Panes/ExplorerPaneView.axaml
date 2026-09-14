@@ -75,7 +75,7 @@
                   ToolTip.Tip="Open the head worktree in VS Code for building and debugging this revision">
             <Image Source="{x:Static app:Images.VisualStudioCode}" />
           </Button>
-          <Button Classes="tool" Click="OnOpenOnGitHub" IsVisible="{Binding HasPullRequest}"
+          <Button Classes="tool" Click="OnOpenOnHost" IsVisible="{Binding HasPullRequest}"
                   ToolTip.Tip="Open this pull request in the browser">
             <Image Source="{x:Static app:Images.GitHub}" />
           </Button>
@@ -98,7 +98,7 @@
              pane where it is read should not be the one place that does not say it. The title
              follows it while there is room, and the whole line opens the pull request. -->
         <Button Background="Transparent" BorderThickness="0" Padding="0" Cursor="Hand"
-                Click="OnOpenOnGitHub" HorizontalAlignment="Left" HorizontalContentAlignment="Left"
+                Click="OnOpenOnHost" HorizontalAlignment="Left" HorizontalContentAlignment="Left"
                 IsVisible="{Binding HasPullRequest}"
                 ToolTip.Tip="Open this pull request in the browser">
           <TextBlock FontSize="11" TextTrimming="CharacterEllipsis">
@@ -113,11 +113,11 @@
                        Foreground="White" />
           </Border>
           <!-- The commit read on its own is worth naming by its hash: it is what an author
-               is told to look at, and what a checkout needs. Clicking opens it on GitHub. -->
+               is told to look at, and what a checkout needs. Clicking opens it in the browser. -->
           <Button Background="Transparent" BorderThickness="0" Padding="2,0" Cursor="Hand"
-                  Click="OnOpenCommitOnGitHub"
+                  Click="OnOpenCommitOnHost"
                   IsVisible="{Binding ShortSha, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
-                  ToolTip.Tip="Open this commit on GitHub">
+                  ToolTip.Tip="Open this commit in the browser">
             <TextBlock Text="{Binding ShortSha}" FontFamily="monospace" FontSize="10" />
           </Button>
         </StackPanel>

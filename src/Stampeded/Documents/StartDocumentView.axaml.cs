@@ -7,6 +7,8 @@ using Avalonia.Interactivity;
 
 using Stampeded.Core.GitHub;
 
+using Stampeded.Core.PullRequests;
+
 namespace Stampeded.Documents;
 
 public partial class StartDocumentView : UserControl
@@ -214,10 +216,10 @@ public partial class StartDocumentView : UserControl
 			vm.OpenPr(pr);
 	}
 
-	void OnRowPrGitHub(object? sender, RoutedEventArgs e)
+	void OnRowPrHost(object? sender, RoutedEventArgs e)
 	{
 		if (Vm is { } vm && RowOf<PrSummary>(sender) is { } pr)
-			vm.OpenPrOnGitHub(pr);
+			vm.OpenPrOnHost(pr);
 	}
 
 	void OnRowBranchReview(object? sender, RoutedEventArgs e)
@@ -262,10 +264,10 @@ public partial class StartDocumentView : UserControl
 			vm.PullPrBranch(pr);
 	}
 
-	void OnRowBranchPrGitHub(object? sender, RoutedEventArgs e)
+	void OnRowBranchPrHost(object? sender, RoutedEventArgs e)
 	{
 		if (Vm is { } vm && RowOf<BranchRow>(sender) is { } row)
-			vm.OpenBranchPrOnGitHub(row);
+			vm.OpenBranchPrOnHost(row);
 	}
 
 	void OnRowStashBranch(object? sender, RoutedEventArgs e)
@@ -332,16 +334,16 @@ public partial class StartDocumentView : UserControl
 			vm.EnqueuePr(pr);
 	}
 
-	void OnPrOpenOnGitHub(object? sender, RoutedEventArgs e)
+	void OnPrOpenOnHost(object? sender, RoutedEventArgs e)
 	{
 		if (Vm is { } vm && PrListBox.SelectedItem is PrSummary pr)
-			vm.OpenPrOnGitHub(pr);
+			vm.OpenPrOnHost(pr);
 	}
 
-	void OnBranchPrOnGitHub(object? sender, RoutedEventArgs e)
+	void OnBranchPrOnHost(object? sender, RoutedEventArgs e)
 	{
 		if (Vm is { } vm && BranchList.SelectedItem is BranchRow row)
-			vm.OpenBranchPrOnGitHub(row);
+			vm.OpenBranchPrOnHost(row);
 	}
 
 	void OnRecentDoubleTapped(object? sender, TappedEventArgs e)
@@ -372,7 +374,7 @@ public partial class StartDocumentView : UserControl
 		if (TopLevel.GetTopLevel(this) is not Window owner)
 			return;
 		string? url = await new TextPromptWindow("Open from URL",
-			"GitHub repository or pull request URL (also accepts owner/repo). A repository not cloned yet is cloned via gh into ~/Projects.",
+			"GitHub or Azure DevOps repository or pull request URL (also accepts owner/repo). A repository not cloned yet is cloned into a folder you pick.",
 			"Open", "https://github.com/owner/repo/pull/123").ShowDialog<string?>(owner);
 		if (!string.IsNullOrWhiteSpace(url))
 			await App.OpenFromUrlAsync(url);

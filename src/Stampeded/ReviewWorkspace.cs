@@ -3,7 +3,7 @@ using Dock.Model.Mvvm.Controls;
 using Stampeded.Core.Decompilation;
 using Stampeded.Core.Diff;
 using Stampeded.Core.Git;
-using Stampeded.Core.GitHub;
+using Stampeded.Core.PullRequests;
 using Stampeded.Core.MergeQueue;
 using Stampeded.Core.Infra;
 using Stampeded.Core.Lsp;
@@ -29,15 +29,22 @@ public sealed record ReferenceItem(string RelPath, int Line, string Preview, boo
 /// workspace over the head worktree, and the review-progress store. Orchestrates git/gh
 /// access, document opening and cross-document navigation.
 /// </summary>
-public sealed class ReviewWorkspace(string repoPath)
+public sealed class ReviewWorkspace(string repoPath, IPullRequestHost host)
 {
 	public string RepoPath { get; } = repoPath;
 	public GitService Git { get; } = new(repoPath);
-	public GitHubService GitHub { get; } = new(repoPath);
+
+	/// <summary>Whichever host this repository's pull requests live on, decided once from
+	/// origin's URL. Nothing above here knows which one answered.</summary>
+	public IPullRequestHost Host { get; } = host;
+
+	/// <summary>The host's name, for the headers and tooltips that say whose pull request it is.</summary>
+	public string HostName => Host.Name;
+
 	public WorktreeManager Worktrees { get; } = new(repoPath);
 
 	/// <summary>The merge queue this repository's readers share, wherever they are.</summary>
-	public MergeQueueService MergeQueue { get; } = new(new GitService(repoPath), new GitHubService(repoPath));
+	public MergeQueueService MergeQueue { get; } = new(new GitService(repoPath), host);
 
 	/// <summary>File content at any revision, without a checkout: what the base side of a
 	/// review is read from.</summary>
@@ -60,7 +67,7 @@ public sealed class ReviewWorkspace(string repoPath)
 
 	public PrDetail? CurrentPr { get; private set; }
 
-	/// <summary>Where "#1234" in any text of this review points; null off GitHub.</summary>
+	/// <summary>Where "#1234" in any text of this review points; null off the host.</summary>
 	public string? IssueUrlPrefix { get; private set; }
 
 	/// <summary>The refs a local range review was opened with, null for a pull request one.
@@ -104,13 +111,13 @@ public sealed class ReviewWorkspace(string repoPath)
 	{
 		try
 		{
-			Reviewers = ReviewVerdicts.Latest(await GitHub.GetReviewsAsync(number, ct));
+			Reviewers = ReviewVerdicts.Latest(await Host.GetReviewsAsync(number, ct));
 		}
 		catch (ToolFailedException ex)
 		{
 			// Who has approved is worth knowing, and not knowing it is worth saying: an empty
 			// list would read as nobody having reviewed.
-			CliLog.Write("gh", $"reviews unavailable: {ex.Message}");
+			CliLog.Write("host", $"reviews unavailable: {ex.Message}");
 			Reviewers = null;
 		}
 		ReviewersChanged?.Invoke();
@@ -269,7 +276,7 @@ public sealed class ReviewWorkspace(string repoPath)
 
 	/// <summary>
 	/// True while the open review was read from the snapshot of its last online pass instead of
-	/// from GitHub. Everything git knows is exact - the commits were fetched then and have not
+	/// from the host. Everything git knows is exact - the commits were fetched then and have not
 	/// moved - and everything GitHub alone knows is as old as <see cref="OfflineSince"/>.
 	/// </summary>
 	public bool Offline { get; private set; }
@@ -374,8 +381,8 @@ public sealed class ReviewWorkspace(string repoPath)
 		{
 			try
 			{
-				detail = await GitHub.GetPrAsync(number, ct);
-				prHead = await Git.FetchPrHeadAsync(number, ct);
+				detail = await Host.GetPrAsync(number, ct);
+				prHead = await Git.FetchPrHeadAsync(await Host.PrHeadRefspecAsync(number, ct), number, ct);
 				await Git.FetchBranchAsync(detail.BaseRefName, ct);
 				// The pull request's own target, not the repository's default branch: a branch
 				// that targets a release branch is not a diff against master.
@@ -385,7 +392,7 @@ public sealed class ReviewWorkspace(string repoPath)
 			{
 				// The branch is here either way, and reading it is the point. Losing the
 				// discussion is worth a line; failing the whole open over it is not.
-				CliLog.Write("gh", $"PR #{number} not attached to this branch review: {ex.Message}");
+				CliLog.Write("host", $"PR #{number} not attached to this branch review: {ex.Message}");
 				detail = null;
 				prHead = null;
 			}
@@ -457,8 +464,8 @@ public sealed class ReviewWorkspace(string repoPath)
 		snapshot = null;
 		try
 		{
-			detail = await GitHub.GetPrAsync(number, ct);
-			headSha = await Git.FetchPrHeadAsync(number, ct);
+			detail = await Host.GetPrAsync(number, ct);
+			headSha = await Git.FetchPrHeadAsync(await Host.PrHeadRefspecAsync(number, ct), number, ct);
 			await Git.FetchBranchAsync(detail.BaseRefName, ct);
 			baseSha = await Git.GetMergeBaseAsync($"origin/{detail.BaseRefName}", headSha, ct);
 		}
@@ -540,7 +547,7 @@ public sealed class ReviewWorkspace(string repoPath)
 
 	async Task LoadIssueUrlPrefixAsync(CancellationToken ct)
 	{
-		IssueUrlPrefix = await GitHub.GetIssueUrlPrefixAsync(ct);
+		IssueUrlPrefix = await Host.GetIssueUrlPrefixAsync(ct);
 		// The description and the comment threads are rendered before this returns.
 		ReviewChanged?.Invoke();
 		Comments.Rerender();
@@ -1207,7 +1214,7 @@ public sealed class ReviewWorkspace(string repoPath)
 		using var busy = Busy.Begin($"Rebasing #{number}");
 		try
 		{
-			await GitHub.UpdateBranchAsync(number);
+			await Host.UpdateBranchAsync(number);
 			StatusMessage?.Invoke($"#{number} rebased onto its target branch.");
 		}
 		catch (ToolFailedException ex)
@@ -1225,7 +1232,7 @@ public sealed class ReviewWorkspace(string repoPath)
 		using var busy = Busy.Begin($"Rebasing #{pr.Number} onto {pr.BaseRefName}");
 		try
 		{
-			await GitHub.UpdateBranchAsync(pr.Number);
+			await Host.UpdateBranchAsync(pr.Number);
 			StatusMessage?.Invoke($"#{pr.Number} rebased onto {pr.BaseRefName}; reloading the review...");
 			// The API is asynchronous server-side; give the new head a moment to exist.
 			await Task.Delay(TimeSpan.FromSeconds(3));
@@ -1393,13 +1400,30 @@ public sealed class ReviewWorkspace(string repoPath)
 		return ExternalTool.RunAsync(tool, args, RepoPath);
 	}
 
-	/// <summary>Opens a commit on GitHub via gh.</summary>
-	public Task OpenCommitOnGitHubAsync(string sha)
-		=> ExternalTool.RunAsync("gh", ["browse", sha], RepoPath);
+	/// <summary>Opens a commit on the host in the browser.</summary>
+	public Task<string> OpenCommitOnHostAsync(string sha)
+		=> OpenOnHostAsync(Host.CommitUrlAsync(sha));
 
-	/// <summary>Opens a PR in the browser via gh.</summary>
-	public Task OpenOnGitHubAsync(int number)
-		=> ExternalTool.RunAsync("gh", ["pr", "view", number.ToString(), "--web"], RepoPath);
+	/// <summary>Opens a pull request on the host in the browser.</summary>
+	public Task<string> OpenPrOnHostAsync(int number)
+		=> OpenOnHostAsync(Host.PrUrlAsync(number));
+
+	/// <summary>Sends one of the host's own addresses to the platform opener, and says so when
+	/// there is none - a clone whose origin is on neither host has no page to show.</summary>
+	async Task<string> OpenOnHostAsync(Task<string?> address)
+	{
+		try
+		{
+			if (await address is not { Length: > 0 } url)
+				return $"This repository is not on {HostName}.";
+			await OpenUrlAsync(url);
+			return "";
+		}
+		catch (ToolFailedException ex)
+		{
+			return $"Could not open {HostName}: {ExternalTool.Explain(ex)}";
+		}
+	}
 
 	/// <summary>Opens the head (or base) worktree in VS Code, optionally at a file:line,
 	/// for full IDE debugging of the reviewed revision. The source clone's .vscode is
@@ -2665,7 +2689,7 @@ public sealed class ReviewWorkspace(string repoPath)
 			return known;
 		try
 		{
-			return defaultBranch = await GitHub.GetDefaultBranchAsync();
+			return defaultBranch = await Host.GetDefaultBranchAsync();
 		}
 		catch (ToolFailedException)
 		{
@@ -2693,19 +2717,19 @@ public sealed class ReviewWorkspace(string repoPath)
 		if (Offline)
 		{
 			return $"Offline: this review was opened from a snapshot taken {OfflineSince:g}. "
-				+ "Reload (F5) before changing anything on GitHub.";
+				+ "Reload (F5) before changing anything on the host.";
 		}
 		try
 		{
 			using var busy = Busy.Begin($"Marking #{pr.Number} ready");
-			await GitHub.MarkReadyForReviewAsync(pr.Number);
+			await Host.MarkReadyForReviewAsync(pr.Number);
 			// What the review holds has to stop saying draft at the same moment, or everything
 			// that reads it from here - the queue's Add button among them - stays wrong until
 			// the review is reloaded.
 			CurrentPr = pr with { IsDraft = false };
 			PrStateChanged?.Invoke();
 			CliLog.Write("action", $"marked #{pr.Number} ready for review");
-			return $"#{pr.Number} is ready for review; GitHub has asked for the reviews its rules require.";
+			return $"#{pr.Number} is ready for review; {HostName} has asked for the reviews its rules require.";
 		}
 		catch (ToolFailedException ex)
 		{
@@ -2727,27 +2751,27 @@ public sealed class ReviewWorkspace(string repoPath)
 			return $"Offline: this review was opened from a snapshot taken {OfflineSince:g}. "
 				+ "Whether it would merge is not something a snapshot can say; reload (F5) first.";
 		}
-		Core.GitHub.MergeState state;
+		Core.PullRequests.MergeState state;
 		try
 		{
-			state = await GitHub.GetMergeStateAsync(pr.Number);
+			state = await Host.GetMergeStateAsync(pr.Number);
 		}
 		catch (ToolFailedException ex)
 		{
 			return $"Could not read the merge state: {ex.Message}";
 		}
 		if (!state.CanMerge)
-			return $"GitHub will not merge #{pr.Number} right now: {state.Summary}.";
+			return $"{HostName} will not merge #{pr.Number} right now: {state.Summary}.";
 		if (MainWindowOrNull() is not { } owner)
 			return "";
 		var dialog = new ConfirmWindow("Merge pull request",
 			$"#{pr.Number} {pr.Title}\n\n"
 				+ $"{pr.HeadRefName}  ->  {pr.BaseRefName}, by {method}.\n\n"
 				+ (LocalHead
-					? $"This merges {PrHeadSha![..9]}, what GitHub has - not the local branch you have "
+					? $"This merges {PrHeadSha![..9]}, what {HostName} has - not the local branch you have "
 						+ "been reading, which is ahead of it.\n\n"
 					: "")
-				+ "This merges on GitHub, for everyone. It cannot be undone from here.",
+				+ $"This merges on {HostName}, for everyone. It cannot be undone from here.",
 			$"Merge ({method})",
 			$"Delete {pr.HeadRefName} after merging",
 			DeleteBranchPreference.Load(),
@@ -2763,7 +2787,7 @@ public sealed class ReviewWorkspace(string repoPath)
 		try
 		{
 			using var busy = Busy.Begin($"Merging #{pr.Number}");
-			await GitHub.MergePrAsync(pr.Number, method, deleteBranch);
+			await Host.MergePrAsync(pr.Number, method, deleteBranch);
 			CliLog.Write("action",
 				$"merged #{pr.Number} by {method}{(deleteBranch ? ", deleting " + pr.HeadRefName : "")}");
 			return $"#{pr.Number} merged into {pr.BaseRefName} by {method}"

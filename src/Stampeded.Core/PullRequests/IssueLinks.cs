@@ -1,6 +1,6 @@
 using System.Text.RegularExpressions;
 
-namespace Stampeded.Core.GitHub;
+namespace Stampeded.Core.PullRequests;
 
 /// <summary>
 /// Turns "#1234" into a link, the way GitHub renders it everywhere its own text appears.

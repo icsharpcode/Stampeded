@@ -62,6 +62,9 @@ public sealed record CommentRow(string RelPath, int? Line, bool OldSide, string 
 public class CommentsPaneViewModel : Tool
 {
 	readonly ReviewWorkspace workspace;
+	/// <summary>Whose pull request it is - "GitHub", "Azure DevOps" - for the headers and
+	/// tooltips that name the host.</summary>
+	public string HostName => workspace.HostName;
 
 	public ObservableCollection<CommentRow> Items { get; } = [];
 	public CommentsState State { get; } = new();
@@ -106,7 +109,7 @@ public class CommentsPaneViewModel : Tool
 		RefreshVerdictAvailabilityAsync().HandleExceptions();
 
 		async Task RefreshVerdictAvailabilityAsync()
-			=> State.CanGiveVerdict = workspace.Comments.CanComment && !await workspace.Comments.IsOwnPullRequestAsync();
+			=> State.CanGiveVerdict = workspace.Comments.CanComment && !await workspace.Comments.OwnPullRequestBlocksVerdictAsync();
 	}
 
 	public void AddDraft()
@@ -187,7 +190,7 @@ public class CommentsPaneViewModel : Tool
 		}
 	}
 
-	public void OpenOnGitHub(CommentRow row)
+	public void OpenOnHost(CommentRow row)
 	{
 		if (row.Url is { Length: > 0 } url)
 			workspace.OpenUrlAsync(url).HandleExceptions();

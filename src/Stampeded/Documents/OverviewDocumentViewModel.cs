@@ -144,6 +144,9 @@ public class OverviewDocumentViewModel : Document
 	static readonly IBrush Removed = new SolidColorBrush(Color.Parse("#F85149"));
 
 	readonly ReviewWorkspace workspace;
+	/// <summary>Whose pull request it is - "GitHub", "Azure DevOps" - for the headers and
+	/// tooltips that name the host.</summary>
+	public string HostName => workspace.HostName;
 
 	public OverviewState State { get; } = new();
 	public ObservableCollection<IssueRef> LinkedIssues { get; } = [];
@@ -208,10 +211,10 @@ public class OverviewDocumentViewModel : Document
 		State.OfflineLine = workspace is { Offline: true, OfflineSince: { } since }
 			? $"Offline: opened from the snapshot taken {since:g}. The change and its diff are exact; "
 				+ "the description, comments, checks and reviews are as old as the snapshot, and the "
-				+ "verdict cannot be given until GitHub is reachable. F5 tries again."
+				+ $"verdict cannot be given until {workspace.HostName} is reachable. F5 tries again."
 			: "";
 		State.Description = workspace.CurrentPr?.Body is { Length: > 0 } body
-			? Core.GitHub.IssueLinks.Autolink(body.ReplaceLineEndings("\n"), workspace.IssueUrlPrefix)
+			? Core.PullRequests.IssueLinks.Autolink(body.ReplaceLineEndings("\n"), workspace.IssueUrlPrefix)
 			: "(no description)";
 		RebuildCommitScope();
 		RebuildLinkedIssuesAsync().HandleExceptions();
@@ -274,7 +277,7 @@ public class OverviewDocumentViewModel : Document
 			.Distinct()
 			.Take(12))
 		{
-			if (await workspace.GitHub.GetIssueTitleAsync(number) is { } title)
+			if (await workspace.Host.GetIssueTitleAsync(number) is { } title)
 				found.Add(new IssueRef($"#{number}", number, title));
 		}
 		if (pass != linkedIssuesPass)
@@ -506,10 +509,10 @@ public class OverviewDocumentViewModel : Document
 			workspace.OpenFileAsync(file, record: true).HandleExceptions();
 	}
 
-	public void OpenPrOnGitHub()
+	public void OpenPrOnHost()
 	{
 		if (workspace.CurrentPr is { } pr)
-			workspace.OpenOnGitHubAsync(pr.Number).HandleExceptions();
+			workspace.OpenPrOnHostAsync(pr.Number).HandleExceptions();
 	}
 
 	/// <summary>The working tree as a pending entry above the commits, when the review's
@@ -537,7 +540,7 @@ public class OverviewDocumentViewModel : Document
 	{
 		// The working-tree entry names no commit, so there is nothing to open on GitHub.
 		if (line.ShortSha.Length > 0 && !line.IsUncommitted)
-			workspace.OpenCommitOnGitHubAsync(line.ShortSha).HandleExceptions();
+			workspace.OpenCommitOnHostAsync(line.ShortSha).HandleExceptions();
 	}
 
 	public void OpenCheck(CheckLine line)

@@ -1,11 +1,10 @@
 using System.Collections.ObjectModel;
-using System.Text.RegularExpressions;
 
 using CommunityToolkit.Mvvm.ComponentModel;
 
 using Dock.Model.Mvvm.Controls;
 
-using Stampeded.Core.GitHub;
+using Stampeded.Core.PullRequests;
 using Stampeded.Core.Infra;
 
 namespace Stampeded.Panes;
@@ -33,12 +32,12 @@ public sealed record CheckRow(CheckRun Check)
 /// CI check runs for the open PR's head; double-click a failed check to open its
 /// failed-step log as a document.
 /// </summary>
-public partial class ChecksPaneViewModel : Tool
+public class ChecksPaneViewModel : Tool
 {
-	[GeneratedRegex(@"/actions/runs/(\d+)")]
-	private static partial Regex RunIdFromLink();
-
 	readonly ReviewWorkspace workspace;
+	/// <summary>Whose pull request it is - "GitHub", "Azure DevOps" - for the headers and
+	/// tooltips that name the host.</summary>
+	public string HostName => workspace.HostName;
 
 	public ObservableCollection<CheckRow> Items { get; } = [];
 	public ChecksState State { get; } = new();
@@ -63,7 +62,7 @@ public partial class ChecksPaneViewModel : Tool
 		State.Status = $"Loading checks for #{pr.Number}...";
 		try
 		{
-			var checks = await workspace.GitHub.GetChecksAsync(pr.Number);
+			var checks = await workspace.Host.GetChecksAsync(pr.Number);
 			workspace.SetChecks(checks);
 			foreach (var check in checks.OrderBy(c => c.Bucket is "fail" or "cancel" ? 0 : c.Bucket == "pending" ? 1 : 2))
 				rows.Add(new CheckRow(check));
@@ -84,9 +83,10 @@ public partial class ChecksPaneViewModel : Tool
 
 	public void Open(CheckRow row)
 	{
-		if (row.Check.Link is not { } link || RunIdFromLink().Match(link) is not { Success: true } match)
+		// A check the host cannot name a run for - one reported by something neither GitHub
+		// Actions nor Azure Pipelines - has no log to fetch, and opens nothing.
+		if (row.Check.RunId is not { } runId)
 			return;
-		long runId = long.Parse(match.Groups[1].Value);
 		State.Status = $"Fetching failed log of run {runId}...";
 		OpenLogAsync(runId, row.Check.Name).HandleExceptions();
 	}
@@ -95,7 +95,7 @@ public partial class ChecksPaneViewModel : Tool
 	{
 		try
 		{
-			string log = await workspace.GitHub.GetFailedLogAsync(runId);
+			string log = await workspace.Host.GetFailedLogAsync(runId);
 			if (string.IsNullOrWhiteSpace(log))
 				log = "(no failed steps in this run)";
 			workspace.OpenTextDocument($"cilog:{runId}", $"{name} (failed log)", log);

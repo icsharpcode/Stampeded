@@ -8,7 +8,7 @@
     <DockPanel Grid.Row="0" Margin="6,4">
       <Button DockPanel.Dock="Right" x:Name="RefreshComments" Classes="tool" Margin="4,0,0,0"
               Click="OnRefresh" IsEnabled="{Binding State.CanComment}"
-              ToolTip.Tip="Refresh - re-read the posted comments from GitHub: replies and resolved threads since this review opened">
+              ToolTip.Tip="{Binding HostName, StringFormat='Refresh - re-read the posted comments from {0}: replies and resolved threads since this review opened'}">
         <Image Source="{x:Static app:Images.Refresh}" />
       </Button>
       <TextBlock Opacity="0.7" TextWrapping="Wrap" VerticalAlignment="Center" Text="{Binding State.Status}" />
@@ -30,7 +30,7 @@
     <ListBox Grid.Row="2" x:Name="CommentList" ItemsSource="{Binding Items}" SelectionChanged="OnSelectionChanged">
       <ListBox.ContextMenu>
         <!-- What each entry can act on depends on the row selected: a posted comment has no
-             draft to delete, and a draft has nothing on GitHub to open yet. Settled as the
+             draft to delete, and a draft has nothing on the host to open yet. Settled as the
              menu opens, which is the only moment it can be right. -->
         <ContextMenu Opening="OnCommentMenuOpening">
           <MenuItem Header="Go to Line (click)" x:Name="GoToItem" Click="OnGoTo" />
@@ -40,7 +40,7 @@
           <MenuItem Header="Mark Unresolved" x:Name="UnresolveItem" Click="OnUnresolve" />
           <MenuItem Header="Mark All Resolved" x:Name="ResolveAllItem" Click="OnResolveAll" />
           <Separator />
-          <MenuItem Header="Open on GitHub" x:Name="OpenOnGitHubItem" Click="OnOpenOnGitHub" />
+          <MenuItem Header="{Binding HostName, StringFormat='Open on {0}'}" x:Name="OpenOnHostItem" Click="OnOpenOnHost" />
         </ContextMenu>
       </ListBox.ContextMenu>
       <ListBox.ItemTemplate>
@@ -64,11 +64,12 @@
     </ListBox>
     <DockPanel Grid.Row="3" Margin="4">
       <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="4" Margin="4,0,0,0">
-        <!-- GitHub rejects a verdict on your own pull request; a comment review is all it takes. -->
+        <!-- GitHub rejects a verdict on your own pull request, which is what disables these two;
+             a comment review is all it takes. A host that accepts one leaves them enabled. -->
         <Button Content="Approve" Click="OnApprove" IsEnabled="{Binding State.CanGiveVerdict}"
-                ToolTip.Tip="Approve. GitHub does not allow this on your own pull request." />
+                ToolTip.Tip="{Binding HostName, StringFormat='Approve. {0} may not allow this on your own pull request.'}" />
         <Button Content="Request Changes" Click="OnRequestChanges" IsEnabled="{Binding State.CanGiveVerdict}"
-                ToolTip.Tip="Request changes. GitHub does not allow this on your own pull request." />
+                ToolTip.Tip="{Binding HostName, StringFormat='Request changes. {0} may not allow this on your own pull request.'}" />
         <Button Content="Comment" Click="OnComment" IsEnabled="{Binding State.CanComment}" />
       </StackPanel>
       <TextBox Text="{Binding State.ReviewBody}" AcceptsReturn="True" MaxHeight="60"
