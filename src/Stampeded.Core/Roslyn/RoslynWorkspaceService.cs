@@ -406,22 +406,6 @@ public sealed class RoslynWorkspaceService : ISemanticProvider, IDecompileTarget
 		return full[(root.Length + 1)..].Replace('\\', '/');
 	}
 
-	/// <summary>Spans of identifier-like classified tokens, for clickable reference segments.</summary>
-	public async Task<IReadOnlyList<TextSpan>> GetIdentifierSpansAsync(string repoRelativePath, CancellationToken ct)
-	{
-		var document = GetDocument(ToAbsolutePath(repoRelativePath));
-		if (document is null)
-			return [];
-		var text = await document.GetTextAsync(ct);
-		var classified = await Classifier.GetClassifiedSpansAsync(document, new TextSpan(0, text.Length), ct);
-		return classified
-			.Where(c => IsIdentifierClassification(c.ClassificationType))
-			.Select(c => c.TextSpan)
-			.Distinct()
-			.OrderBy(s => s.Start)
-			.ToList();
-	}
-
 	/// <summary>
 	/// Identifier-like classified tokens as (1-based line, column, length, classification).
 	/// Feeds both semantic colouring and the clickable reference segments; identifiers never

@@ -16,7 +16,6 @@ public sealed record TestRunComparison(
 		// A test name can appear once per target framework; one failing result marks
 		// the name failing.
 		var baseFailed = Names(baseResults, TestOutcome.Failed);
-		var basePresent = baseResults.Select(r => r.TestName).ToHashSet(StringComparer.Ordinal);
 		var headFailedNames = Names(headResults, TestOutcome.Failed);
 
 		var newlyFailing = new List<TestResult>();
