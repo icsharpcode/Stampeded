@@ -112,6 +112,10 @@ public sealed class LspConnection : IDisposable
 		connection.PumpStdErrAsync().HandleFailure(spec.Name);
 		connection.ReadLoopAsync().HandleFailure(spec.Name);
 
+		// A longer deadline than a question about code gets: a server installed through npx
+		// downloads itself on first use, and the handshake is what waits for that. Still a
+		// deadline, because a server that never finishes starting leaves the review saying it
+		// is starting one forever.
 		var initialize = await connection.RequestAsync("initialize", new {
 			processId = Environment.ProcessId,
 			rootUri = LspUri.FromPath(rootPath),
@@ -119,7 +123,7 @@ public sealed class LspConnection : IDisposable
 			trace = Tracing ? "verbose" : "off",
 			initializationOptions,
 			workspaceFolders = new[] { new { uri = LspUri.FromPath(rootPath), name = Path.GetFileName(rootPath) } },
-		}, ct);
+		}, HandshakeTimeout, ct);
 		connection.Capabilities = initialize.TryGetProperty("capabilities", out var capabilities)
 			? capabilities.Clone()
 			: default;
@@ -202,9 +206,38 @@ public sealed class LspConnection : IDisposable
 		window = new { workDoneProgress = true },
 	};
 
-	/// <summary>Sends a request and waits for its answer. A server that never answers stops
-	/// the caller's cancellation token, not the connection.</summary>
-	public async Task<JsonElement> RequestAsync(string method, object? parameters, CancellationToken ct)
+	/// <summary>
+	/// How long a request waits for its answer before it is given up on. Most callers ask from
+	/// the UI thread with no cancellation token of their own, so without a deadline a server
+	/// that stops answering takes go-to-definition and everything like it down for as long as
+	/// the review is open, silently and with no way back but restarting.
+	///
+	/// Generous, because the cost of being wrong in one direction is a command that answers
+	/// nothing and in the other a review that cannot be read.
+	/// </summary>
+	public static readonly TimeSpan DefaultTimeout = TimeSpan.FromSeconds(30);
+
+	/// <summary>How long the handshake may take. See where it is used for why it is not the
+	/// deadline a question about code gets.</summary>
+	public static readonly TimeSpan HandshakeTimeout = TimeSpan.FromMinutes(2);
+
+	/// <summary>Sends a request and waits for its answer, giving up after
+	/// <see cref="DefaultTimeout"/>.</summary>
+	public Task<JsonElement> RequestAsync(string method, object? parameters, CancellationToken ct)
+		=> RequestAsync(method, parameters, DefaultTimeout, ct);
+
+	/// <summary>
+	/// Sends a request and waits for its answer. A null <paramref name="timeout"/> waits for as
+	/// long as it takes, which is for the requests whose work IS the waiting - loading a
+	/// solution takes as long as a solution takes, and a deadline there would abandon a review
+	/// that was going to be fine.
+	///
+	/// Giving up answers with nothing rather than throwing: that is what a server error already
+	/// does here, and it is what every caller is written for. The log is where the difference
+	/// between "found nothing" and "never answered" is recorded.
+	/// </summary>
+	public async Task<JsonElement> RequestAsync(
+		string method, object? parameters, TimeSpan? timeout, CancellationToken ct)
 	{
 		if (disposed)
 			return default;
@@ -212,10 +245,15 @@ public sealed class LspConnection : IDisposable
 		var completion = new TaskCompletionSource<JsonElement>(TaskCreationOptions.RunContinuationsAsynchronously);
 		pending[id] = (completion, method);
 		var watch = Stopwatch.StartNew();
+		using var deadline = timeout is { } limit
+			? CancellationTokenSource.CreateLinkedTokenSource(ct)
+			: null;
+		deadline?.CancelAfter(timeout!.Value);
+		var waiting = deadline?.Token ?? ct;
 		try
 		{
 			await SendAsync(new { jsonrpc = "2.0", id, method, @params = parameters }, ct);
-			using var registration = ct.Register(() => completion.TrySetCanceled(ct));
+			using var registration = waiting.Register(() => completion.TrySetCanceled(waiting));
 			var result = await completion.Task;
 			// Normally only what a reader would want explained - a request nobody noticed is
 			// noise - and everything, with what came back, while tracing.
@@ -224,6 +262,15 @@ public sealed class LspConnection : IDisposable
 			else if (watch.ElapsedMilliseconds > 500)
 				CliLog.Write(spec.Name, $"{method} -> {watch.ElapsedMilliseconds} ms");
 			return result;
+		}
+		catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+		{
+			// The deadline, not the caller: the server was asked and said nothing. Worth a line
+			// of its own, because from the caller's side this is indistinguishable from an
+			// answer of "nothing", and the two need different things done about them.
+			Notify("$/cancelRequest", new { id });
+			CliLog.Write(spec.Name, $"{method} gave up after {watch.ElapsedMilliseconds} ms: no answer");
+			return default;
 		}
 		catch (OperationCanceledException)
 		{
@@ -260,12 +307,40 @@ public sealed class LspConnection : IDisposable
 
 	async Task ReadLoopAsync()
 	{
-		var stream = process.StandardOutput.BaseStream;
-		while (!stopping.IsCancellationRequested)
+		try
 		{
-			if (await LspStream.ReadMessageAsync(stream, stopping.Token) is not { } payload)
-				break;
-			Dispatch(JsonDocument.Parse(payload).RootElement.Clone());
+			var stream = process.StandardOutput.BaseStream;
+			while (!stopping.IsCancellationRequested)
+			{
+				if (await LspStream.ReadMessageAsync(stream, stopping.Token) is not { } payload)
+					break;
+				// Parsed into a document that is given back rather than left to the pool: one
+				// buffer per message arrives, and a review asks thousands of questions.
+				using var document = JsonDocument.Parse(payload);
+				Dispatch(document.RootElement.Clone());
+			}
+		}
+		finally
+		{
+			// Nothing else will answer these. A server that ended - crashed, was killed, closed
+			// its output - leaves every request made of it waiting forever otherwise, and the
+			// panes behind them wait with it.
+			FailPending();
+		}
+	}
+
+	/// <summary>Answers every outstanding request with nothing, because the connection that was
+	/// going to answer them is gone.</summary>
+	void FailPending()
+	{
+		foreach (int id in pending.Keys)
+		{
+			if (!pending.TryRemove(id, out var waiting) || !waiting.Completion.TrySetResult(default))
+				continue;
+			// Shutting down is the expected end and says nothing; ending underneath a review
+			// that is still being read is the thing to report.
+			if (!disposed)
+				CliLog.Write(spec.Name, $"{waiting.Method} unanswered: the server's output ended");
 		}
 	}
 
