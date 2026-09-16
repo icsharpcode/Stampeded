@@ -123,9 +123,13 @@ public static class GeneratedSources
 	static async Task<IReadOnlyList<DiffHunk>> DiffFilesAsync(string? oldFile, string? newFile, CancellationToken ct)
 	{
 		// --no-index answers "differences found" with exit 1, which is the interesting case.
+		// A side the other does not have is diffed against the platform's empty file: naming
+		// the POSIX one on Windows diffs against a path that is not there, and a generator
+		// whose output a change adds or removes shows up as nothing at all.
+		string nothing = OperatingSystem.IsWindows() ? "NUL" : "/dev/null";
 		string diff = await ExternalTool.RunAsync(
 			"git",
-			["diff", "-U3", "--no-index", "--", oldFile ?? "/dev/null", newFile ?? "/dev/null"],
+			["diff", "-U3", "--no-index", "--", oldFile ?? nothing, newFile ?? nothing],
 			Path.GetTempPath(), ct, okExitCodes: [1]);
 		var parsed = GitDiffParser.Parse(diff);
 		return parsed.Count > 0 ? parsed[0].Hunks : [];

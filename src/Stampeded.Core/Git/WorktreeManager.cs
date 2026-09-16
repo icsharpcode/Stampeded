@@ -10,6 +10,12 @@ public sealed class WorktreeManager(string repoPath)
 {
 	static string CacheRoot => CachePath.For("worktrees");
 
+	/// <summary>What a revision's worktree is called under the cache: the first nine characters
+	/// of whatever resolved it. Abbreviated revisions reach this too - a scope carries whatever
+	/// it was given - and slicing one of those blindly throws where the answer is the revision
+	/// itself.</summary>
+	static string DirectoryName(string sha) => sha.Length > 9 ? sha[..9] : sha;
+
 	/// <summary>Deletes cached worktrees of this repo except those for the given SHAs,
 	/// then prunes git's registrations. Returns the number of directories removed.</summary>
 	public async Task<int> PruneAsync(IReadOnlyCollection<string> keepShas, CancellationToken ct = default)
@@ -18,7 +24,7 @@ public sealed class WorktreeManager(string repoPath)
 		int removed = 0;
 		if (Directory.Exists(repoDir))
 		{
-			var keep = keepShas.Select(s => s.Length > 9 ? s[..9] : s).ToHashSet();
+			var keep = keepShas.Select(DirectoryName).ToHashSet();
 			foreach (var dir in Directory.EnumerateDirectories(repoDir))
 			{
 				if (keep.Contains(Path.GetFileName(dir)))
@@ -48,7 +54,7 @@ public sealed class WorktreeManager(string repoPath)
 		string repoDir = Path.Combine(CacheRoot, Path.GetFileName(repoPath));
 		if (!Directory.Exists(repoDir))
 			return 0;
-		var pinned = keepShas.Select(s => s[..9]).ToHashSet();
+		var pinned = keepShas.Select(DirectoryName).ToHashSet();
 		var survivors = Directory.EnumerateDirectories(repoDir)
 			.Where(d => !pinned.Contains(Path.GetFileName(d)))
 			.OrderByDescending(Directory.GetLastWriteTimeUtc)
@@ -60,7 +66,7 @@ public sealed class WorktreeManager(string repoPath)
 
 	public async Task<string> GetOrCreateAsync(string sha, CancellationToken ct = default)
 	{
-		string dir = Path.GetFullPath(Path.Combine(CacheRoot, Path.GetFileName(repoPath), sha[..9]));
+		string dir = Path.GetFullPath(Path.Combine(CacheRoot, Path.GetFileName(repoPath), DirectoryName(sha)));
 		if (Directory.Exists(dir) && File.Exists(Path.Combine(dir, ".git")))
 		{
 			// Reuse counts as use: what the cache keeps is what a reader comes back to, not

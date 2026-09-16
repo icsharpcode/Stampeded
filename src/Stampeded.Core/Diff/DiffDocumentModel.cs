@@ -231,7 +231,10 @@ public sealed class DiffDocumentModel
 		}
 		for (int i = 0; i < Tags.Count; i++)
 		{
-			newLines.Add(sourceLines[i]);
+			// Tags and lines are built together and match, except where a trailing newline
+			// leaves one more tag than there is text; the side-by-side splice has always
+			// allowed for that, and a comment on the last line of such a file threw here.
+			newLines.Add(i < sourceLines.Length ? sourceLines[i] : "");
 			newTags.Add(Tags[i]);
 			if (insertAfter.TryGetValue(i + 1, out var keys))
 			{
