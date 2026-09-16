@@ -577,15 +577,16 @@ public class StartDocumentViewModel : Document
 					: $"Rebased {row.Info.Name} onto {defaultBase}. Previous head was {result.Before[..9]} "
 						+ $"(recover with: {result.RecoveryCommand(row.Info.Name)}).";
 			}
-			catch (ToolFailedException ex)
-			{
-				State.Status = $"Rebase of {row.Info.Name} failed, branch left unchanged: {ExternalTool.Explain(ex)}";
-			}
 			catch (RefusedException ex)
 			{
 				// Refused rather than attempted: something is already half-finished, and the
-				// banner below is the way out of it.
+				// banner below is the way out of it. Caught before the failure it is a kind of,
+				// because the two say different things to a reader.
 				State.Status = ex.Message;
+			}
+			catch (ToolFailedException ex)
+			{
+				State.Status = $"Rebase of {row.Info.Name} failed, branch left unchanged: {ExternalTool.Explain(ex)}";
 			}
 			finally
 			{
@@ -931,7 +932,7 @@ public class StartDocumentViewModel : Document
 			{
 				deletion = await workspace.Git.DeleteBranchAsync(branch);
 			}
-			catch (Exception ex) when (ex is ToolFailedException or RefusedException)
+			catch (ToolFailedException ex)
 			{
 				// Only the deletion itself is caught here. Reporting a failure for anything
 				// that goes wrong afterwards would claim the branch is still there when it

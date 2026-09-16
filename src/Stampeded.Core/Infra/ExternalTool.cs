@@ -3,18 +3,42 @@ using CliWrap.Buffered;
 
 namespace Stampeded.Core.Infra;
 
-public sealed class ToolFailedException(string tool, int exitCode, string stdErr)
-	: Exception($"{tool} exited with code {exitCode}: {stdErr.Trim()}")
+public class ToolFailedException : Exception
 {
-	public string Tool { get; } = tool;
-	public int ExitCode { get; } = exitCode;
-	public string StdErr { get; } = stdErr;
+	public ToolFailedException(string tool, int exitCode, string stdErr)
+		: this(tool, exitCode, stdErr, $"{tool} exited with code {exitCode}: {stdErr.Trim()}")
+	{
+	}
+
+	protected ToolFailedException(string tool, int exitCode, string stdErr, string message)
+		: base(message)
+	{
+		Tool = tool;
+		ExitCode = exitCode;
+		StdErr = stdErr;
+	}
+
+	public string Tool { get; }
+	public int ExitCode { get; }
+	public string StdErr { get; }
 }
 
-/// <summary>An operation this tool refuses to perform, as opposed to one a CLI rejected.
-/// Callers treat it like <see cref="ToolFailedException"/>: it did not happen, and the
-/// message says why.</summary>
-public sealed class RefusedException(string message) : Exception(message);
+/// <summary>
+/// An operation this tool refuses to perform, as opposed to one a CLI rejected.
+///
+/// It IS a <see cref="ToolFailedException"/>, because every caller means the same thing by
+/// both: it did not happen, and the message says why. Left as a type of its own, a refusal
+/// walked past the catch clause written for the failure next to it and reached the reader as
+/// a crash dialog - which is what a fork on Azure DevOps, or a worktree with uncommitted work
+/// in it, did. A caller that wants to tell them apart still can, by catching this first.
+/// </summary>
+public sealed class RefusedException(string message)
+	: ToolFailedException("stampeded", Refused, message, message)
+{
+	/// <summary>The exit code a refusal reports. No process ran, so it is not one of anyone's:
+	/// -1 already means "the tool never started", and this is "the tool was never asked".</summary>
+	public const int Refused = -2;
+}
 
 public static class ExternalTool
 {
