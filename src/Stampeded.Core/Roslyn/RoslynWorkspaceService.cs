@@ -725,9 +725,12 @@ public sealed class RoslynWorkspaceService : ISemanticProvider, IDecompileTarget
 		if (document is null)
 			return null;
 		var semanticModel = await document.GetSemanticModelAsync(ct);
-		if (semanticModel is null)
+		// A workspace is what SymbolFinder resolves against, and a load that failed part-way
+		// can leave a solution behind without one. Answering nothing is what every caller
+		// already handles; dereferencing it would take the pane down instead.
+		if (semanticModel is null || workspace is not { } host)
 			return null;
-		var symbol = await SymbolFinder.FindSymbolAtPositionAsync(semanticModel, position, workspace!, ct);
+		var symbol = await SymbolFinder.FindSymbolAtPositionAsync(semanticModel, position, host, ct);
 		return symbol;
 	}
 
@@ -747,7 +750,7 @@ public sealed class RoslynWorkspaceService : ISemanticProvider, IDecompileTarget
 			return null;
 		var semanticModel = await document.GetSemanticModelAsync(ct);
 		var root = await document.GetSyntaxRootAsync(ct);
-		if (semanticModel is null || root is null)
+		if (semanticModel is null || root is null || workspace is not { } host)
 			return null;
 		var textLine = text.Lines[line - 1];
 		var positions = new List<int>();
@@ -761,7 +764,7 @@ public sealed class RoslynWorkspaceService : ISemanticProvider, IDecompileTarget
 		}
 		foreach (int position in positions)
 		{
-			if (await SymbolFinder.FindSymbolAtPositionAsync(semanticModel, position, workspace!, ct) is { } symbol)
+			if (await SymbolFinder.FindSymbolAtPositionAsync(semanticModel, position, host, ct) is { } symbol)
 				return symbol;
 		}
 		return null;
