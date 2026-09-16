@@ -455,7 +455,6 @@ public sealed class RoslynWorkspaceService : ISemanticProvider, IDecompileTarget
 			.ToList();
 	}
 
-	/// <summary>IDE-style quick info (signature, docs, ...) as plain text sections.</summary>
 	/// <summary>
 	/// This workspace's copy of a file. Token positions only mean anything against the
 	/// exact text they were computed from, so a caller displaying some other revision has
@@ -469,6 +468,7 @@ public sealed class RoslynWorkspaceService : ISemanticProvider, IDecompileTarget
 		return (await document.GetTextAsync(ct)).ToString();
 	}
 
+	/// <summary>IDE-style quick info (signature, docs, ...) as plain text sections.</summary>
 	public async Task<string?> GetQuickInfoAsync(string repoRelativePath, int position, CancellationToken ct)
 	{
 		var document = GetDocument(ToAbsolutePath(repoRelativePath));
@@ -610,9 +610,6 @@ public sealed class RoslynWorkspaceService : ISemanticProvider, IDecompileTarget
 		return members.Values.OrderBy(m => m.FirstLine).ToList();
 	}
 
-	/// <summary>Walks up to the member users think in: method/property/field/event/ctor,
-	/// falling back to the containing type for lines outside any member. Null when the walk
-	/// leaves the type system (a line in a namespace declaration, or nothing resolvable).</summary>
 	/// <summary>
 	/// The member a text position belongs to.
 	///
@@ -646,6 +643,9 @@ public sealed class RoslynWorkspaceService : ISemanticProvider, IDecompileTarget
 		return WalkToMember(model.GetEnclosingSymbol(position, ct));
 	}
 
+	/// <summary>Walks up to the member users think in: method/property/field/event/ctor,
+	/// falling back to the containing type for lines outside any member. Null when the walk
+	/// leaves the type system (a line in a namespace declaration, or nothing resolvable).</summary>
 	static ISymbol? WalkToMember(ISymbol? symbol)
 	{
 		while (symbol is not null
