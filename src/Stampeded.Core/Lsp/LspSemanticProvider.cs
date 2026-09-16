@@ -85,16 +85,10 @@ public sealed class LspSemanticProvider : ISemanticProvider, IDecompileTargets
 	public event Action? StateChanged;
 
 	public string ToAbsolutePath(string repoRelativePath)
-		=> Path.GetFullPath(Path.Combine(rootPath, repoRelativePath.Replace('/', Path.DirectorySeparatorChar)));
+		=> WorkspacePaths.ToAbsolute(rootPath, repoRelativePath);
 
 	public string? ToRelativePath(string absolutePath)
-	{
-		string full = Path.GetFullPath(absolutePath);
-		string root = Path.GetFullPath(rootPath);
-		if (!full.StartsWith(root, StringComparison.OrdinalIgnoreCase))
-			return null;
-		return full[root.Length..].TrimStart(Path.DirectorySeparatorChar, '/').Replace(Path.DirectorySeparatorChar, '/');
-	}
+		=> WorkspacePaths.ToRelative(rootPath, absolutePath);
 
 	#region Documents
 
