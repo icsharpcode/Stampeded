@@ -16,7 +16,7 @@ public partial class MainWindow : Window
 	readonly NativeMenuItem recentMenu, buildSolutionMenu, exitItem,
 		nextHunkItem, prevHunkItem, nextUncoveredItem, historyOfSelectionItem,
 		backItem, forwardItem,
-		sideBySideItem, blameItem, multiRowTabsItem, pointerCrossHairItem, debugHereItem,
+		sideBySideItem, blameItem, markdownPreviewItem, multiRowTabsItem, pointerCrossHairItem, debugHereItem,
 		lightThemeItem, darkThemeItem;
 
 	public MainWindow()
@@ -36,6 +36,7 @@ public partial class MainWindow : Window
 		forwardItem = Named("ForwardItem");
 		sideBySideItem = Named("SideBySideItem");
 		blameItem = Named("BlameItem");
+		markdownPreviewItem = Named("MarkdownPreviewItem");
 		multiRowTabsItem = Named("MultiRowTabsItem");
 		pointerCrossHairItem = Named("PointerCrossHairItem");
 		debugHereItem = Named("DebugHereItem");
@@ -193,6 +194,9 @@ public partial class MainWindow : Window
 			case (Key.C, KeyModifiers.None):
 				View?.CommentAtCaretCommand();
 				break;
+			case (Key.M, KeyModifiers.None):
+				App.Workspace?.OpenMarkdownPreviewAsync().HandleExceptions();
+				break;
 			case (Key.F12, KeyModifiers.None):
 				View?.GoToDefinitionCommand();
 				break;
@@ -289,6 +293,7 @@ public partial class MainWindow : Window
 	void OnToggleViewed(object? s, EventArgs e) => App.Workspace?.ToggleViewedAndAdvanceAsync().HandleExceptions();
 	void OnToggleOverview(object? s, EventArgs e) => App.Workspace?.ToggleOverviewAsync().HandleExceptions();
 	void OnToggleBlame(object? s, EventArgs e) => View?.ToggleBlameCommand();
+	void OnMarkdownPreview(object? s, EventArgs e) => App.Workspace?.OpenMarkdownPreviewAsync().HandleExceptions();
 	void OnCommentAtCaret(object? s, EventArgs e) => View?.CommentAtCaretCommand();
 	void OnGoToDefinition(object? s, EventArgs e) => View?.GoToDefinitionCommand();
 	void OnFindReferences(object? s, EventArgs e) => View?.FindReferencesCommand();
@@ -508,6 +513,9 @@ public partial class MainWindow : Window
 		sideBySideItem.IsChecked = DiffLayoutPreference.SideBySide;
 		blameItem.IsEnabled = Has(ReviewCommands.ToggleBlame);
 		blameItem.IsChecked = view?.BlameVisible ?? false;
+		// Only where there is something to render. Offered on a .cs file it would do nothing,
+		// which reads as a broken command rather than one that does not apply here.
+		markdownPreviewItem.IsEnabled = file is not null && ReviewWorkspace.IsMarkdown(file.Path);
 		debugHereItem.IsEnabled = Has(ReviewCommands.DebugHere);
 		historyOfSelectionItem.IsEnabled = Has(ReviewCommands.HistoryOfSelection);
 	}

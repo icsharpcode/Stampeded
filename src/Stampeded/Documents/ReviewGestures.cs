@@ -64,6 +64,11 @@ static class ReviewGestures
 			case (Key.C, KeyModifiers.None):
 				view.CommentAtCaretCommand();
 				return true;
+			// The workspace rather than the view: a preview is a document of its own and needs
+			// nothing from the caret, so both layouts offer it without implementing anything.
+			case (Key.M, KeyModifiers.None):
+				App.Workspace?.OpenMarkdownPreviewAsync().HandleExceptions();
+				return true;
 			case (Key.Left, KeyModifiers.Alt):
 				workspace?.GoBackAsync().HandleExceptions();
 				return true;
