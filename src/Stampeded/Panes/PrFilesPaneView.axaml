@@ -42,6 +42,11 @@
                reader picks the next file by, in the list they pick it from. -->
           <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="3"
                       VerticalAlignment="Center" Margin="4,0">
+            <!-- Where the counts would be, for a file that has none to give: grey, because it
+                 says what the file is rather than how much of it moved. -->
+            <TextBlock FontSize="10" Foreground="#8B949E" Text="{Binding Entry.NoDiffBadge}"
+                       IsVisible="{Binding Entry.NoDiffBadge, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                       ToolTip.Tip="No textual diff: a binary file, or one that changed without its lines changing" />
             <TextBlock FontSize="10" Foreground="#2EA043" Text="{Binding Entry.AddedText}"
                        IsVisible="{Binding Entry.AddedText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
                        ToolTip.Tip="Lines added" />

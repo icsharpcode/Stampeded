@@ -328,6 +328,29 @@ public sealed class GitService(string repoPath)
 	public Task<string> ShowFileAsync(string rev, string path, CancellationToken ct = default)
 		=> RunAsync(ct, "show", $"{rev}:{path}");
 
+	/// <summary>
+	/// How many bytes a revision's copy of a file has, or null when that revision does not
+	/// have it - which is the ordinary answer for the base side of an addition and the head
+	/// side of a deletion, not a failure.
+	///
+	/// Asked of the object database rather than read, because the file this is wanted for is
+	/// the one that cannot be read as text: how much a binary file grew is the whole of what
+	/// a review can say about it.
+	/// </summary>
+	public async Task<long?> BlobSizeAsync(string rev, string path, CancellationToken ct = default)
+	{
+		try
+		{
+			return long.TryParse((await RunAsync(ct, "cat-file", "-s", $"{rev}:{path}")).Trim(), out long size)
+				? size
+				: null;
+		}
+		catch (ToolFailedException)
+		{
+			return null;
+		}
+	}
+
 	/// <summary>A whole commit as a patch - its message and its diff, the way git prints it.</summary>
 	public Task<string> ShowCommitAsync(string rev, CancellationToken ct = default)
 		=> RunAsync(ct, "show", rev);

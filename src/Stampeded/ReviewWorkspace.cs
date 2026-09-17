@@ -771,6 +771,11 @@ public sealed class ReviewWorkspace(string repoPath, IPullRequestHost host)
 			return ShowDiffDocument(file, ReadOrEmpty(generated.BaseFile), ReadOrEmpty(generated.HeadFile));
 		if (BaseSha is null || HeadSha is null)
 			return null;
+		// A binary file, or one that changed without its lines changing, has nothing to draw.
+		// Built as a diff of two empty sides it opened as a blank document, which reads as a
+		// tool that failed rather than as a file with nothing in it to read.
+		if (NoTextualDiff.Applies(file))
+			return await ShowNoTextualDiffAsync(file, record);
 		string oldText = "";
 		if (file.Kind != FileChangeKind.Added && !file.IsBinary)
 		{
@@ -799,6 +804,35 @@ public sealed class ReviewWorkspace(string repoPath, IPullRequestHost host)
 		return document;
 
 		static string ReadOrEmpty(string? path) => path is null ? "" : File.ReadAllText(path);
+	}
+
+	/// <summary>
+	/// The page a file with no lines opens as: what kind of nothing it is, and for a binary one
+	/// how the two sides compare in size, which is the only thing a review can say about it.
+	///
+	/// It takes the file's own tab and carries the file's own path, so it is a file of the
+	/// review like any other: it can be marked viewed, stepped past, and commented on where the
+	/// host allows one.
+	/// </summary>
+	async Task<Documents.IDiffDocument?> ShowNoTextualDiffAsync(FileDiff file, bool record)
+	{
+		long? baseSize = file.Kind == FileChangeKind.Added || BaseSha is not { } baseSha
+			? null
+			: await Git.BlobSizeAsync(baseSha, file.OldPath);
+		long? headSize = file.Kind == FileChangeKind.Deleted || HeadSha is not { } headSha
+			? null
+			: await Git.BlobSizeAsync(headSha, file.NewPath);
+		string described = NoTextualDiff.Describe(file, baseSize, headSize);
+		CliLog.Write("review", $"{file.Path}: {NoTextualDiff.Badge(file)}, nothing to diff");
+		var document = ShowDocument("diff:" + file.Path, () => {
+			var page = Stampeded.Documents.DiffDocumentViewModel.ForSource(file.Path, described);
+			page.Title = Path.GetFileName(file.Path);
+			page.TabTooltipOverride = file.Path + " - " + NoTextualDiff.Badge(file);
+			return page;
+		});
+		if (record && document is not null)
+			RecordArrival("diff:" + file.Path);
+		return document;
 	}
 
 	/// <summary>The head side of a file whose earlier version cannot be read, as a source view:
