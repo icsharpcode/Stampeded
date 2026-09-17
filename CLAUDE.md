@@ -69,10 +69,15 @@ goes through `IPullRequestHost` (`Stampeded.Core/PullRequests/`). There are two:
 (`az repos pr ...`, `az repos policy ...`, and `az devops invoke` for the REST surface the
 extension has no verb for - the analogue of `gh api`).
 
-Which one answers is decided once per workspace, in `PullRequestHosts.ForAsync`, from origin's
+Which one answers is decided once per workspace, in `PullRequestHosts.ForAsync`, from the remote's
 URL: what `AzureDevOpsUrl` parses is Azure DevOps, anything else is GitHub on purpose - `gh`
 also serves GitHub Enterprise hosts, which nothing here can enumerate, and a clone with no
-origin behaves as it always did. `STAMPEDED_PR_HOST=github|azdo` overrides it. The answer is a
+remote behaves as it always did. `STAMPEDED_PR_HOST=github|azdo` overrides it.
+
+The remote is not assumed to be called origin: `GitService.GetRemoteAsync` takes
+`checkout.defaultRemote`, then origin, then the only remote, then the one the checked-out
+branch tracks, and otherwise fails with a message saying how to choose. Every fetch, push and
+remote-tracking ref (`RemoteBranchAsync`) goes through it - never write `"origin"` literally. The answer is a
 property of the repository, so it sits on `Program.Host` beside `Program.RepoPath` and reaches
 the review as `ReviewWorkspace.Host`.
 

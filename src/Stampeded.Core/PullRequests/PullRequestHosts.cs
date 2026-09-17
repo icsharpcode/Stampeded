@@ -1,4 +1,5 @@
 using Stampeded.Core.AzureDevOps;
+using Stampeded.Core.Git;
 using Stampeded.Core.GitHub;
 using Stampeded.Core.Infra;
 
@@ -8,16 +9,17 @@ namespace Stampeded.Core.PullRequests;
 public static class PullRequestHosts
 {
 	/// <summary>
-	/// The host for a checkout, from origin's URL. Anything origin's URL does not name as Azure
-	/// DevOps is GitHub on purpose: gh also serves GitHub Enterprise hosts, which nothing here
-	/// can enumerate, and a clone with no origin at all behaves as it always did.
+	/// The host for a checkout, from its remote's URL (see <see cref="GitService.GetRemoteAsync"/>
+	/// for which remote that is). Anything that URL does not name as Azure DevOps is GitHub on
+	/// purpose: gh also serves GitHub Enterprise hosts, which nothing here can enumerate, and a
+	/// clone with no usable remote at all behaves as it always did.
 	/// <c>STAMPEDED_PR_HOST=github|azdo</c> overrides the decision.
 	/// </summary>
 	public static async Task<IPullRequestHost> ForAsync(string repoPath, CancellationToken ct = default)
 	{
-		string origin = await OriginUrlAsync(repoPath, ct);
+		var (remote, url) = await RemoteUrlAsync(repoPath, ct);
 		string? forced = Environment.GetEnvironmentVariable("STAMPEDED_PR_HOST");
-		bool azdo = AzureDevOpsUrl.TryParse(origin, out string org, out string project, out string repo, out _);
+		bool azdo = AzureDevOpsUrl.TryParse(url, out string org, out string project, out string repo, out _);
 		if (forced is { Length: > 0 })
 		{
 			CliLog.Write("host", $"STAMPEDED_PR_HOST={forced}");
@@ -25,18 +27,29 @@ public static class PullRequestHosts
 		}
 		if (!azdo)
 		{
-			CliLog.Write("host", "origin is GitHub");
+			CliLog.Write("host", $"{remote ?? "the repository"} is GitHub");
 			return new GitHubService(repoPath);
 		}
-		CliLog.Write("host", $"origin is Azure DevOps ({org}/{project}/{repo})");
+		CliLog.Write("host", $"{remote ?? "the repository"} is Azure DevOps ({org}/{project}/{repo})");
 		return new AzureDevOpsService(repoPath, org, project, repo);
 	}
 
-	static async Task<string> OriginUrlAsync(string repoPath, CancellationToken ct)
+	static async Task<(string? Remote, string Url)> RemoteUrlAsync(string repoPath, CancellationToken ct)
 	{
-		// Exit 1 is git saying the key is not set: a clone that was never pushed anywhere, or
-		// a review of local work. That is an answer, not a failure.
-		return (await ExternalTool.RunAsync("git", ["config", "--get", "remote.origin.url"], repoPath, ct,
-			okExitCodes: [1])).Trim();
+		string remote;
+		try
+		{
+			remote = await new GitService(repoPath).GetRemoteAsync(ct);
+		}
+		catch (ToolFailedException)
+		{
+			// Not a repository, or no remote to tell the host by - a clone that was never pushed
+			// anywhere, or a review of local work. The reason is already in the log, and every
+			// operation that needs the remote reports it again where it is attempted.
+			return (null, "");
+		}
+		// Exit 1 is git saying the key is not set, which is an answer, not a failure.
+		return (remote, (await ExternalTool.RunAsync("git", ["config", "--get", $"remote.{remote}.url"], repoPath, ct,
+			okExitCodes: [1])).Trim());
 	}
 }

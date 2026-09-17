@@ -173,7 +173,7 @@
             <MenuItem Header="Add to Merge Queue" Click="OnPrEnqueue"
                       IsVisible="{Binding !State.SelectedPrIsDraft}"
                       ToolTip.Tip="Put this pull request at the back of the shared merge queue, without opening it for review. It is merged the remembered way, which the Merge Queue pane shows." />
-            <MenuItem Header="Pull Head Branch from origin" Click="OnPrPull" />
+            <MenuItem Header="Pull Head Branch from Remote" Click="OnPrPull" />
           </ContextMenu>
         </ListBox.ContextMenu>
         <ListBox.Styles>
@@ -289,7 +289,7 @@
             <Image Source="{x:Static app:Images.Filter}" />
           </ToggleButton>
           <Button Classes="tool" Click="OnFetch"
-                  ToolTip.Tip="Fetch - git fetch origin: update the remote-tracking refs, then re-read both lists. Branches whose sync state reads 'differs' need this before it can be measured.">
+                  ToolTip.Tip="Fetch - git fetch: update the remote-tracking refs, then re-read both lists. Branches whose sync state reads 'differs' need this before it can be measured.">
             <Image Source="{x:Static app:Images.Fetch}" />
           </Button>
           <Button Classes="tool" Click="OnRefsRefresh"
@@ -343,18 +343,18 @@
                       IsVisible="{Binding !State.ShowStashes}" />
             <MenuItem Header="Create Branch from Stash..." Click="OnCreateBranchFromStash"
                       IsVisible="{Binding State.ShowStashes}" />
-            <MenuItem Header="Pull from origin" Click="OnPullBranch"
+            <MenuItem Header="Pull from Remote" Click="OnPullBranch"
                       IsVisible="{Binding !State.ShowStashes}"
-                      ToolTip.Tip="Fast-forward this branch to origin's copy; a diverged branch is left alone" />
+                      ToolTip.Tip="Fast-forward this branch to the remote's copy; a diverged branch is left alone" />
             <MenuItem Header="Open Worktree" Click="OnOpenWorktree"
                       IsVisible="{Binding !State.ShowStashes}"
                       ToolTip.Tip="Open the checkout that has this branch in the file manager" />
             <MenuItem Header="Delete Merged Branch" Click="OnDeleteBranch"
                       IsVisible="{Binding !State.ShowStashes}"
                       ToolTip.Tip="Delete this local branch, if it is already in the default branch" />
-            <MenuItem Header="Push to origin" Click="OnPushBranch"
+            <MenuItem Header="Push to Remote" Click="OnPushBranch"
                       IsVisible="{Binding !State.ShowStashes}"
-                      ToolTip.Tip="Push to origin, force-pushing with --force-with-lease when the branches have diverged" />
+                      ToolTip.Tip="Push to the remote, force-pushing with --force-with-lease when the branches have diverged" />
             <MenuItem Header="Rebase onto Default Base" Click="OnRebaseBranch"
                       IsVisible="{Binding !State.ShowStashes}"
                       ToolTip.Tip="Rebase this branch onto the default base. A branch no checkout has is rebased in a throwaway worktree; one that a checkout has is rebased there, so that checkout moves with it" />
@@ -397,7 +397,7 @@
                   <Button Content="Review" FontWeight="SemiBold" Click="OnRowBranchReview"
                           ToolTip.Tip="Open this for review" />
                   <Button Classes="tool" Click="OnRowBranchPull" IsVisible="{Binding IsBranch}"
-                          ToolTip.Tip="Pull - fast-forward this branch to origin's copy; a diverged branch is left alone">
+                          ToolTip.Tip="Pull - fast-forward this branch to the remote's copy; a diverged branch is left alone">
                     <Image Source="{x:Static app:Images.Pull}" />
                   </Button>
                   <Button Classes="tool" Click="OnRowBranchWorktree" IsVisible="{Binding HasWorktree}"
@@ -411,7 +411,7 @@
                     <Image Source="{x:Static app:Images.Delete}" />
                   </Button>
                   <Button Classes="tool" Click="OnRowBranchPush" IsVisible="{Binding IsBranch}"
-                          ToolTip.Tip="Push this branch to origin. Diverged branches - what a rebase leaves - are force-pushed with --force-with-lease, which still refuses if origin moved since the last fetch.">
+                          ToolTip.Tip="Push this branch to the remote. Diverged branches - what a rebase leaves - are force-pushed with --force-with-lease, which still refuses if the remote moved since the last fetch.">
                     <Image Source="{x:Static app:Images.Push}" />
                   </Button>
                   <Button Classes="tool" Click="OnRowBranchRebase" IsVisible="{Binding IsBranch}"

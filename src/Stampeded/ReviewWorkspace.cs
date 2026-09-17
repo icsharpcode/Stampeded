@@ -35,7 +35,7 @@ public sealed class ReviewWorkspace(string repoPath, IPullRequestHost host)
 	public GitService Git { get; } = new(repoPath);
 
 	/// <summary>Whichever host this repository's pull requests live on, decided once from
-	/// origin's URL. Nothing above here knows which one answered.</summary>
+	/// its remote's URL. Nothing above here knows which one answered.</summary>
 	public IPullRequestHost Host { get; } = host;
 
 	/// <summary>The host's name, for the headers and tooltips that say whose pull request it is.</summary>
@@ -386,7 +386,7 @@ public sealed class ReviewWorkspace(string repoPath, IPullRequestHost host)
 				await Git.FetchBranchAsync(detail.BaseRefName, ct);
 				// The pull request's own target, not the repository's default branch: a branch
 				// that targets a release branch is not a diff against master.
-				baseRef = $"origin/{detail.BaseRefName}";
+				baseRef = await Git.RemoteBranchAsync(detail.BaseRefName, ct);
 			}
 			catch (ToolFailedException ex)
 			{
@@ -467,7 +467,7 @@ public sealed class ReviewWorkspace(string repoPath, IPullRequestHost host)
 			detail = await Host.GetPrAsync(number, ct);
 			headSha = await Git.FetchPrHeadAsync(await Host.PrHeadRefspecAsync(number, ct), number, ct);
 			await Git.FetchBranchAsync(detail.BaseRefName, ct);
-			baseSha = await Git.GetMergeBaseAsync($"origin/{detail.BaseRefName}", headSha, ct);
+			baseSha = await Git.GetMergeBaseAsync(await Git.RemoteBranchAsync(detail.BaseRefName, ct), headSha, ct);
 		}
 		catch (ToolFailedException ex)
 		{
@@ -2694,14 +2694,15 @@ public sealed class ReviewWorkspace(string repoPath, IPullRequestHost host)
 		catch (ToolFailedException)
 		{
 			string local = await Git.GetDefaultBaseAsync();
-			return defaultBranch = local.StartsWith("origin/", StringComparison.Ordinal)
-				? local["origin/".Length..]
+			string prefix = await Git.GetRemoteAsync() + "/";
+			return defaultBranch = local.StartsWith(prefix, StringComparison.Ordinal)
+				? local[prefix.Length..]
 				: local;
 		}
 	}
 
-	/// <summary>The ref to review and rebase against: the default branch as origin has it.</summary>
-	public async Task<string> GetDefaultBaseAsync() => "origin/" + await GetDefaultBranchAsync();
+	/// <summary>The ref to review and rebase against: the default branch as the remote has it.</summary>
+	public async Task<string> GetDefaultBaseAsync() => await Git.RemoteBranchAsync(await GetDefaultBranchAsync());
 
 	/// <summary>
 	/// Takes the current pull request out of draft, and says what happened either way.
