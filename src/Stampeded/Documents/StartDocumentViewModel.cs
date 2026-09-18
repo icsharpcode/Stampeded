@@ -160,6 +160,15 @@ public sealed partial class StartState : ObservableObject
 	[ObservableProperty]
 	bool isPreparing;
 
+	/// <summary>Why the review that was opening did not open, or empty. While it is set the
+	/// overlay shows this instead of the checklist and stays until it is dismissed: an overlay
+	/// that simply went away would look like an open that was never asked for.</summary>
+	[ObservableProperty]
+	[NotifyPropertyChangedFor(nameof(PrepareFailed))]
+	string prepareError = "";
+
+	public bool PrepareFailed => PrepareError.Length > 0;
+
 	[ObservableProperty]
 	string recentFilter = "";
 
@@ -182,6 +191,9 @@ public class StartDocumentViewModel : Document
 	/// tooltips that name the host.</summary>
 	public string HostName => workspace.HostName;
 	bool openOverviewWhenReady;
+	// Counts the opens started from here, so one that ends after a later one began can tell
+	// the overlay is no longer its to change.
+	int openAttempt;
 
 	public StartState State { get; } = new();
 	public ObservableCollection<string> Recents { get; } = [];
@@ -505,14 +517,10 @@ public class StartDocumentViewModel : Document
 	public void OpenPr(PrSummary pr) => OpenPrNumber(pr.Number);
 
 	public void OpenPrNumber(int number)
-	{
-		BeginPreparation();
-		workspace.OpenPrAsync(number).HandleExceptions();
-	}
+		=> OpenWithPreparation($"PR #{number}", () => workspace.OpenPrAsync(number));
 
 	public void OpenBranch(BranchRow row)
 	{
-		BeginPreparation();
 		// A stash reviews as the range from the commit it was taken on to the stash
 		// commit itself, which is exactly the stashed change.
 		var (baseRef, head) = row.IsStash
@@ -522,7 +530,8 @@ public class StartDocumentViewModel : Document
 		// along, read against the local commits. Opening the same change from the pull request
 		// list reads the pushed head instead - which is the difference between the two lists
 		// once a branch has moved on from what was pushed.
-		workspace.OpenLocalRangeAsync(baseRef, head, row.PrNumber).HandleExceptions();
+		OpenWithPreparation(row.IsStash ? "the stash" : head,
+			() => workspace.OpenLocalRangeAsync(baseRef, head, row.PrNumber));
 	}
 
 	/// <summary>Gives a stash a durable name by pointing a new branch at its commit. The
@@ -969,8 +978,58 @@ public class StartDocumentViewModel : Document
 	void BeginPreparation()
 	{
 		openOverviewWhenReady = true;
+		State.PrepareError = "";
 		State.IsPreparing = true;
 		UpdatePreparation();
+	}
+
+	/// <summary>
+	/// Opens a review behind the preparation overlay, and owns what the overlay does when the
+	/// open fails: it says why and waits to be dismissed. The overlay covers the window and
+	/// only a finished open takes it down, so a failure that went to the log alone left the
+	/// reader behind a spinner that would never stop.
+	/// </summary>
+	void OpenWithPreparation(string what, Func<Task> open)
+	{
+		int attempt = ++openAttempt;
+		BeginPreparation();
+		RunAsync().HandleExceptions();
+
+		async Task RunAsync()
+		{
+			try
+			{
+				await open();
+			}
+			catch (OperationCanceledException)
+			{
+				// Cancelled by a later open, whose overlay this now is, or by the workspace
+				// going away. Only in the second case is there an overlay left to take down.
+				if (attempt == openAttempt)
+					State.IsPreparing = false;
+			}
+			catch (Exception ex)
+			{
+				CliLog.Write("error", $"open of {what} failed: {ex.Message}");
+				if (attempt != openAttempt)
+					return;
+				openOverviewWhenReady = false;
+				string reason = ex is ToolFailedException failure ? ExternalTool.Explain(failure) : ex.Message;
+				State.PrepareError = $"Could not open {what}: {reason}";
+				State.Status = State.PrepareError;
+				// The error is drawn inside the preparation overlay, which is visible only while
+				// this is true. Usually it still is; "Continue now" pressed before the failure
+				// arrived has cleared it, and the reason would be set with nothing showing it.
+				State.IsPreparing = true;
+			}
+		}
+	}
+
+	/// <summary>Takes down the overlay a failed open left its reason on.</summary>
+	public void DismissPrepareError()
+	{
+		State.PrepareError = "";
+		State.IsPreparing = false;
 	}
 
 	public void ContinueNow()

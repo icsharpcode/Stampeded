@@ -391,6 +391,7 @@ public partial class MainWindow : Window
 	void OnOpenOverview(object? s, EventArgs e) => App.Workspace?.OpenOverview();
 
 	void OnContinueFromPrepare(object? s, RoutedEventArgs e) => App.Workspace?.StartPage?.ContinueNow();
+	void OnDismissPrepareError(object? s, RoutedEventArgs e) => App.Workspace?.StartPage?.DismissPrepareError();
 
 	void OnOpenOnHost(object? s, EventArgs e)
 	{
