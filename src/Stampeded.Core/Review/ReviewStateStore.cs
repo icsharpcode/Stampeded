@@ -38,6 +38,22 @@ public sealed class ReviewStateStore
 	string? currentPath;
 	ReviewStateFile? current;
 
+	/// <summary>
+	/// The review's own file, held open behind a scope, and null while the review itself is
+	/// what is open.
+	///
+	/// A scope narrows what is being READ, and keys its own state for it: having read a file in
+	/// one commit says nothing about the next commit's change to it, so viewed flags are the
+	/// scope's. What is written ABOUT the review is not the scope's - a draft is a remark on
+	/// the pull request, posted against a path and a line of it, and there is one pull request
+	/// to post it to however the reader chose to walk it.
+	/// </summary>
+	string? reviewPath;
+	ReviewStateFile? reviewState;
+
+	/// <summary>The file the review's own record lives in: the scope's, when no scope is on.</summary>
+	ReviewStateFile? Review => reviewState ?? current;
+
 	/// <summary>When opening found state for an OLDER head: that head and its viewed flags.
 	/// The caller can carry viewed over for files the new push did not touch (re-review:
 	/// invalidate only what changed, do not repeat the whole first pass).</summary>
@@ -73,22 +89,46 @@ public sealed class ReviewStateStore
 	}
 
 	public void Open(string repoKey, int prNumber, string headSha, string? baseSha = null)
-		=> OpenFile($"{Sanitize(repoKey)}_pr{prNumber}.json", headSha, baseSha);
+		=> OpenReview($"{Sanitize(repoKey)}_pr{prNumber}.json", headSha, baseSha);
 
 	/// <summary>State for reading one commit on its own. Keyed by the commit, so having
 	/// read a file in one commit says nothing about the next commit's change to it.</summary>
 	public void OpenCommitScope(string repoKey, string commitSha)
-		=> OpenFile($"{Sanitize(repoKey)}_commit_{commitSha[..9]}.json", commitSha, null);
+		=> OpenScope($"{Sanitize(repoKey)}_commit_{commitSha[..9]}.json", commitSha);
 
 	/// <summary>State for reading the uncommitted work on its own. Keyed by the commit it sits
 	/// on rather than by content: what is in the checkout changes with every save, and a file
 	/// read there has been read for the tip it was written against.</summary>
 	public void OpenWorkingTreeScope(string repoKey, string tipSha)
-		=> OpenFile($"{Sanitize(repoKey)}_worktree_{tipSha[..9]}.json", tipSha, null);
+		=> OpenScope($"{Sanitize(repoKey)}_worktree_{tipSha[..9]}.json", tipSha);
 
 	/// <summary>State for a local base..head review (no PR); keyed by the range text.</summary>
 	public void OpenLocal(string repoKey, string rangeKey, string headSha, string? baseSha = null)
-		=> OpenFile($"{Sanitize(repoKey)}_local_{Sanitize(rangeKey)}.json", headSha, baseSha);
+		=> OpenReview($"{Sanitize(repoKey)}_local_{Sanitize(rangeKey)}.json", headSha, baseSha);
+
+	/// <summary>Opens a review, which is also the end of any scope that was on: the review's
+	/// own file answers for everything again.</summary>
+	void OpenReview(string fileName, string headSha, string? baseSha)
+	{
+		reviewPath = null;
+		reviewState = null;
+		OpenFile(fileName, headSha, baseSha);
+	}
+
+	/// <summary>
+	/// Narrows to a part of the review being read. The review's own file stays open behind it,
+	/// so what is written about the review still goes there - and stepping from one commit to
+	/// the next replaces the scope without disturbing it.
+	/// </summary>
+	void OpenScope(string fileName, string headSha)
+	{
+		if (reviewPath is null)
+		{
+			reviewPath = currentPath;
+			reviewState = current;
+		}
+		OpenFile(fileName, headSha, null);
+	}
 
 	void OpenFile(string fileName, string headSha, string? baseSha)
 	{
@@ -194,50 +234,65 @@ public sealed class ReviewStateStore
 		Save();
 	}
 
-	public IReadOnlyList<StoredComment> Drafts => current?.Drafts ?? [];
+	public IReadOnlyList<StoredComment> Drafts => Review?.Drafts ?? [];
 
 	public void AddDraft(StoredComment draft)
 	{
-		if (current is null)
+		if (Review is not { } review)
 			return;
-		if (current.Drafts is null)
-			current = current with { Drafts = [] };
-		current.Drafts!.Add(draft);
-		Save();
+		if (review.Drafts is null)
+			SetReview(review = review with { Drafts = [] });
+		review.Drafts!.Add(draft);
+		SaveReview();
 	}
 
 	/// <summary>Rewrites a draft's text. Its anchor and the time it was written stay: it is
 	/// the same remark, said better.</summary>
 	public void UpdateDraft(Guid id, string body)
 	{
-		if (current?.Drafts is null)
+		if (Review?.Drafts is not { } drafts)
 			return;
-		int index = current.Drafts.FindIndex(d => d.Id == id);
+		int index = drafts.FindIndex(d => d.Id == id);
 		if (index < 0)
 			return;
-		current.Drafts[index] = current.Drafts[index] with { Body = body };
-		Save();
+		drafts[index] = drafts[index] with { Body = body };
+		SaveReview();
 	}
 
 	public void RemoveDraft(Guid id)
 	{
-		if (current?.Drafts is null)
+		if (Review?.Drafts is not { } drafts)
 			return;
-		current.Drafts.RemoveAll(d => d.Id == id);
-		Save();
+		drafts.RemoveAll(d => d.Id == id);
+		SaveReview();
 	}
 
-	void Save()
+	/// <summary>Replaces the review's record, wherever it is being held.</summary>
+	void SetReview(ReviewStateFile updated)
 	{
-		if (current is null || currentPath is null)
+		if (reviewState is null)
+			current = updated;
+		else
+			reviewState = updated;
+	}
+
+	void Save() => Write(currentPath, current);
+
+	/// <summary>Writes the review's own record, which is a different file from the one open
+	/// while a scope is on.</summary>
+	void SaveReview() => Write(reviewPath ?? currentPath, Review);
+
+	static void Write(string? path, ReviewStateFile? state)
+	{
+		if (state is null || path is null)
 			return;
-		Directory.CreateDirectory(Path.GetDirectoryName(currentPath)!);
+		Directory.CreateDirectory(Path.GetDirectoryName(path)!);
 		// Written beside the file and moved into place: this is rewritten in full on every
 		// toggled flag, and a write interrupted half way leaves JSON that reads as a review
 		// nobody ever started - drafts, depth marks and the previous head with it.
-		string temporary = currentPath + ".tmp";
-		File.WriteAllText(temporary, JsonSerializer.Serialize(current, JsonOptions));
-		File.Move(temporary, currentPath, overwrite: true);
+		string temporary = path + ".tmp";
+		File.WriteAllText(temporary, JsonSerializer.Serialize(state, JsonOptions));
+		File.Move(temporary, path, overwrite: true);
 	}
 
 	static string Sanitize(string key)
