@@ -1345,6 +1345,12 @@ public sealed class ReviewWorkspace(string repoPath, IPullRequestHost host)
 		var open = CaptureOpenDocuments();
 		CloseDocumentsExceptStart();
 		CliLog.Write("action", logLine);
+		// A draft hangs on a line of whatever revision was on screen when it was written, and a
+		// scope changes which revision that is. Re-anchored here by content, before anything
+		// draws a thread or submits one: awaited, because leaving a scope is the last thing a
+		// submission does before posting, and posting a line number belonging to another
+		// revision puts the remark on whatever text now sits at that number.
+		await Comments.ReattachDraftsAsync(sessionCts?.Token ?? CancellationToken.None);
 		ReviewChanged?.Invoke();
 		OpenOverview();
 		await ReopenDocumentsAsync(open);
