@@ -654,10 +654,21 @@ public partial class DiffDocumentView : UserControl, IReviewDocumentView
 	void OnThemeChangedForSemantics(object? sender, EventArgs e)
 	{
 		// The colours were copied into the model when it was built, so a new palette needs
-		// the transfer done again rather than only a repaint.
+		// the transfer done again rather than only a repaint - and from a painter of the new
+		// theme, because a painter keeps the colours of the theme it was made in.
+		if (viewModel is not null)
+			painter = PainterFor(viewModel);
 		ApplySyntaxColors();
 		QueueSemanticsRefresh();
+		// A thread's box is built with its colours in it.
+		RebuildThreads();
 	}
+
+	// One side's text, not the document's: the unified diff interleaves the two, and no
+	// format parses as itself with the lines it used to have spliced back into it.
+	static SyntaxPainter? PainterFor(DiffDocumentViewModel vm) => SyntaxPainter.For(
+		vm.File.Path,
+		() => vm.Model.GetSideText(oldSide: vm.File.Kind == Core.Diff.FileChangeKind.Deleted).Text);
 
 	/// <summary>
 	/// Installs the syntax colours as a colorizer of its own, below the semantic one, instead
@@ -695,11 +706,7 @@ public partial class DiffDocumentView : UserControl, IReviewDocumentView
 		viewsByDocument.AddOrUpdate(vm, this);
 		vm.CaretRequested += OnCaretRequested;
 		model = vm.Model;
-		// One side's text, not the document's: the unified diff interleaves the two, and no
-		// format parses as itself with the lines it used to have spliced back into it.
-		painter = Stampeded.Editor.SyntaxPainter.For(
-			vm.File.Path,
-			() => vm.Model.GetSideText(oldSide: vm.File.Kind == Core.Diff.FileChangeKind.Deleted).Text);
+		painter = PainterFor(vm);
 		Editor.Text = vm.Model.Text;
 		ApplySyntaxColors();
 		// A source view is one blob shown whole - a file opened from the Explorer, a decompiled

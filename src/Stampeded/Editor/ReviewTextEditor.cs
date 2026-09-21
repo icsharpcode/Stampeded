@@ -67,6 +67,10 @@ namespace Stampeded.Editor
 			// Already-painted lines cache their colour decisions; a Redraw discards those
 			// caches and re-runs the colorizer pipeline against the new IsDarkTheme value.
 			TextArea?.TextView?.Redraw();
+			// The margins are visuals of their own beside the text view, and ask for the theme
+			// each time they render: a redraw of the text does not reach them.
+			foreach (var margin in TextArea?.LeftMargins ?? [])
+				margin.InvalidateVisual();
 		}
 
 		protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)

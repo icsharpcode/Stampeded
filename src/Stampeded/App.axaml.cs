@@ -197,6 +197,8 @@ public class App : Application
 
 	public override void OnFrameworkInitializationCompleted()
 	{
+		// Before any window exists, so nothing is built in one theme and repainted in another.
+		Themes.ThemeManager.Current.Load();
 		if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
 		{
 			desktop.MainWindow = new MainWindow();

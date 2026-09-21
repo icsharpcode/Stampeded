@@ -93,6 +93,15 @@
 		<Setter Property="ContentTemplate">
 			<DataTemplate x:CompileBindings="False">
 				<Panel Background="Transparent" ToolTip.Tip="{Binding ToolTip}">
+					<!-- A node's own foreground only where it names one. A binding that answers
+					     null is a text with no brush, and any stand-in for the null is a colour
+					     that stops following the theme - so the rows that name nothing are left
+					     with the foreground they inherit. -->
+					<Panel.Styles>
+						<Style Selector="TextBlock.ownForeground">
+							<Setter Property="Foreground" Value="{Binding Foreground}" />
+						</Style>
+					</Panel.Styles>
 					<!-- Classic tree connector lines, behind the content. -->
 					<ctrl:TreeLines Node="{Binding}" Level="{Binding Level}"
 					                IsVisible="{Binding ShowLines, RelativeSource={RelativeSource AncestorType=tv:SharpTreeView}}" />
@@ -110,7 +119,7 @@
 						       Margin="4,0,6,0" VerticalAlignment="Center" />
 						<TextBlock Text="{Binding Text}" VerticalAlignment="Center"
 						           TextTrimming="CharacterEllipsis"
-						           Foreground="{Binding Foreground, TargetNullValue={DynamicResource ThemeForegroundBrush}}"
+						           Classes.ownForeground="{Binding Foreground, Converter={x:Static ObjectConverters.IsNotNull}}"
 						           Classes.autoloaded="{Binding IsAutoLoaded}"
 						           Classes.nonPublicAPI="{Binding IsNonPublicAPI}" />
 					</StackPanel>

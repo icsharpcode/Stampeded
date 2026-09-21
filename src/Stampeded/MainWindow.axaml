@@ -186,6 +186,13 @@
               <NativeMenuItem Header="Log" CommandParameter="Log" Click="OnShowPane" />
             </NativeMenu>
           </NativeMenuItem>
+          <!-- Keyed by the theme's own name, which is also what the click hands on. -->
+          <NativeMenuItem Header="Theme">
+            <NativeMenu>
+              <NativeMenuItem Header="Light" CommandParameter="Light" Click="OnSetTheme" ToggleType="Radio" />
+              <NativeMenuItem Header="Dark" CommandParameter="Dark" Click="OnSetTheme" ToggleType="Radio" />
+            </NativeMenu>
+          </NativeMenuItem>
           <NativeMenuItemSeparator />
           <NativeMenuItem Header="Zoom In  ( Ctrl++ )" Click="OnZoomIn" />
           <NativeMenuItem Header="Zoom Out  ( Ctrl+- )" Click="OnZoomOut" />

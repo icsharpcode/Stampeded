@@ -4,6 +4,7 @@
              xmlns:dockControls="using:Dock.Avalonia.Controls"
              xmlns:controls="using:Stampeded.Controls"
              xmlns:local="using:Stampeded"
+             xmlns:aeRendering="using:AvaloniaEdit.Rendering"
              x:Class="Stampeded.App"
              Name="Stampeded"
              RequestedThemeVariant="Default">
@@ -20,6 +21,9 @@
         <ResourceDictionary x:Key="Light">
           <SolidColorBrush x:Key="Stampeded.EditorBackground" Color="#FFFFFF" />
           <SolidColorBrush x:Key="Stampeded.EditorSelectionBrush" Color="#007ACC" Opacity="0.3" />
+          <!-- A URL in the code being read. The editor's own default is pure blue, which is
+               1.9:1 on the dark editor background. -->
+          <SolidColorBrush x:Key="Stampeded.LinkForeground" Color="#0066CC" />
           <SolidColorBrush x:Key="Stampeded.TreeFocusFill" Color="#33007ACC" />
           <SolidColorBrush x:Key="Stampeded.TreeFocusBorder" Color="#005A9E" />
           <!-- The ground the window is built on, a shade off the white that content is
@@ -59,6 +63,7 @@
         <ResourceDictionary x:Key="Dark">
           <SolidColorBrush x:Key="Stampeded.EditorBackground" Color="#1E1E1E" />
           <SolidColorBrush x:Key="Stampeded.EditorSelectionBrush" Color="#3794FF" Opacity="0.35" />
+          <SolidColorBrush x:Key="Stampeded.LinkForeground" Color="#4DA6FF" />
           <SolidColorBrush x:Key="Stampeded.TreeFocusFill" Color="#40007ACC" />
           <SolidColorBrush x:Key="Stampeded.TreeFocusBorder" Color="#4A90D9" />
           <SolidColorBrush x:Key="Stampeded.ChromeBackground" Color="#181A1C" />
@@ -96,6 +101,9 @@
     <SimpleTheme />
     <StyleInclude Source="avares://AvaloniaEdit/Themes/Simple/AvaloniaEdit.xaml" />
     <dockTheme:DockSimpleTheme CacheDocumentTabContent="True" />
+    <Style Selector="aeRendering|TextView">
+      <Setter Property="LinkTextForegroundBrush" Value="{DynamicResource Stampeded.LinkForeground}" />
+    </Style>
     <!-- Popups sit in the window's overlay layer, outside the LayoutTransformControl that
          scales its content, so the window zoom never reached them. Scaling their host here
          reaches all of them at once - context menus, tooltips, the comment editor - and from
