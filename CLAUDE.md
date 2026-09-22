@@ -27,6 +27,12 @@ results and coverage, in one Avalonia window. See `README.md` for the pitch.
   one the code-behind reaches carries a key as its `CommandParameter` instead), has no
   `ItemsSource`, and shows a gesture only as text unless `Gesture` is set - which on macOS
   registers a real key equivalent that fires before the focused text box sees the key.
+- **Light and dark are the reader's choice** (View > Theme, kept in `theme.txt`; the desktop's
+  preference only until one is made), and the switch is live. XAML follows the theme variant
+  through `DynamicResource`; whatever is painted from code asks `ThemeManager.IsDarkTheme` per
+  paint and has to be repainted on `ThemeChanged` - and anything *built* with its colours in it
+  (a TextMate painter, a comment box) has to be rebuilt there. `ThemeManager` stays close to
+  ILSpy's, so its dark-mode fixes can be carried over.
 - **CliWrap** for every external process.
 - Target framework `net10.0`. Nullable enabled, implicit usings, `TreatWarningsAsErrors`,
   central package management (a new `PackageReference` needs a `PackageVersion` in

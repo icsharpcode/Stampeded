@@ -29,11 +29,29 @@ public static class Images
 {
 	const string AssetBase = "avares://Stampeded/Assets/Icons/";
 
+	// The icons draw their outlines in #202020, which is the dark theme's background to within
+	// a shade. A stylesheet outranks the fill attribute it contradicts, so the dark theme hands
+	// every icon one that lifts that single colour and leaves the coloured parts alone.
+	const string DarkCss = "[fill=\"#202020\"] { fill: #D4D4D4; } [stroke=\"#202020\"] { stroke: #D4D4D4; }";
+
+	static readonly List<SvgImage> loaded = [];
+
+	static Images()
+	{
+		Themes.ThemeManager.Current.ThemeChanged += (_, _) => {
+			foreach (var image in loaded)
+				image.Css = Themes.ThemeManager.Current.IsDarkTheme ? DarkCss : null;
+		};
+	}
+
 	static IImage LoadSvg(string name)
 	{
-		return new SvgImage {
-			Source = SvgSource.Load(AssetBase + name + ".svg", null)
+		var image = new SvgImage {
+			Source = SvgSource.Load(AssetBase + name + ".svg", null),
+			Css = Themes.ThemeManager.Current.IsDarkTheme ? DarkCss : null,
 		};
+		loaded.Add(image);
+		return image;
 	}
 
 	public static readonly IImage Assembly = LoadSvg(nameof(Assembly));

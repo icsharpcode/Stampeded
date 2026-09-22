@@ -16,7 +16,8 @@ public partial class MainWindow : Window
 	readonly NativeMenuItem recentMenu, buildSolutionMenu, exitItem,
 		nextHunkItem, prevHunkItem, nextUncoveredItem, historyOfSelectionItem,
 		backItem, forwardItem,
-		sideBySideItem, blameItem, multiRowTabsItem, pointerCrossHairItem, debugHereItem;
+		sideBySideItem, blameItem, multiRowTabsItem, pointerCrossHairItem, debugHereItem,
+		lightThemeItem, darkThemeItem;
 
 	public MainWindow()
 	{
@@ -38,6 +39,8 @@ public partial class MainWindow : Window
 		multiRowTabsItem = Named("MultiRowTabsItem");
 		pointerCrossHairItem = Named("PointerCrossHairItem");
 		debugHereItem = Named("DebugHereItem");
+		lightThemeItem = Named("Light");
+		darkThemeItem = Named("Dark");
 		WindowPlacement.Attach(this);
 		DataContext = new MainViewModel();
 		ScreenshotWatcher.Attach(this);
@@ -423,6 +426,14 @@ public partial class MainWindow : Window
 
 	void OnToggleMultiRowTabs(object? s, EventArgs e) => TabRowsPreference.Set(!TabRowsPreference.MultiRow);
 
+	void OnSetTheme(object? s, EventArgs e)
+	{
+		if (s is not NativeMenuItem { CommandParameter: string theme } || theme == Themes.ThemeManager.Current.Theme)
+			return;
+		Themes.ThemeManager.Current.UpdateTheme(theme);
+		Core.Infra.CliLog.Write("action", $"theme: {theme}");
+	}
+
 	/// <summary>Switches the pointer cross-hair on every open view. A debug build only: what it
 	/// draws is a developer's answer to "where does the app think the pointer is", which is the
 	/// first question whenever a tooltip or popup opens somewhere unexpected.</summary>
@@ -481,6 +492,8 @@ public partial class MainWindow : Window
 		var view = View;
 		var file = App.Workspace?.CurrentFile;
 		multiRowTabsItem.IsChecked = TabRowsPreference.MultiRow;
+		lightThemeItem.IsChecked = !Themes.ThemeManager.Current.IsDarkTheme;
+		darkThemeItem.IsChecked = Themes.ThemeManager.Current.IsDarkTheme;
 #if DEBUG
 		pointerCrossHairItem.IsVisible = true;
 		pointerCrossHairItem.IsChecked = Editor.PointerCrossHairRenderer.IsEnabled;

@@ -431,11 +431,7 @@ public partial class SideBySideDocumentView : UserControl, IReviewDocumentView
 		viewModel = vm;
 		vm.CaretRequested += OnCaretRequested;
 		ReviewViews.Register(this);
-		// The side the file still has: a pane's own text carries the filler rows that keep the
-		// two in step, and those are not part of any format.
-		painter = Stampeded.Editor.SyntaxPainter.For(
-			vm.File.Path,
-			() => vm.Pair.GetSideText(oldSide: vm.File.Kind == FileChangeKind.Deleted).Text);
+		painter = PainterFor(vm);
 		rowHeights.Clear();
 		ApplyPair(vm);
 		RebuildThreads();
@@ -498,7 +494,21 @@ public partial class SideBySideDocumentView : UserControl, IReviewDocumentView
 		}
 	}
 
-	void OnThemeChangedForColors(object? sender, EventArgs e) => ApplySyntaxColors();
+	void OnThemeChangedForColors(object? sender, EventArgs e)
+	{
+		// A painter keeps the colours of the theme it was made in, and a thread's box is built
+		// with its colours in it: a repaint alone would show neither in the new theme.
+		if (viewModel is not null)
+			painter = PainterFor(viewModel);
+		ApplySyntaxColors();
+		RebuildThreads();
+	}
+
+	// The side the file still has: a pane's own text carries the filler rows that keep the
+	// two in step, and those are not part of any format.
+	static Stampeded.Editor.SyntaxPainter? PainterFor(SideBySideDocumentViewModel vm) => Stampeded.Editor.SyntaxPainter.For(
+		vm.File.Path,
+		() => vm.Pair.GetSideText(oldSide: vm.File.Kind == FileChangeKind.Deleted).Text);
 
 	void OnCommentsChanged() => Dispatcher.UIThread.Post(RebuildThreads);
 
