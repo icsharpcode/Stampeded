@@ -74,7 +74,7 @@ public sealed class MergeQueueService(GitService git, IPullRequestHost host, str
 	/// the first enqueue is what creates it.</summary>
 	public async Task<MergeQueueSnapshot> ReadAsync(CancellationToken ct = default)
 	{
-		string listing = await Git(ct, "ls-remote", "origin", QueueRef);
+		string listing = await Git(ct, "ls-remote", await git.GetRemoteAsync(ct), QueueRef);
 		string first = listing.ReplaceLineEndings("\n").Split('\n').FirstOrDefault(l => l.Trim().Length > 0) ?? "";
 		if (first.Length == 0)
 			return new MergeQueueSnapshot(null, MergeQueueDocument.Empty);
@@ -82,7 +82,7 @@ public sealed class MergeQueueService(GitService git, IPullRequestHost host, str
 		string sha = first.Split('\t', ' ')[0].Trim();
 		// The ref has to be local before its message can be read, and it is mirrored rather than
 		// merged: the remote state replaces ours whatever ours was.
-		await Git(ct, "fetch", "origin", $"+{QueueRef}:{QueueRef}");
+		await Git(ct, "fetch", await git.GetRemoteAsync(ct), $"+{QueueRef}:{QueueRef}");
 		string commit = await Git(ct, "cat-file", "commit", sha);
 		return new MergeQueueSnapshot(sha, Parse(commit));
 	}
@@ -160,7 +160,7 @@ public sealed class MergeQueueService(GitService git, IPullRequestHost host, str
 			// Mirrored again first rather than trusting whatever the last read left behind: the
 			// change that took the entry out may be the one this clone has not seen, and asking
 			// only when something has actually gone missing makes this a rare command.
-			await Git(ct, "fetch", "origin", $"+{QueueRef}:{QueueRef}");
+			await Git(ct, "fetch", await git.GetRemoteAsync(ct), $"+{QueueRef}:{QueueRef}");
 			log = await Git(ct, "log", "--format=%s", $"-{HistoryDepth}", QueueRef);
 		}
 		catch (ToolFailedException)
@@ -437,7 +437,7 @@ public sealed class MergeQueueService(GitService git, IPullRequestHost host, str
 		string commit = (await Git(ct, args)).Trim();
 		// No --force and no lease: a queue state that does not descend from the one on the
 		// remote is exactly what must not be published, and that is what git already refuses.
-		await Git(ct, "push", "origin", $"{commit}:{QueueRef}");
+		await Git(ct, "push", await git.GetRemoteAsync(ct), $"{commit}:{QueueRef}");
 	}
 
 	/// <summary>Whether a rejected push was somebody else's write landing first. Asking the ref

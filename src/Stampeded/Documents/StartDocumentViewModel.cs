@@ -138,7 +138,7 @@ public sealed partial class StartState : ObservableObject
 	[ObservableProperty]
 	bool refsLoading;
 
-	/// <summary>Why the ref list is empty, when it is.</summary>
+	/// <summary>Why the ref list is empty, or its merge and ahead labels are missing, when they are.</summary>
 	[ObservableProperty]
 	string refsStatus = "";
 
@@ -276,20 +276,22 @@ public class StartDocumentViewModel : Document
 		State.RefsLoading = true;
 		try
 		{
-			defaultBranch = await workspace.GetDefaultBranchAsync();
-			defaultBase = await workspace.GetDefaultBaseAsync();
+			// What is local first: a clone whose remote cannot be told still has branches to
+			// list, and only the labels measured against the remote's default branch are lost.
 			rawBranches = await workspace.Git.ListBranchesAsync();
 			rawStashes = await workspace.Git.ListStashesAsync();
-			mergedBranches = await workspace.Git.ListMergedBranchesAsync(defaultBase);
-			aheadByBranch = await workspace.Git.GetAheadCountsAsync(defaultBase);
 			worktreeByBranch = (await workspace.Git.ListWorktreesAsync())
 				.Where(w => w.Branch is not null)
 				.ToDictionary(w => w.Branch!, w => w.Path, StringComparer.Ordinal);
+			defaultBranch = await workspace.GetDefaultBranchAsync();
+			defaultBase = await workspace.GetDefaultBaseAsync();
+			mergedBranches = await workspace.Git.ListMergedBranchesAsync(defaultBase);
+			aheadByBranch = await workspace.Git.GetAheadCountsAsync(defaultBase);
 		}
 		catch (ToolFailedException ex)
 		{
-			// Not a repo, or no origin to ask about the default branch: the list is empty, and
-			// saying why beats an empty box.
+			// Not a repo, or no remote to ask about the default branch: saying why beats an
+			// empty box, or a list whose labels are silently missing.
 			State.RefsStatus = ExternalTool.Explain(ex);
 		}
 		finally
@@ -327,7 +329,7 @@ public class StartDocumentViewModel : Document
 		{
 			State.RefsLoading = false;
 			// In the finally, not after the reload: reading the refs is what fails in a clone
-			// with no origin, and a half-finished operation is exactly the thing still worth
+			// with no remote, and a half-finished operation is exactly the thing still worth
 			// reporting when the rest of the page could not be built.
 			await RefreshInProgressAsync();
 		}
@@ -339,16 +341,21 @@ public class StartDocumentViewModel : Document
 		rawStashes = await workspace.Git.ListStashesAsync();
 		try
 		{
-			mergedBranches = await workspace.Git.ListMergedBranchesAsync(defaultBase);
-			aheadByBranch = await workspace.Git.GetAheadCountsAsync(defaultBase);
 			worktreeByBranch = (await workspace.Git.ListWorktreesAsync())
 				.Where(w => w.Branch is not null)
 				.ToDictionary(w => w.Branch!, w => w.Path, StringComparer.Ordinal);
+			// Asked again rather than kept from the first load: a remote that could not be told
+			// then may have been configured since.
+			defaultBase = await workspace.GetDefaultBaseAsync();
+			mergedBranches = await workspace.Git.ListMergedBranchesAsync(defaultBase);
+			aheadByBranch = await workspace.Git.GetAheadCountsAsync(defaultBase);
+			State.RefsStatus = "";
 		}
-		catch (ToolFailedException)
+		catch (ToolFailedException ex)
 		{
-			// No origin, or the default base is not fetched: the labels stay off rather than
-			// the whole list failing to reload.
+			// No remote, or the default base is not fetched: the labels stay off rather than
+			// the whole list failing to reload, and the reason is shown above the list.
+			State.RefsStatus = ExternalTool.Explain(ex);
 		}
 		AnnotateBranches();
 	}
@@ -608,14 +615,16 @@ public class StartDocumentViewModel : Document
 
 		async Task FetchAsync()
 		{
-			State.Status = "Fetching from origin...";
+			State.Status = "Fetching...";
 			try
 			{
+				string remote = await workspace.Git.GetRemoteAsync();
+				State.Status = $"Fetching from {remote}...";
 				await workspace.Git.FetchAsync();
 				syncByBranch.Clear();
 				await ReloadRefsAsync();
 				await PrList.LoadAsync();
-				State.Status = "Fetched from origin.";
+				State.Status = $"Fetched from {remote}.";
 			}
 			catch (ToolFailedException ex)
 			{
@@ -624,10 +633,10 @@ public class StartDocumentViewModel : Document
 		}
 	}
 
-	/// <summary>Brings origin's copy of a branch in: creates it locally when it is not there
+	/// <summary>Brings the remote's copy of a branch in: creates it locally when it is not there
 	/// yet, fast-forwards it when it is behind. Diverged branches are left alone - that is
 	/// what the rebase command is for.</summary>
-	/// <summary>Pulls the branch a pull request is from. A fork's branch is not on origin,
+	/// <summary>Pulls the branch a pull request is from. A fork's branch is not on the remote,
 	/// and a local branch of that name is somebody else's branch entirely.</summary>
 	public void PullPrBranch(PrSummary pr)
 	{
@@ -646,17 +655,19 @@ public class StartDocumentViewModel : Document
 
 		async Task PullAsync()
 		{
-			State.Status = $"Pulling {branch} from origin...";
+			State.Status = $"Pulling {branch}...";
 			try
 			{
+				string remote = await workspace.Git.GetRemoteAsync();
+				State.Status = $"Pulling {branch} from {remote}...";
 				var result = await workspace.Git.PullBranchAsync(branch);
 				syncByBranch.Remove(branch);
 				await ReloadRefsAsync();
 				State.Status = result.Outcome switch {
-					PullOutcome.Created => $"Created {branch} at origin's {result.Sha[..9]}.",
+					PullOutcome.Created => $"Created {branch} at {remote}'s {result.Sha[..9]}.",
 					PullOutcome.FastForwarded => $"Fast-forwarded {branch} to {result.Sha[..9]}.",
 					PullOutcome.AlreadyUpToDate => $"{branch} is already up to date.",
-					_ => $"{branch} has diverged from origin's copy - nothing changed. "
+					_ => $"{branch} has diverged from {remote}'s copy - nothing changed. "
 						+ "Rebase it instead, or reset it if the local commits are expendable.",
 				};
 			}
@@ -868,7 +879,7 @@ public class StartDocumentViewModel : Document
 			PullBranch(row.Info.Name);
 	}
 
-	/// <summary>Pushes a branch to origin, replacing origin's copy with --force-with-lease
+	/// <summary>Pushes a branch to the remote, replacing the remote's copy with --force-with-lease
 	/// when the two have diverged, which is what a rebase leaves behind.</summary>
 	public void PushBranch(string branch)
 	{
@@ -876,9 +887,12 @@ public class StartDocumentViewModel : Document
 
 		async Task PushAsync()
 		{
-			State.Status = $"Pushing {branch} to origin...";
+			State.Status = $"Pushing {branch}...";
+			string remote = "the remote";
 			try
 			{
+				remote = await workspace.Git.GetRemoteAsync();
+				State.Status = $"Pushing {branch} to {remote}...";
 				var result = await workspace.Git.PushBranchAsync(branch);
 				syncByBranch.Remove(branch);
 				await ReloadRefsAsync();
@@ -888,16 +902,16 @@ public class StartDocumentViewModel : Document
 				// else happened to re-read the list.
 				await PrList.LoadAsync();
 				State.Status = result.Outcome switch {
-					PushOutcome.Created => $"Pushed {branch} to origin, which did not have it before.",
-					PushOutcome.Pushed => $"Pushed {branch} to origin ({result.Sha[..9]}).",
-					PushOutcome.ForcePushed => $"Force-pushed {branch} to origin ({result.Sha[..9]}); "
-						+ "the branches had diverged, so origin's copy was replaced.",
-					_ => $"origin is already at {branch} ({result.Sha[..9]}).",
+					PushOutcome.Created => $"Pushed {branch} to {remote}, which did not have it before.",
+					PushOutcome.Pushed => $"Pushed {branch} to {remote} ({result.Sha[..9]}).",
+					PushOutcome.ForcePushed => $"Force-pushed {branch} to {remote} ({result.Sha[..9]}); "
+						+ $"the branches had diverged, so {remote}'s copy was replaced.",
+					_ => $"{remote} is already at {branch} ({result.Sha[..9]}).",
 				};
 			}
 			catch (ToolFailedException ex)
 			{
-				State.Status = $"Push of {branch} failed, origin unchanged: {ExternalTool.Explain(ex)}";
+				State.Status = $"Push of {branch} failed, {remote} unchanged: {ExternalTool.Explain(ex)}";
 			}
 		}
 	}

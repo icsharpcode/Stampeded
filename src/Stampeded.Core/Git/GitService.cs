@@ -161,6 +161,76 @@ public sealed class GitService(string repoPath)
 	Task<string> RunAsync(CancellationToken ct, params string[] args)
 		=> ExternalTool.RunAsync("git", args, repoPath, ct);
 
+	Task<string>? remote;
+
+	/// <summary>
+	/// The remote this tool fetches from and pushes to. Asked once per service: a clone does
+	/// not rename its remotes while it is being reviewed. Throws <see cref="ToolFailedException"/>
+	/// with a sentence a status line can show when there is no remote, or several and nothing
+	/// says which one is meant - guessing there would fetch from and push to the wrong place.
+	/// </summary>
+	public Task<string> GetRemoteAsync(CancellationToken ct = default)
+	{
+		// A failed answer is not kept: the reader may add the remote or set the config the
+		// message asks for, and the next attempt should see it.
+		if (remote is { IsFaulted: true } or { IsCanceled: true })
+			remote = null;
+		return remote ??= ResolveRemoteAsync(ct);
+	}
+
+	async Task<string> ResolveRemoteAsync(CancellationToken ct)
+	{
+		var remotes = (await RunAsync(ct, "remote")).ReplaceLineEndings("\n")
+			.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+		string? defaultRemote = await ConfigAsync("checkout.defaultRemote", ct);
+		string? headRemote = null;
+		// Exit 1 is a detached HEAD, which tracks nothing.
+		string head = (await ExternalTool.RunAsync("git", ["symbolic-ref", "--quiet", "--short", "HEAD"], repoPath, ct,
+			okExitCodes: [1])).Trim();
+		if (head.Length > 0)
+			headRemote = await ConfigAsync($"branch.{head}.remote", ct);
+		if (ChooseRemote(remotes, defaultRemote, headRemote) is { } chosen)
+		{
+			if (chosen != "origin")
+				CliLog.Write("git", $"using remote '{chosen}'");
+			return chosen;
+		}
+		string reason = remotes.Length == 0
+			? "This repository has no git remote to fetch from. Add one with: git remote add origin <url>"
+			: $"This repository has remotes {string.Join(", ", remotes)} and none is named origin. "
+				+ "Say which one to use with: git config checkout.defaultRemote <name>";
+		CliLog.Write("git", reason);
+		throw new ToolFailedException("git", -1, reason);
+	}
+
+	/// <summary>A git config value, or null when it is not set - which git answers with exit 1.</summary>
+	async Task<string?> ConfigAsync(string key, CancellationToken ct)
+		=> (await ExternalTool.RunAsync("git", ["config", "--get", key], repoPath, ct, okExitCodes: [1])).Trim()
+			is { Length: > 0 } value ? value : null;
+
+	/// <summary>
+	/// Which of a clone's remotes is the one meant. git's own <c>checkout.defaultRemote</c> is
+	/// asked first, because it is the reader saying so; then origin, which is what a clone
+	/// calls the place it came from; then the only remote there is; then the remote the
+	/// checked-out branch tracks. Null when none of these names a remote that exists.
+	/// </summary>
+	public static string? ChooseRemote(IReadOnlyList<string> remotes, string? defaultRemote, string? headRemote)
+	{
+		if (defaultRemote is not null && remotes.Contains(defaultRemote))
+			return defaultRemote;
+		if (remotes.Contains("origin"))
+			return "origin";
+		if (remotes.Count == 1)
+			return remotes[0];
+		if (headRemote is not null && remotes.Contains(headRemote))
+			return headRemote;
+		return null;
+	}
+
+	/// <summary>The remote-tracking ref for a branch: origin/main, or whatever the remote is called.</summary>
+	public async Task<string> RemoteBranchAsync(string branch, CancellationToken ct = default)
+		=> $"{await GetRemoteAsync(ct)}/{branch}";
+
 	public async Task<bool> IsRepositoryAsync(CancellationToken ct = default)
 	{
 		try
@@ -247,23 +317,23 @@ public sealed class GitService(string repoPath)
 			await RunAsync(ct, "update-ref", $"refs/stampeded/review/{key}/prev", previousHead);
 	}
 
-	/// <summary>Updates the remote-tracking refs for every branch on origin. Sync states are
+	/// <summary>Updates the remote-tracking refs for every branch on the remote. Sync states are
 	/// computed against commits that have to be in the object database, so a branch whose PR
 	/// head was never fetched reads as "differs" until this has run.</summary>
-	public Task FetchAsync(CancellationToken ct = default)
-		=> RunAsync(ct, "fetch", "origin");
+	public async Task FetchAsync(CancellationToken ct = default)
+		=> await RunAsync(ct, "fetch", await GetRemoteAsync(ct));
 
 	/// <summary>Fetches the PR head into refs/stampeded/pr/N and returns its SHA. The refspec
 	/// comes from the host: GitHub advertises every pull request's head as a ref of its own,
 	/// Azure DevOps does not and the source branch is fetched instead.</summary>
 	public async Task<string> FetchPrHeadAsync(string refspec, int number, CancellationToken ct = default)
 	{
-		await RunAsync(ct, "fetch", "origin", refspec);
+		await RunAsync(ct, "fetch", await GetRemoteAsync(ct), refspec);
 		return (await RunAsync(ct, "rev-parse", $"refs/stampeded/pr/{number}")).Trim();
 	}
 
-	public Task FetchBranchAsync(string branch, CancellationToken ct = default)
-		=> RunAsync(ct, "fetch", "origin", branch);
+	public async Task FetchBranchAsync(string branch, CancellationToken ct = default)
+		=> await RunAsync(ct, "fetch", await GetRemoteAsync(ct), branch);
 
 	public async Task<IReadOnlyList<FileDiff>> DiffAsync(string baseRev, string headRev, CancellationToken ct = default)
 		=> GitDiffParser.Parse(await RunAsync(ct, "diff", "-U3", "--find-renames", baseRev, headRev));
@@ -885,16 +955,17 @@ public sealed class GitService(string repoPath)
 	public async Task<PushResult> PushBranchAsync(string branch, CancellationToken ct = default)
 	{
 		string local = await RevParseAsync($"refs/heads/{branch}", ct);
-		string? remote = await TryRevParseAsync($"refs/remotes/origin/{branch}", ct);
-		if (remote is not null && string.Equals(remote, local, StringComparison.OrdinalIgnoreCase))
+		string name = await GetRemoteAsync(ct);
+		string? pushed = await TryRevParseAsync($"refs/remotes/{name}/{branch}", ct);
+		if (pushed is not null && string.Equals(pushed, local, StringComparison.OrdinalIgnoreCase))
 			return new PushResult(PushOutcome.AlreadyUpToDate, local);
-		bool fastForward = remote is null || await GetMergeBaseAsync(remote, local, ct) == remote;
+		bool fastForward = pushed is null || await GetMergeBaseAsync(pushed, local, ct) == pushed;
 		if (fastForward)
-			await RunAsync(ct, "push", "origin", branch);
+			await RunAsync(ct, "push", name, branch);
 		else
-			await RunAsync(ct, "push", "--force-with-lease", "origin", branch);
+			await RunAsync(ct, "push", "--force-with-lease", name, branch);
 		return new PushResult(
-			remote is null ? PushOutcome.Created : fastForward ? PushOutcome.Pushed : PushOutcome.ForcePushed,
+			pushed is null ? PushOutcome.Created : fastForward ? PushOutcome.Pushed : PushOutcome.ForcePushed,
 			local);
 	}
 
@@ -1030,15 +1101,15 @@ public sealed class GitService(string repoPath)
 		}
 	}
 
-	/// <summary>The account origin belongs to on GitHub, or null when origin is missing or is
-	/// not a GitHub remote. This is who the local branches belong to: they are pushed to
-	/// origin, so a pull request whose head repository has another owner is from a fork and
-	/// names a branch that is not one of these.</summary>
+	/// <summary>The account the remote belongs to on GitHub, or null when there is no remote or
+	/// it is not a GitHub one. This is who the local branches belong to: they are pushed to
+	/// that remote, so a pull request whose head repository has another owner is from a fork
+	/// and names a branch that is not one of these.</summary>
 	public async Task<string?> GetOriginOwnerAsync(CancellationToken ct = default)
 	{
 		try
 		{
-			string url = (await RunAsync(ct, "remote", "get-url", "origin")).Trim();
+			string url = (await RunAsync(ct, "remote", "get-url", await GetRemoteAsync(ct))).Trim();
 			return GitHub.GitHubUrl.TryParse(url, out string owner, out _, out _) ? owner : null;
 		}
 		catch (Infra.ToolFailedException)
@@ -1047,17 +1118,18 @@ public sealed class GitService(string repoPath)
 		}
 	}
 
-	/// <summary>The review base for local branches: origin's default branch when known,
-	/// else origin/master.</summary>
+	/// <summary>The review base for local branches: the remote's default branch when known,
+	/// else its master.</summary>
 	public async Task<string> GetDefaultBaseAsync(CancellationToken ct = default)
 	{
+		string name = await GetRemoteAsync(ct);
 		try
 		{
-			return (await RunAsync(ct, "rev-parse", "--abbrev-ref", "origin/HEAD")).Trim();
+			return (await RunAsync(ct, "rev-parse", "--abbrev-ref", $"{name}/HEAD")).Trim();
 		}
 		catch (Infra.ToolFailedException)
 		{
-			return "origin/master";
+			return $"{name}/master";
 		}
 	}
 }
