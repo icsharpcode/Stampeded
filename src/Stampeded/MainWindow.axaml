@@ -242,7 +242,17 @@
         <Border Background="{DynamicResource ThemeBackgroundBrush}" CornerRadius="6" Padding="18,14"
                 MaxWidth="560" HorizontalAlignment="Center" VerticalAlignment="Center"
                 BorderBrush="#3794FF" BorderThickness="1">
-          <StackPanel Spacing="6">
+          <Panel>
+          <!-- What a failed open leaves in place of the checklist, until it is dismissed. -->
+          <StackPanel Spacing="10" IsVisible="{Binding StartPage.State.PrepareFailed, FallbackValue=False}">
+            <TextBlock FontWeight="SemiBold" FontSize="14" Foreground="#F85149"
+                       Text="The review could not be opened" />
+            <SelectableTextBlock Text="{Binding StartPage.State.PrepareError}" TextWrapping="Wrap" FontSize="13" />
+            <TextBlock Text="Nothing was opened. The Log pane has the command that failed."
+                       Opacity="0.7" FontSize="12" TextWrapping="Wrap" />
+            <Button Content="Close" Click="OnDismissPrepareError" HorizontalAlignment="Right" />
+          </StackPanel>
+          <StackPanel Spacing="6" IsVisible="{Binding !StartPage.State.PrepareFailed, FallbackValue=True}">
             <StackPanel Orientation="Horizontal" Spacing="12">
               <TextBlock FontWeight="SemiBold" FontSize="14" Text="Preparing the review workspace" />
               <controls:WaveSpinner SquareSize="7" VerticalAlignment="Center" />
@@ -266,6 +276,7 @@
             <Button Content="Continue now" Click="OnContinueFromPrepare" HorizontalAlignment="Right"
                     ToolTip.Tip="Start assessing without waiting; loading continues in the background" />
           </StackPanel>
+          </Panel>
         </Border>
       </Border>
     </Panel>

@@ -399,14 +399,17 @@ public sealed class ReviewWorkspace(string repoPath, IPullRequestHost host)
 		}
 		string headSha = await ResolveAsync(headRef, ct);
 		string baseSha = await Git.GetMergeBaseAsync(await ResolveAsync(baseRef, ct), headSha, ct);
-		DirtyWorktreePath = await FindDirtyCheckoutAsync(headRef, ct);
+		// Nothing of the review on screen is touched until the change has been read, so an open
+		// that fails up to here leaves that review exactly as it was.
+		string? dirty = await FindDirtyCheckoutAsync(headRef, ct);
 		var committed = await Git.DiffAsync(baseSha, headSha, ct);
-		var files = DirtyWorktreePath is { } dirty
+		var files = dirty is not null
 			? await Git.DiffWorkingTreeAsync(dirty, baseSha, ct)
 			: committed;
-		UncommittedFileCount = Math.Max(0, files.Count - committed.Count);
 		ct.ThrowIfCancellationRequested();
 
+		DirtyWorktreePath = dirty;
+		UncommittedFileCount = Math.Max(0, files.Count - committed.Count);
 		Scopes.Reset();
 		Reviewers = null;
 		CurrentPr = detail;
@@ -422,9 +425,17 @@ public sealed class ReviewWorkspace(string repoPath, IPullRequestHost host)
 		Files = files;
 		changed = ChangedLines.From(files);
 		ReviewReset?.Invoke();
-		Store.OpenLocal(Path.GetFileName(RepoPath), $"{baseRef}..{headRef}", headSha, baseSha);
-		await ApplyReReviewCarryOverAsync(ct);
-		await PinReviewHeadsAsync(ct);
+		try
+		{
+			Store.OpenLocal(Path.GetFileName(RepoPath), $"{baseRef}..{headRef}", headSha, baseSha);
+			await ApplyReReviewCarryOverAsync(ct);
+			await PinReviewHeadsAsync(ct);
+		}
+		catch (Exception ex) when (ex is not OperationCanceledException)
+		{
+			AbandonHalfOpenedReview();
+			throw;
+		}
 		ComputeChurnAsync().HandleExceptions();
 		history.Clear();
 		CloseDocumentsExceptStart();
@@ -459,9 +470,9 @@ public sealed class ReviewWorkspace(string repoPath, IPullRequestHost host)
 		CliLog.Write("action", $"open PR #{number}");
 		PrDetail detail;
 		string headSha, baseSha;
-		Offline = false;
-		OfflineSince = null;
-		snapshot = null;
+		// Held here until the change has been read: an open that fails before that leaves the
+		// review that was on screen exactly as it was, including what it says about being offline.
+		PrSnapshot? openedFrom = null;
 		try
 		{
 			detail = await Host.GetPrAsync(number, ct);
@@ -480,15 +491,16 @@ public sealed class ReviewWorkspace(string repoPath, IPullRequestHost host)
 			detail = cached.Detail;
 			headSha = cached.HeadSha;
 			baseSha = cached.BaseSha;
-			Offline = true;
-			OfflineSince = cached.TakenAt;
-			snapshot = cached;
+			openedFrom = cached;
 		}
-		DirtyWorktreePath = null;
-		UncommittedFileCount = 0;
 		var files = await Git.DiffAsync(baseSha, headSha, ct);
 		ct.ThrowIfCancellationRequested();
 
+		DirtyWorktreePath = null;
+		UncommittedFileCount = 0;
+		Offline = openedFrom is not null;
+		OfflineSince = openedFrom?.TakenAt;
+		snapshot = openedFrom;
 		Scopes.Reset();
 		Reviewers = null;
 		CurrentPr = detail;
@@ -499,9 +511,17 @@ public sealed class ReviewWorkspace(string repoPath, IPullRequestHost host)
 		Files = files;
 		changed = ChangedLines.From(files);
 		ReviewReset?.Invoke();
-		Store.Open(Path.GetFileName(RepoPath), number, headSha, baseSha);
-		await ApplyReReviewCarryOverAsync(ct);
-		await PinReviewHeadsAsync(ct);
+		try
+		{
+			Store.Open(Path.GetFileName(RepoPath), number, headSha, baseSha);
+			await ApplyReReviewCarryOverAsync(ct);
+			await PinReviewHeadsAsync(ct);
+		}
+		catch (Exception ex) when (ex is not OperationCanceledException)
+		{
+			AbandonHalfOpenedReview();
+			throw;
+		}
 		ComputeChurnAsync().HandleExceptions();
 		history.Clear();
 		CloseDocumentsExceptStart();
@@ -1741,6 +1761,18 @@ public sealed class ReviewWorkspace(string repoPath, IPullRequestHost host)
 		CoverageChanged?.Invoke();
 		ChecksLoaded?.Invoke();
 		CliLog.Write("action", "review closed");
+	}
+
+	/// <summary>
+	/// The way out of an open that failed after the review's state was already replaced. The
+	/// review that was there is gone and the new one is not whole - commits named, nothing
+	/// loaded behind them - so neither can be left on screen. Closing is the one state that
+	/// describes what the reader has: no review, and the start page to pick one from.
+	/// </summary>
+	void AbandonHalfOpenedReview()
+	{
+		CliLog.Write("action", "open failed part-way; closing what it left behind");
+		CloseReview();
 	}
 
 	/// <summary>What was open before a scope switch or a reload rebuilt the review, so it can
