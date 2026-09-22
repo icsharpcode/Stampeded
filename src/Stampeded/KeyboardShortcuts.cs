@@ -31,6 +31,7 @@ static class KeyboardShortcuts
 		  Alt+Left             back
 		  Alt+Right            forward
 		  b                    blame margin on or off
+		  m                    render the markdown file in front, in a tab of its own
 		  Esc                  clear highlighted occurrences
 
 		Saying something

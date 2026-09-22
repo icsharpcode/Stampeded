@@ -47,6 +47,11 @@ public sealed class FileEntry(FileDiff file, bool viewed) : ObservableObject
 	/// <summary>"new!" when the latest push touched this file after it was last reviewed.</summary>
 	public string SinceBadge { get; init; } = "";
 
+	/// <summary>"binary" or "no lines" for a file the diff has nothing to show for. It stands
+	/// where the line counts would, which is otherwise empty for such a file and reads as a
+	/// change of no size rather than one with nothing to read.</summary>
+	public string NoDiffBadge { get; init; } = "";
+
 	/// <summary>How much of the file changed, the way the diff counts it. The size of a file's
 	/// change is what a reader picks the next one by, and the list was the one place that said
 	/// only which files, not how much of them.</summary>
@@ -194,6 +199,7 @@ public class PrFilesPaneViewModel : Tool
 				CommentBadge = badge,
 				CommentsSettled = settled,
 				SinceBadge = markTouched && workspace.IsTouchedSinceLastPass(file.Path) ? "new!" : "",
+				NoDiffBadge = Core.Diff.NoTextualDiff.Badge(file),
 			};
 			entry.PropertyChanged += OnEntryChanged;
 			Files.Add(entry);

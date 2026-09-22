@@ -17,6 +17,7 @@ public class ViewLocator : IDataTemplate
 		[typeof(DiffDocumentViewModel)] = () => new Documents.DiffDocumentView(),
 		[typeof(SideBySideDocumentViewModel)] = () => new Documents.SideBySideDocumentView(),
 		[typeof(TextDocumentViewModel)] = () => new Documents.TextDocumentView(),
+		[typeof(MarkdownDocumentViewModel)] = () => new Documents.MarkdownDocumentView(),
 		[typeof(StartDocumentViewModel)] = () => new Documents.StartDocumentView(),
 		[typeof(OverviewDocumentViewModel)] = () => new Documents.OverviewDocumentView(),
 		[typeof(ReviewDocumentViewModel)] = () => new Documents.ReviewDocumentView(),

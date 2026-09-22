@@ -1,0 +1,10 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:md="https://github.com/whistyun/Markdown.Avalonia"
+             xmlns:documents="using:Stampeded.Documents"
+             x:Class="Stampeded.Documents.MarkdownDocumentView"
+             x:DataType="documents:MarkdownDocumentViewModel">
+  <!-- The renderer brings its own scrolling, so this is the page's one scroll region - the
+       same arrangement the overview's description uses. -->
+  <md:MarkdownScrollViewer x:Name="Rendered" Markdown="{Binding Text}" Padding="12,8" />
+</UserControl>

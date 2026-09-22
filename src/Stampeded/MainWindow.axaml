@@ -162,6 +162,12 @@
                           ToggleType="CheckBox"
                           ToolTip="Read every change as two panes instead of one interleaved document" />
           <NativeMenuItem Header="Blame Margin  ( b )" CommandParameter="BlameItem" Click="OnToggleBlame" ToggleType="CheckBox" />
+          <!-- A tab of its own rather than a mode of the diff: the diff shows the source, and a
+               document is reviewed for both. Enabled only where there is something to render,
+               which the menu can see only as it opens. -->
+          <NativeMenuItem Header="Markdown Preview  ( m )" CommandParameter="MarkdownPreviewItem"
+                          Click="OnMarkdownPreview"
+                          ToolTip="Render the file in front as markdown, beside its diff" />
           <NativeMenuItem Header="Document Tabs in Several Rows" CommandParameter="MultiRowTabsItem"
                           Click="OnToggleMultiRowTabs" ToggleType="CheckBox" />
           <!-- Hidden outside a debug build, where the renderer behind it does not exist. -->

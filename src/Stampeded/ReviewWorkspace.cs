@@ -771,6 +771,11 @@ public sealed class ReviewWorkspace(string repoPath, IPullRequestHost host)
 			return ShowDiffDocument(file, ReadOrEmpty(generated.BaseFile), ReadOrEmpty(generated.HeadFile));
 		if (BaseSha is null || HeadSha is null)
 			return null;
+		// A binary file, or one that changed without its lines changing, has nothing to draw.
+		// Built as a diff of two empty sides it opened as a blank document, which reads as a
+		// tool that failed rather than as a file with nothing in it to read.
+		if (NoTextualDiff.Applies(file))
+			return await ShowNoTextualDiffAsync(file, record);
 		string oldText = "";
 		if (file.Kind != FileChangeKind.Added && !file.IsBinary)
 		{
@@ -799,6 +804,84 @@ public sealed class ReviewWorkspace(string repoPath, IPullRequestHost host)
 		return document;
 
 		static string ReadOrEmpty(string? path) => path is null ? "" : File.ReadAllText(path);
+	}
+
+	/// <summary>
+	/// The page a file with no lines opens as: what kind of nothing it is, and for a binary one
+	/// how the two sides compare in size, which is the only thing a review can say about it.
+	///
+	/// It takes the file's own tab and carries the file's own path, so it is a file of the
+	/// review like any other: it can be marked viewed, stepped past, and commented on where the
+	/// host allows one.
+	/// </summary>
+	async Task<Documents.IDiffDocument?> ShowNoTextualDiffAsync(FileDiff file, bool record)
+	{
+		long? baseSize = file.Kind == FileChangeKind.Added || BaseSha is not { } baseSha
+			? null
+			: await Git.BlobSizeAsync(baseSha, file.OldPath);
+		long? headSize = file.Kind == FileChangeKind.Deleted || HeadSha is not { } headSha
+			? null
+			: await Git.BlobSizeAsync(headSha, file.NewPath);
+		string described = NoTextualDiff.Describe(file, baseSize, headSize);
+		CliLog.Write("review", $"{file.Path}: {NoTextualDiff.Badge(file)}, nothing to diff");
+		var document = ShowDocument("diff:" + file.Path, () => {
+			var page = Stampeded.Documents.DiffDocumentViewModel.ForSource(file.Path, described);
+			page.Title = Path.GetFileName(file.Path);
+			page.TabTooltipOverride = file.Path + " - " + NoTextualDiff.Badge(file);
+			return page;
+		});
+		if (record && document is not null)
+			RecordArrival("diff:" + file.Path);
+		return document;
+	}
+
+	/// <summary>Whether a path is markdown, and so has a rendering worth looking at beside its
+	/// source.</summary>
+	public static bool IsMarkdown(string path) => MarkdownExtensions.Contains(Path.GetExtension(path));
+
+	static readonly IReadOnlySet<string> MarkdownExtensions =
+		new HashSet<string>(StringComparer.OrdinalIgnoreCase) { ".md", ".markdown" };
+
+	/// <summary>
+	/// Opens the rendered form of a markdown file beside its diff. A change to a README or a
+	/// document is read for what it will look like as much as for what it says, and the diff
+	/// shows the source - so the preview is a tab of its own rather than a mode of the diff,
+	/// and both can be open at once.
+	///
+	/// The head side, because that is what the change produces; the base side for a file the
+	/// change deletes, which has no head side to render.
+	/// </summary>
+	public async Task OpenMarkdownPreviewAsync(FileDiff? file = null)
+	{
+		if ((file ?? CurrentFile) is not { } target)
+		{
+			StatusMessage?.Invoke("No file is open to preview.");
+			return;
+		}
+		if (!IsMarkdown(target.Path))
+		{
+			StatusMessage?.Invoke($"{Path.GetFileName(target.Path)} is not markdown, so there is nothing to render.");
+			return;
+		}
+		bool oldSide = target.Kind == FileChangeKind.Deleted;
+		string? text = oldSide
+			? BaseSha is { } baseSha ? await Blobs.ReadAsync(baseSha, target.OldPath) : null
+			: await ReadHeadFileAsync(target.NewPath);
+		if (text is null)
+		{
+			StatusMessage?.Invoke($"{target.Path} is not in the {(oldSide ? "base" : "head")} revision.");
+			return;
+		}
+		string id = "md:" + target.Path;
+		// Rendered from the revision on screen, so a preview left open while the scope moves
+		// under it would be showing another revision's text under this one's name.
+		if (Factory is not null && Documents?.VisibleDockables?.FirstOrDefault(d => d.Id == id) is { } stale)
+			Factory.CloseDockable(stale);
+		ShowDocument(id, () => new Stampeded.Documents.MarkdownDocumentViewModel(text) {
+			Title = Path.GetFileName(target.Path) + (oldSide ? " (preview @ base)" : " (preview)"),
+			TabTooltip = target.Path + " rendered",
+		});
+		CliLog.Write("action", $"markdown preview {target.Path}{(oldSide ? " (base)" : "")}");
 	}
 
 	/// <summary>The head side of a file whose earlier version cannot be read, as a source view:
