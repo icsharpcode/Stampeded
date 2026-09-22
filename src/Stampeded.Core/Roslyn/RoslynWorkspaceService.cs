@@ -372,55 +372,11 @@ public sealed class RoslynWorkspaceService : ISemanticProvider, IDecompileTarget
 		return documentsByPath.TryGetValue(absolutePath, out var id) ? solution.GetDocument(id) : null;
 	}
 
-	/// <summary>
-	/// Absolute path of a repo-relative one. Git speaks forward slashes on every platform and
-	/// Path.Combine only inserts a separator without touching the ones already there, so on
-	/// Windows the result would keep "src/Foo.cs" while the document index is keyed on what
-	/// Roslyn reports, "src\Foo.cs" - and every lookup would miss, taking the whole semantic
-	/// layer down with it. GetFullPath normalises; elsewhere it changes nothing.
-	/// </summary>
 	public string ToAbsolutePath(string repoRelativePath)
-		=> Path.GetFullPath(Path.Combine(worktreePath, repoRelativePath));
+		=> WorkspacePaths.ToAbsolute(worktreePath, repoRelativePath);
 
-	/// <summary>
-	/// The worktree-relative form of an absolute path, or null for a path outside the
-	/// worktree. Compared the way the filesystem does: on Windows, Roslyn's spelling of a
-	/// path need not match how the worktree path was spelled, and treating that as "outside"
-	/// silently drops every reference hit and navigation target.
-	/// </summary>
 	public string? ToRelativePath(string absolutePath)
-	{
-		string full = Path.GetFullPath(absolutePath);
-		string root = Path.TrimEndingDirectorySeparator(Path.GetFullPath(worktreePath));
-		var comparison = OperatingSystem.IsWindows()
-			? StringComparison.OrdinalIgnoreCase
-			: StringComparison.Ordinal;
-		// The character after the root has to be the separator, or "/repo-other" counts as
-		// being inside "/repo".
-		if (full.Length <= root.Length || !full.StartsWith(root, comparison)
-			|| (full[root.Length] != Path.DirectorySeparatorChar
-				&& full[root.Length] != Path.AltDirectorySeparatorChar))
-		{
-			return null;
-		}
-		return full[(root.Length + 1)..].Replace('\\', '/');
-	}
-
-	/// <summary>Spans of identifier-like classified tokens, for clickable reference segments.</summary>
-	public async Task<IReadOnlyList<TextSpan>> GetIdentifierSpansAsync(string repoRelativePath, CancellationToken ct)
-	{
-		var document = GetDocument(ToAbsolutePath(repoRelativePath));
-		if (document is null)
-			return [];
-		var text = await document.GetTextAsync(ct);
-		var classified = await Classifier.GetClassifiedSpansAsync(document, new TextSpan(0, text.Length), ct);
-		return classified
-			.Where(c => IsIdentifierClassification(c.ClassificationType))
-			.Select(c => c.TextSpan)
-			.Distinct()
-			.OrderBy(s => s.Start)
-			.ToList();
-	}
+		=> WorkspacePaths.ToRelative(worktreePath, absolutePath);
 
 	/// <summary>
 	/// Identifier-like classified tokens as (1-based line, column, length, classification).
@@ -471,7 +427,6 @@ public sealed class RoslynWorkspaceService : ISemanticProvider, IDecompileTarget
 			.ToList();
 	}
 
-	/// <summary>IDE-style quick info (signature, docs, ...) as plain text sections.</summary>
 	/// <summary>
 	/// This workspace's copy of a file. Token positions only mean anything against the
 	/// exact text they were computed from, so a caller displaying some other revision has
@@ -485,6 +440,7 @@ public sealed class RoslynWorkspaceService : ISemanticProvider, IDecompileTarget
 		return (await document.GetTextAsync(ct)).ToString();
 	}
 
+	/// <summary>IDE-style quick info (signature, docs, ...) as plain text sections.</summary>
 	public async Task<string?> GetQuickInfoAsync(string repoRelativePath, int position, CancellationToken ct)
 	{
 		var document = GetDocument(ToAbsolutePath(repoRelativePath));
@@ -626,9 +582,6 @@ public sealed class RoslynWorkspaceService : ISemanticProvider, IDecompileTarget
 		return members.Values.OrderBy(m => m.FirstLine).ToList();
 	}
 
-	/// <summary>Walks up to the member users think in: method/property/field/event/ctor,
-	/// falling back to the containing type for lines outside any member. Null when the walk
-	/// leaves the type system (a line in a namespace declaration, or nothing resolvable).</summary>
 	/// <summary>
 	/// The member a text position belongs to.
 	///
@@ -662,6 +615,9 @@ public sealed class RoslynWorkspaceService : ISemanticProvider, IDecompileTarget
 		return WalkToMember(model.GetEnclosingSymbol(position, ct));
 	}
 
+	/// <summary>Walks up to the member users think in: method/property/field/event/ctor,
+	/// falling back to the containing type for lines outside any member. Null when the walk
+	/// leaves the type system (a line in a namespace declaration, or nothing resolvable).</summary>
 	static ISymbol? WalkToMember(ISymbol? symbol)
 	{
 		while (symbol is not null
@@ -769,9 +725,12 @@ public sealed class RoslynWorkspaceService : ISemanticProvider, IDecompileTarget
 		if (document is null)
 			return null;
 		var semanticModel = await document.GetSemanticModelAsync(ct);
-		if (semanticModel is null)
+		// A workspace is what SymbolFinder resolves against, and a load that failed part-way
+		// can leave a solution behind without one. Answering nothing is what every caller
+		// already handles; dereferencing it would take the pane down instead.
+		if (semanticModel is null || workspace is not { } host)
 			return null;
-		var symbol = await SymbolFinder.FindSymbolAtPositionAsync(semanticModel, position, workspace!, ct);
+		var symbol = await SymbolFinder.FindSymbolAtPositionAsync(semanticModel, position, host, ct);
 		return symbol;
 	}
 
@@ -791,7 +750,7 @@ public sealed class RoslynWorkspaceService : ISemanticProvider, IDecompileTarget
 			return null;
 		var semanticModel = await document.GetSemanticModelAsync(ct);
 		var root = await document.GetSyntaxRootAsync(ct);
-		if (semanticModel is null || root is null)
+		if (semanticModel is null || root is null || workspace is not { } host)
 			return null;
 		var textLine = text.Lines[line - 1];
 		var positions = new List<int>();
@@ -805,7 +764,7 @@ public sealed class RoslynWorkspaceService : ISemanticProvider, IDecompileTarget
 		}
 		foreach (int position in positions)
 		{
-			if (await SymbolFinder.FindSymbolAtPositionAsync(semanticModel, position, workspace!, ct) is { } symbol)
+			if (await SymbolFinder.FindSymbolAtPositionAsync(semanticModel, position, host, ct) is { } symbol)
 				return symbol;
 		}
 		return null;

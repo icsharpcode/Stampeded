@@ -80,4 +80,27 @@ public class OutdatedThreadTests
 		Assert.That(withThreads.DocLineFromNewLine(3), Is.EqualTo(model.DocLineFromNewLine(3) + 1));
 		Assert.That(lines[withThreads.DocLineFromNewLine(3)!.Value], Is.EqualTo("@@thread:n3@@"));
 	}
+
+	/// <summary>
+	/// A model carrying more tags than its text has lines. The side-by-side splice has always
+	/// allowed for it and the unified one threw, so a file whose text and tags disagree by the
+	/// trailing newline took the document down as soon as anything was said about it.
+	/// </summary>
+	[Test]
+	public void SplicesAModelWithMoreTagsThanLines()
+	{
+		var model = new Stampeded.Core.Diff.DiffDocumentModel {
+			Text = "a",
+			Tags = [
+				new Stampeded.Core.Diff.DiffLineTag(Stampeded.Core.Diff.DiffLineKind.Context, 1, 1, null),
+				new Stampeded.Core.Diff.DiffLineTag(Stampeded.Core.Diff.DiffLineKind.Context, 2, 2, null),
+			],
+			Hunks = [],
+		};
+
+		var withThreads = model.WithThreadLines([new Stampeded.Core.Diff.ThreadAnchor(false, 1, "n1")]);
+
+		Assert.That(withThreads.Text.Split('\n'), Is.EqualTo(new[] { "a", "@@thread:n1@@", "" }),
+			"the missing line reads as empty rather than ending the splice");
+	}
 }

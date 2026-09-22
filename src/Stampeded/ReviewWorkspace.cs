@@ -2057,7 +2057,11 @@ public sealed class ReviewWorkspace(string repoPath, IPullRequestHost host)
 			head.StateChanged += () => SemanticsChanged?.Invoke();
 			Semantics = head;
 			var (replaced, removed, added) = await BaseSideTextsAsync(baseSha, ct);
-			await connection.RequestAsync("stampeded/loadBase", new { replaced, removed, added }, ct);
+			// No deadline: the server answers this once its own solution has loaded, and that
+			// takes as long as a solution takes. Giving up on it would abandon a base side that
+			// was going to arrive.
+			await connection.RequestAsync("stampeded/loadBase", new { replaced, removed, added },
+				timeout: null, ct);
 			BaseSemantics = new LspSemanticProvider(connection, WorktreePath!, spec.Name + " (base)") {
 				UriSide = "base",
 			};
