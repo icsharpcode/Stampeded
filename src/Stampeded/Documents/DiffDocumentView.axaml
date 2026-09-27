@@ -26,6 +26,7 @@
           <MenuItem Header="Debug Here in VS Code" Click="OnCtxDebugInVsCode" />
           <Separator />
           <MenuItem Header="Copy" InputGesture="Ctrl+C" Click="OnCtxCopy" />
+          <MenuItem x:Name="CtxCopyAsGitDiff" Header="Copy as Git Diff" Click="OnCtxCopyAsGitDiff" />
         </ContextMenu>
       </editor:ReviewTextEditor.ContextMenu>
     </editor:ReviewTextEditor>
