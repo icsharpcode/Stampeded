@@ -5,6 +5,7 @@ using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
 
+using Stampeded.Core.Bitbucket;
 using Stampeded.Core.AzureDevOps;
 using Stampeded.Core.GitHub;
 using Stampeded.Core.Infra;
@@ -82,7 +83,7 @@ public class App : Application
 		return picks.Count == 1 ? picks[0].Path.LocalPath : null;
 	}
 
-	/// <summary>Opens a repository or pull-request URL of either host: an already-cloned
+	/// <summary>Opens a repository or pull-request URL of any host: an already-cloned
 	/// repository (any remote matched against the current and recent repos) is reused;
 	/// otherwise the folder to clone into is asked for, and a blobless partial clone is made
 	/// there.</summary>
@@ -90,9 +91,8 @@ public class App : Application
 	{
 		CliLog.Write("action", $"open from URL {input}");
 		int? prNumber;
-		// Azure DevOps first: its URLs have no scheme-less form GitHub's grammar refuses, and
-		// GitHub's - which also accepts a bare "owner/repo" - would read "dev.azure.com/org/..."
-		// as a repository called org owned by dev.azure.com.
+		// Host-specific URLs first: GitHub's grammar also accepts a bare "owner/repo", so it has
+		// to be the fallback after hosts whose URL shape names the server too.
 		string name, folder;
 		Func<string, bool> remoteMatches;
 		// The command that makes the clone, given the target directory - which is only known
@@ -109,6 +109,15 @@ public class App : Application
 				$"https://dev.azure.com/{Uri.EscapeDataString(org)}/{Uri.EscapeDataString(project)}"
 					+ $"/_git/{Uri.EscapeDataString(adoRepo)}", target]);
 		}
+		else if (BitbucketUrl.TryParse(input, out string bitbucketBase, out string bitbucketProject,
+			out string bitbucketRepo, out prNumber))
+		{
+			name = $"{bitbucketProject}/{bitbucketRepo}";
+			folder = bitbucketRepo;
+			remoteMatches = remotes => BitbucketUrl.AnyRemoteMatches(remotes, bitbucketBase, bitbucketProject, bitbucketRepo);
+			clone = target => ("git", ["clone", "--filter=blob:none",
+				BitbucketUrl.CloneUrlFor(input, bitbucketBase, bitbucketProject, bitbucketRepo), target]);
+		}
 		else if (GitHubUrl.TryParse(input, out string owner, out string repo, out prNumber))
 		{
 			name = $"{owner}/{repo}";
@@ -118,8 +127,8 @@ public class App : Application
 		}
 		else
 		{
-			CliLog.Write("action", $"not a GitHub or Azure DevOps repository or PR URL: {input}");
-			Workspace?.PostStatus($"Not a GitHub or Azure DevOps repository or PR URL: {input}");
+			CliLog.Write("action", $"not a GitHub, Azure DevOps or Bitbucket repository or PR URL: {input}");
+			Workspace?.PostStatus($"Not a GitHub, Azure DevOps or Bitbucket repository or PR URL: {input}");
 			return;
 		}
 		var candidates = new List<string> { Program.RepoPath };
