@@ -18,6 +18,7 @@ public static class CliLog
 
 	static readonly Lock gate = new();
 	static readonly Queue<string> history = new();
+	static readonly AsyncLocal<string?> currentTask = new();
 	static Action<string>? sink;
 
 	public static Action<string>? Sink
@@ -37,9 +38,32 @@ public static class CliLog
 		}
 	}
 
+	public static IDisposable BeginTask(string name)
+	{
+		string? previous = currentTask.Value;
+		currentTask.Value = name;
+		Write("task", "begin");
+		return new TaskScope(previous);
+	}
+
+	sealed class TaskScope(string? previous) : IDisposable
+	{
+		bool disposed;
+
+		public void Dispose()
+		{
+			if (disposed)
+				return;
+			disposed = true;
+			Write("task", "end");
+			currentTask.Value = previous;
+		}
+	}
+
 	public static void Write(string category, string message)
 	{
-		string line = $"{DateTime.Now:HH:mm:ss.fff} [{category}] {message}";
+		string task = currentTask.Value is { Length: > 0 } name ? $" {{{name}}}" : "";
+		string line = $"{DateTime.Now:HH:mm:ss.fff} [{category}]{task} {message}";
 		Console.WriteLine(line); // mirrors to any captured stdout for headless debugging
 		Action<string>? current;
 		lock (gate)

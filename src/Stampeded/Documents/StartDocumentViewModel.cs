@@ -460,6 +460,7 @@ public class StartDocumentViewModel : Document
 	/// </summary>
 	async Task RefreshRebaseMergedAsync()
 	{
+		using var logTask = CliLog.BeginTask("detect rebase-merged branches");
 		// The cached answers were measured against the default branch as it stood. When a
 		// fetch moves it - which is the moment a branch becomes rebase-merged - every one of
 		// them is about a history that no longer exists, so they all go.

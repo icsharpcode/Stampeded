@@ -372,6 +372,7 @@ public sealed class ReviewWorkspace(string repoPath, IPullRequestHost host)
 		sessionCts?.Cancel();
 		var cts = sessionCts = new CancellationTokenSource();
 		var ct = cts.Token;
+		using var logTask = CliLog.BeginTask($"open local range {baseRef}..{headRef}");
 
 		using var busy = Busy.Begin($"Opening {baseRef}..{headRef}");
 		CliLog.Write("action", $"open local range {baseRef}..{headRef}"
@@ -398,14 +399,20 @@ public sealed class ReviewWorkspace(string repoPath, IPullRequestHost host)
 				prHead = null;
 			}
 		}
+		CliLog.Write("action", $"local range: resolving head {headRef}");
 		string headSha = await ResolveAsync(headRef, ct);
-		string baseSha = await Git.GetMergeBaseAsync(await ResolveAsync(baseRef, ct), headSha, ct);
+		CliLog.Write("action", $"local range: resolving base {baseRef}");
+		string resolvedBase = await ResolveAsync(baseRef, ct);
+		CliLog.Write("action", $"local range: merge-base {resolvedBase[..9]} {headSha[..9]}");
+		string baseSha = await Git.GetMergeBaseAsync(resolvedBase, headSha, ct);
 		// Nothing of the review on screen is touched until the change has been read, so an open
 		// that fails up to here leaves that review exactly as it was.
+		CliLog.Write("action", $"local range: checking whether {headRef} has uncommitted work");
 		string? dirty = await FindDirtyCheckoutAsync(headRef, ct);
+		CliLog.Write("action", $"local range: diff {baseSha[..9]}..{headSha[..9]}");
 		var committed = await Git.DiffAsync(baseSha, headSha, ct);
 		var files = dirty is not null
-			? await Git.DiffWorkingTreeAsync(dirty, baseSha, ct)
+			? await DiffDirtyWorktreeAsync(dirty, baseSha, ct)
 			: committed;
 		ct.ThrowIfCancellationRequested();
 
@@ -456,6 +463,12 @@ public sealed class ReviewWorkspace(string repoPath, IPullRequestHost host)
 			Comments.LoadPostedAsync(opened, ct).HandleExceptions();
 			LoadReviewersAsync(opened, ct).HandleExceptions();
 		}
+	}
+
+	async Task<IReadOnlyList<FileDiff>> DiffDirtyWorktreeAsync(string dirty, string baseSha, CancellationToken ct)
+	{
+		CliLog.Write("action", $"local range: diff dirty checkout {dirty} against {baseSha[..9]}");
+		return await Git.DiffWorkingTreeAsync(dirty, baseSha, ct);
 	}
 
 	async Task<string> ResolveAsync(string reference, CancellationToken ct)
