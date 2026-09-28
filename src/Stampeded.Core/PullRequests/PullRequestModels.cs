@@ -77,7 +77,7 @@ public sealed record PrSummary(
 
 	public string NumberDisplay => $"#{Number}";
 
-	/// <summary>The size of the change, as GitHub counts it. Kept to the line totals: this
+	/// <summary>The size of the change, as the host counts it. Kept to the line totals: this
 	/// shares a line with the branches, and the file count is in the tooltip.</summary>
 	public string AddedDisplay => $"+{Additions}";
 
@@ -87,7 +87,7 @@ public sealed record PrSummary(
 	public string BranchesTip => $"{HeadRefName} -> {BaseRefName}, by {Author?.Login ?? "unknown"}";
 
 	public string StatsTip => $"{ChangedFiles} changed file(s), {Additions} line(s) added, "
-		+ $"{Deletions} removed, as GitHub counts them";
+		+ $"{Deletions} removed, as the host counts them";
 }
 
 public sealed record PrDetail(

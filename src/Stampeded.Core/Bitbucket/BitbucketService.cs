@@ -190,7 +190,60 @@ public sealed class BitbucketService(string repoPath, string baseUrl, string pro
 	{
 		var prs = await PageAsync($"{ApiBase}/pull-requests?state=OPEN", ct);
 		string viewer = await GetViewerLoginAsync(ct);
-		return [.. prs.Select(pr => Summary(pr) with { ViewerLogin = viewer, OriginOwner = projectKey })];
+		var summaries = new List<PrSummary>();
+		foreach (var pr in prs)
+		{
+			var summary = Summary(pr);
+			try
+			{
+				var stats = await DiffStatsAsync(summary.Number, ct);
+				summary = summary with {
+					Additions = stats.Additions,
+					Deletions = stats.Deletions,
+					ChangedFiles = stats.ChangedFiles,
+				};
+			}
+			catch (Exception ex) when (ex is ToolFailedException or JsonException)
+			{
+				CliLog.Write("bitbucket", $"diff stats unavailable for pull request {summary.Number}: {ex.Message}");
+			}
+			summaries.Add(summary with { ViewerLogin = viewer, OriginOwner = projectKey });
+		}
+		return summaries;
+	}
+
+	async Task<(int Additions, int Deletions, int ChangedFiles)> DiffStatsAsync(int number, CancellationToken ct)
+	{
+		using var doc = await JsonAsync("GET", $"{ApiBase}/pull-requests/{number}/diff?contextLines=0", null, ct);
+		return DiffStats(doc.RootElement);
+	}
+
+	public static (int Additions, int Deletions, int ChangedFiles) DiffStats(JsonElement root)
+	{
+		int additions = 0, deletions = 0, changedFiles = 0;
+		foreach (var diff in Array(Node(root, "diffs")))
+		{
+			changedFiles++;
+			foreach (var hunk in Array(Node(diff, "hunks")))
+			{
+				foreach (var segment in Array(Node(hunk, "segments")))
+				{
+					int count = Node(segment, "lines") is { ValueKind: JsonValueKind.Array } lines
+						? lines.GetArrayLength()
+						: 0;
+					switch (Str(segment, "type"))
+					{
+						case "ADDED":
+							additions += count;
+							break;
+						case "REMOVED":
+							deletions += count;
+							break;
+					}
+				}
+			}
+		}
+		return (additions, deletions, changedFiles);
 	}
 
 	PrSummary Summary(JsonElement pr)
