@@ -605,7 +605,7 @@ public sealed class ReviewWorkspace(string repoPath, IPullRequestHost host)
 			await LoadCSharpOverLspAsync(baseSha, ct);
 		else
 			await LoadCSharpInProcessAsync(baseSha, ct);
-		await LoadOtherLanguagesAsync(ct);
+		LoadOtherLanguagesAsync(ct).HandleExceptions();
 		using (Busy.Begin("Computing change map"))
 			await ComputeChangeMapAsync();
 		await PruneCachedWorktreesAsync(ct);
@@ -2253,8 +2253,12 @@ public sealed class ReviewWorkspace(string repoPath, IPullRequestHost host)
 					await LspConnection.StartAsync(spec, baseTree, ct, options, Settings),
 					baseTree, spec.Name + " (base)");
 			}
+			ct.ThrowIfCancellationRequested();
 			languages.Add(new LanguageProviders(extensions, head, baseSide));
-			SemanticsChanged?.Invoke();
+			if (Scopes.InScope)
+				await ApplyScopeSemanticsAsync();
+			else
+				SemanticsChanged?.Invoke();
 			return true;
 		}
 		catch (ToolFailedException ex)
