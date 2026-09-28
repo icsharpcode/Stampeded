@@ -783,12 +783,12 @@ public sealed class ReviewWorkspace(string repoPath, IPullRequestHost host)
 	/// </summary>
 	/// <param name="record">Whether this open is a step of the reader's own, to be found
 	/// again with Back. A rebuild reopening the tabs it just closed is not one.</param>
-	public async Task<Documents.IDiffDocument?> OpenFileAsync(FileDiff file, bool record = false)
+	public async Task<Documents.IDiffDocument?> OpenFileAsync(FileDiff file, bool record = false, bool rebuild = false)
 	{
 		if (record)
 			RecordCurrentPosition();
 		if (file.Generated is { } generated)
-			return ShowDiffDocument(file, ReadOrEmpty(generated.BaseFile), ReadOrEmpty(generated.HeadFile));
+			return ShowDiffDocument(file, ReadOrEmpty(generated.BaseFile), ReadOrEmpty(generated.HeadFile), rebuild);
 		if (BaseSha is null || HeadSha is null)
 			return null;
 		// A binary file, or one that changed without its lines changing, has nothing to draw.
@@ -811,14 +811,14 @@ public sealed class ReviewWorkspace(string repoPath, IPullRequestHost host)
 				StatusMessage?.Invoke($"{file.Path}: {where}, the revision this change is read against, "
 					+ "does not have this file - showing the head side alone rather than a diff against "
 					+ "nothing. The Log pane names the revision to check.");
-				return await ShowHeadSideAlone(file);
+				return await ShowHeadSideAlone(file, rebuild);
 			}
 			oldText = text;
 		}
 		string newText = file.Kind == FileChangeKind.Deleted || file.IsBinary
 			? ""
 			: await ReadHeadFileAsync(file.NewPath);
-		var document = ShowDiffDocument(file, oldText, newText);
+		var document = ShowDiffDocument(file, oldText, newText, rebuild);
 		if (record && document is not null)
 			RecordArrival("diff:" + file.Path);
 		return document;
@@ -908,10 +908,13 @@ public sealed class ReviewWorkspace(string repoPath, IPullRequestHost host)
 	/// there is nothing to compare it with, and saying so beats drawing a diff that is not
 	/// one. It takes the file's own tab, so reopening the file replaces it once the base is
 	/// readable again.</summary>
-	async Task<Documents.IDiffDocument?> ShowHeadSideAlone(FileDiff file)
+	async Task<Documents.IDiffDocument?> ShowHeadSideAlone(FileDiff file, bool rebuild = false)
 	{
 		string text = await ReadHeadFileAsync(file.NewPath);
-		return ShowDocument("diff:" + file.Path, () => {
+		string id = "diff:" + file.Path;
+		if (rebuild)
+			CloseDocument(id);
+		return ShowDocument(id, () => {
 			var source = Stampeded.Documents.DiffDocumentViewModel.ForSource(file.Path, text);
 			source.Title += " (head only)";
 			return source;
@@ -924,7 +927,7 @@ public sealed class ReviewWorkspace(string repoPath, IPullRequestHost host)
 	/// thing to reopen after a rebuild. A document left over from the other layout is closed
 	/// as this one takes its place.
 	/// </summary>
-	Documents.IDiffDocument? ShowDiffDocument(FileDiff file, string oldText, string newText)
+	Documents.IDiffDocument? ShowDiffDocument(FileDiff file, string oldText, string newText, bool rebuild = false)
 	{
 		if (Documents is null || Factory is null)
 			return null;
@@ -932,6 +935,11 @@ public sealed class ReviewWorkspace(string repoPath, IPullRequestHost host)
 		string title = Path.GetFileName(file.Path);
 		bool sideBySide = DiffLayoutPreference.SideBySide;
 		var existing = Documents.VisibleDockables?.FirstOrDefault(d => d.Id == id);
+		if (existing is not null && rebuild)
+		{
+			Factory.CloseDockable(existing);
+			existing = null;
+		}
 		if (existing is Documents.IDiffDocument open && open is SideBySideDocumentViewModel == sideBySide)
 		{
 			Factory.SetActiveDockable((Dock.Model.Core.IDockable)open);
@@ -1005,6 +1013,13 @@ public sealed class ReviewWorkspace(string repoPath, IPullRequestHost host)
 		Factory.SetActiveDockable(existing);
 		Factory.SetFocusedDockable(Documents, existing);
 		return existing;
+	}
+
+	void CloseDocument(string id)
+	{
+		if (Factory is null || Documents?.VisibleDockables?.FirstOrDefault(d => d.Id == id) is not { } existing)
+			return;
+		Factory.CloseDockable(existing);
 	}
 
 	/// <summary>The file being read, in whichever layout it is being read in. Asked of the
@@ -1464,9 +1479,12 @@ public sealed class ReviewWorkspace(string repoPath, IPullRequestHost host)
 	/// app switches to another repository and this instance is abandoned.</summary>
 	public void Shutdown()
 	{
+		string? headSha = HeadSha;
+		string? baseSha = BaseWorktreePath is null ? null : BaseSha;
 		sessionCts?.Cancel();
 		Blobs.Dispose();
 		DisposeSemantics();
+		CleanupReviewWorktreesAsync(headSha, baseSha, CancellationToken.None).GetAwaiter().GetResult();
 	}
 
 	/// <summary>Head-side text of a file, or null when the head does not have it.</summary>
@@ -1684,7 +1702,7 @@ public sealed class ReviewWorkspace(string repoPath, IPullRequestHost host)
 				return;
 			}
 		}
-		CloseReview();
+		await CloseReviewCoreAsync();
 	}
 
 	/// <summary>
@@ -1712,7 +1730,7 @@ public sealed class ReviewWorkspace(string repoPath, IPullRequestHost host)
 			return;
 		// A head that moved is reported by the carry-over, which knows what it kept; standing
 		// still is the outcome nothing else would mention.
-		await ReopenDocumentsAsync(open);
+		await ReopenDocumentsAsync(open, rebuild: true);
 		if (HeadSha == before)
 			PostStatus($"Reloaded: the head is still {before?[..9]}.");
 	}
@@ -1721,10 +1739,15 @@ public sealed class ReviewWorkspace(string repoPath, IPullRequestHost host)
 		=> (Avalonia.Application.Current?.ApplicationLifetime
 			as Avalonia.Controls.ApplicationLifetimes.IClassicDesktopStyleApplicationLifetime)?.MainWindow;
 
-	public void CloseReview()
+	public void CloseReview() => CloseReviewCoreAsync().HandleExceptions();
+
+	async Task CloseReviewCoreAsync()
 	{
+		string? headSha = HeadSha;
+		string? baseSha = BaseWorktreePath is null ? null : BaseSha;
 		sessionCts?.Cancel();
 		DisposeSemantics();
+		await CleanupReviewWorktreesAsync(headSha, baseSha, CancellationToken.None);
 		CurrentPr = null;
 		PrHeadSha = null;
 		LocalRange = null;
@@ -1775,6 +1798,26 @@ public sealed class ReviewWorkspace(string repoPath, IPullRequestHost host)
 		CloseReview();
 	}
 
+	async Task CleanupReviewWorktreesAsync(string? headSha, string? baseSha, CancellationToken ct)
+	{
+		var shas = new[] { headSha, baseSha }
+			.OfType<string>()
+			.Distinct(StringComparer.Ordinal)
+			.ToList();
+		if (shas.Count == 0)
+			return;
+		try
+		{
+			int removed = await Worktrees.RemoveAsync(shas, ct);
+			if (removed > 0)
+				CliLog.Write("worktree", $"removed {removed} review worktree(s)");
+		}
+		catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ToolFailedException)
+		{
+			CliLog.Write("worktree", $"review worktree cleanup failed: {ex.Message}");
+		}
+	}
+
 	/// <summary>What was open before a scope switch or a reload rebuilt the review, so it can
 	/// be put back.</summary>
 	readonly record struct OpenDocuments(IReadOnlyList<string> Ids, string? Active);
@@ -1795,7 +1838,7 @@ public sealed class ReviewWorkspace(string repoPath, IPullRequestHost host)
 	/// interdiff - are not reopened either: they are snapshots of something other than the
 	/// review, and nothing in the rebuilt review says what they held.
 	/// </summary>
-	async Task ReopenDocumentsAsync(OpenDocuments open)
+	async Task ReopenDocumentsAsync(OpenDocuments open, bool rebuild = false)
 	{
 		foreach (string id in open.Ids)
 		{
@@ -1810,7 +1853,7 @@ public sealed class ReviewWorkspace(string repoPath, IPullRequestHost host)
 				continue;
 			if (Files.FirstOrDefault(f => f.Path == id[(id.IndexOf(':') + 1)..]) is not { } file)
 				continue;
-			await OpenFileAsync(file);
+			await OpenFileAsync(file, rebuild: rebuild);
 		}
 		// Every reopen activates what it opened, so without this the front tab is whichever
 		// came last - an arbitrary file. The reader goes back to the tab they were in, or to

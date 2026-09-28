@@ -53,7 +53,10 @@ public sealed class WorktreeManager(string repoPath)
 	{
 		string repoDir = Path.Combine(CacheRoot, Path.GetFileName(repoPath));
 		if (!Directory.Exists(repoDir))
+		{
+			await ExternalTool.RunAsync("git", ["worktree", "prune"], repoPath, ct);
 			return 0;
+		}
 		var pinned = keepShas.Select(DirectoryName).ToHashSet();
 		var survivors = Directory.EnumerateDirectories(repoDir)
 			.Where(d => !pinned.Contains(Path.GetFileName(d)))
@@ -62,6 +65,26 @@ public sealed class WorktreeManager(string repoPath)
 			.Select(Path.GetFileName)
 			.OfType<string>();
 		return await PruneAsync([.. pinned, .. survivors], ct);
+	}
+
+	/// <summary>Deletes the cached worktrees for the named revisions, then prunes git's
+	/// registrations. Returns the number of directories removed.</summary>
+	public async Task<int> RemoveAsync(IReadOnlyCollection<string> shas, CancellationToken ct = default)
+	{
+		string repoDir = Path.Combine(CacheRoot, Path.GetFileName(repoPath));
+		if (!Directory.Exists(repoDir))
+			return 0;
+		var names = shas.Select(s => s.Length > 9 ? s[..9] : s).ToHashSet(StringComparer.Ordinal);
+		int removed = 0;
+		foreach (var dir in Directory.EnumerateDirectories(repoDir))
+		{
+			if (!names.Contains(Path.GetFileName(dir)))
+				continue;
+			Directory.Delete(dir, recursive: true);
+			removed++;
+		}
+		await ExternalTool.RunAsync("git", ["worktree", "prune"], repoPath, ct);
+		return removed;
 	}
 
 	public async Task<string> GetOrCreateAsync(string sha, CancellationToken ct = default)

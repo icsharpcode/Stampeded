@@ -95,6 +95,25 @@ public class WorktreeCacheTests
 		Assert.That(listed, Does.Not.Contain(cacheRoot), "git no longer believes the worktree is there");
 	}
 
+	[Test]
+	public async Task RemovesOnlyNamedWorktrees()
+	{
+		var manager = new WorktreeManager(repo);
+		await Commit("a.txt", "a\n");
+		string first = await RevParse("HEAD");
+		await manager.GetOrCreateAsync(first);
+		await Commit("b.txt", "b\n");
+		string second = await RevParse("HEAD");
+		await manager.GetOrCreateAsync(second);
+
+		int removed = await manager.RemoveAsync([first]);
+
+		Assert.That(removed, Is.EqualTo(1));
+		Assert.That(Cached(), Is.EquivalentTo(new[] { second[..9] }));
+		string listed = await Git("worktree", "list", "--porcelain");
+		Assert.That(listed, Does.Not.Contain(first[..9]));
+	}
+
 	IEnumerable<string> Cached()
 	{
 		string dir = Path.Combine(cacheRoot, "stampeded", "worktrees", Path.GetFileName(repo));
