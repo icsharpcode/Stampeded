@@ -17,7 +17,27 @@ public static class LanguageServers
 	public static readonly IReadOnlyDictionary<string, IReadOnlySet<string>> ExtensionsByLanguage =
 		new Dictionary<string, IReadOnlySet<string>> {
 			["python"] = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { ".py", ".pyi" },
+			["cpp"] = new HashSet<string>(StringComparer.OrdinalIgnoreCase) {
+				".c", ".cc", ".cpp", ".cxx", ".h", ".hh", ".hpp", ".hxx",
+			},
 		};
+
+	/// <summary>
+	/// The C/C++ server to run, or null when there is none to run. <c>STAMPEDED_CPP_LSP</c>
+	/// overrides the search with a command line of its own.
+	/// </summary>
+	public static LspServerSpec? Cpp()
+	{
+		if (FromEnvironment("STAMPEDED_CPP_LSP") is { } configured)
+			return configured;
+		if (OnPath("clangd") is not { } clangd)
+		{
+			CliLog.Write("clangd", "no C/C++ language server on PATH");
+			return null;
+		}
+		CliLog.Write("clangd", $"server: {clangd} --background-index (on PATH)");
+		return new LspServerSpec("clangd", clangd, ["--background-index"]);
+	}
 
 	/// <summary>
 	/// The Python server to run, or null when there is none to run. <c>STAMPEDED_PYTHON_LSP</c>

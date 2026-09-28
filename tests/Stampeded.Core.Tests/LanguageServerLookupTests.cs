@@ -39,6 +39,13 @@ public class LanguageServerLookupTests
 		Assert.That(LanguageServers.ExecutableNames("/usr/bin/pylsp", windows: false, null),
 			Is.EqualTo(new[] { "/usr/bin/pylsp" }));
 	}
+
+	[Test]
+	public void CppExtensionsAreServedByTheCppLanguageServer()
+	{
+		Assert.That(LanguageServers.ExtensionsByLanguage["cpp"],
+			Is.SupersetOf(new[] { ".c", ".cc", ".cpp", ".cxx", ".h", ".hh", ".hpp", ".hxx" }));
+	}
 }
 
 /// <summary>

@@ -135,6 +135,8 @@ public sealed class LspSemanticProvider : ISemanticProvider, IDecompileTargets
 	}
 
 	static string LanguageIdOf(string relPath) => Path.GetExtension(relPath).ToLowerInvariant() switch {
+		".c" => "c",
+		".cc" or ".cpp" or ".cxx" or ".h" or ".hh" or ".hpp" or ".hxx" => "cpp",
 		".py" or ".pyi" => "python",
 		".cs" => "csharp",
 		".ts" => "typescript",

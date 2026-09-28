@@ -2233,24 +2233,37 @@ public sealed class ReviewWorkspace(string repoPath, IPullRequestHost host)
 
 	/// <summary>
 	/// A server per other language the review actually touches. Only started for languages
-	/// with changed files: a repository with one .py in it should not pay for a Python
-	/// server on every review, and a server that is never asked anything is a process
-	/// nobody can account for.
+	/// with changed files: a repository with one .py or .cpp in it should not pay for that
+	/// server on every review, and a server that is never asked anything is a process nobody
+	/// can account for.
 	/// </summary>
 	async Task LoadOtherLanguagesAsync(CancellationToken ct)
 	{
 		var extensions = Files.Select(f => Path.GetExtension(f.Path)).ToHashSet(StringComparer.OrdinalIgnoreCase);
-		if (!LanguageServers.ExtensionsByLanguage.TryGetValue("python", out var python)
-			|| !extensions.Overlaps(python))
+		bool startedAny = false;
+		foreach (var (language, languageExtensions) in LanguageServers.ExtensionsByLanguage)
+		{
+			if (!extensions.Overlaps(languageExtensions))
+				continue;
+			startedAny = true;
+			if (language == "python")
+				await LoadPythonAsync(languageExtensions, ct);
+			else if (language == "cpp")
+				await LoadConfiguredLanguageAsync("C++", LanguageServers.Cpp(), languageExtensions, ct);
+		}
+		if (!startedAny)
 		{
 			// Said out loud, because the alternative is a reader wondering why a tool that
-			// claims to read Python is not reading theirs.
-			CliLog.Write("semantics", "no Python in this review ("
-				+ $"{Files.Count} changed file(s): {string.Join(", ", extensions.Order())}), so no Python server");
-			return;
+			// claims to read more than C# is not reading theirs.
+			CliLog.Write("semantics", "no extra-language server for this review ("
+				+ $"{Files.Count} changed file(s): {string.Join(", ", extensions.Order())})");
 		}
+	}
+
+	async Task LoadPythonAsync(IReadOnlySet<string> extensions, CancellationToken ct)
+	{
 		var spec = LanguageServers.Python();
-		if (spec is not null && await TryStartPythonAsync(spec, python, ct))
+		if (spec is not null && await TryStartLanguageAsync(spec, extensions, ct, PythonOptions()))
 			return;
 		// Either there was nothing to start or what there was did not run; both leave the
 		// review unable to read its own Python, so a server is installed rather than asked
@@ -2258,7 +2271,7 @@ public sealed class ReviewWorkspace(string repoPath, IPullRequestHost host)
 		using (Busy.Begin("Installing a Python language server"))
 		{
 			if (await LanguageServers.InstallPythonAsync(RepoPath, ct) is { } installed
-				&& await TryStartPythonAsync(installed, python, ct))
+				&& await TryStartLanguageAsync(installed, extensions, ct, PythonOptions()))
 			{
 				return;
 			}
@@ -2267,24 +2280,40 @@ public sealed class ReviewWorkspace(string repoPath, IPullRequestHost host)
 		Avalonia.Threading.Dispatcher.UIThread.Post(() => Factory?.ShowPane("Log"));
 	}
 
+	async Task LoadConfiguredLanguageAsync(string name, LspServerSpec? spec, IReadOnlySet<string> extensions,
+		CancellationToken ct)
+	{
+		if (spec is not null && await TryStartLanguageAsync(spec, extensions, ct))
+			return;
+		StatusMessage?.Invoke($"No {name} semantics for this review - see the Log pane");
+		Avalonia.Threading.Dispatcher.UIThread.Post(() => Factory?.ShowPane("Log"));
+	}
+
+	(LanguageOptions Options, Func<string, object?> Settings) PythonOptions()
+	{
+		// Resolved against the repository rather than the worktree: a virtual environment is not
+		// committed, so the checkout under review never has one, and the reader's own does.
+		string? interpreter = PythonEnvironment.InterpreterFor(RepoPath);
+		return (new LanguageOptions(PythonEnvironment.InitializationOptions(interpreter)),
+			section => PythonEnvironment.SettingsFor(section, interpreter));
+	}
+
+	sealed record LanguageOptions(object? InitializationOptions = null);
+
 	/// <summary>
-	/// Starts one Python server per side and hangs both on the review. False when the server
+	/// Starts one language server per side and hangs both on the review. False when the server
 	/// did not run, which is a thing to try another server about rather than to fail on.
 	/// </summary>
-	async Task<bool> TryStartPythonAsync(LspServerSpec spec, IReadOnlySet<string> extensions,
-		CancellationToken ct)
+	async Task<bool> TryStartLanguageAsync(LspServerSpec spec, IReadOnlySet<string> extensions,
+		CancellationToken ct, (LanguageOptions Options, Func<string, object?> Settings)? configuration = null)
 	{
 		using var busy = Busy.Begin($"Starting {spec.Name}");
 		try
 		{
-			// Resolved against the repository rather than the worktree: a virtual environment
-			// is not committed, so the checkout under review never has one, and the reader's
-			// own does.
-			string? interpreter = PythonEnvironment.InterpreterFor(RepoPath);
-			var options = PythonEnvironment.InitializationOptions(interpreter);
-			object? Settings(string section) => PythonEnvironment.SettingsFor(section, interpreter);
+			var options = configuration?.Options.InitializationOptions;
+			var settings = configuration?.Settings;
 			var head = new LspSemanticProvider(
-				await LspConnection.StartAsync(spec, WorktreePath!, ct, options, Settings),
+				await LspConnection.StartAsync(spec, WorktreePath!, ct, options, settings),
 				WorktreePath!, spec.Name);
 			head.StateChanged += () => SemanticsChanged?.Invoke();
 			// The base side is a second server on a checkout of the base revision: a language
@@ -2293,7 +2322,7 @@ public sealed class ReviewWorkspace(string repoPath, IPullRequestHost host)
 			if (await EnsureBaseWorktreeAsync(ct) is { } baseTree)
 			{
 				baseSide = new LspSemanticProvider(
-					await LspConnection.StartAsync(spec, baseTree, ct, options, Settings),
+					await LspConnection.StartAsync(spec, baseTree, ct, options, settings),
 					baseTree, spec.Name + " (base)");
 			}
 			ct.ThrowIfCancellationRequested();
