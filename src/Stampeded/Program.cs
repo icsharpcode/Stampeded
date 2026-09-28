@@ -23,6 +23,11 @@ internal static class Program
 	[STAThread]
 	public static void Main(string[] args)
 	{
+		Console.CancelKeyPress += (_, e) => {
+			e.Cancel = true;
+			App.Workspace?.Shutdown();
+			Environment.Exit(130);
+		};
 		// Process-wide so every child process inherits it - git, gh, dotnet restore/test
 		// AND the MSBuild build hosts MSBuildWorkspace spawns, which no per-invocation
 		// environment override reaches. Needed for legacy SHA-1 signatures with the

@@ -346,6 +346,7 @@ public sealed class ReviewWorkspace(string repoPath, IPullRequestHost host)
 	public event Action<string, IReadOnlyList<ReferenceItem>>? ReferencesAvailable;
 
 	CancellationTokenSource? sessionCts;
+	bool shutdown;
 
 	/// <summary>Which lines the change in scope touches, rebuilt whenever <see cref="Files"/> is.</summary>
 	ChangedLines changed = ChangedLines.Empty;
@@ -1479,9 +1480,14 @@ public sealed class ReviewWorkspace(string repoPath, IPullRequestHost host)
 	/// app switches to another repository and this instance is abandoned.</summary>
 	public void Shutdown()
 	{
+		if (shutdown)
+			return;
+		shutdown = true;
 		string? headSha = HeadSha;
 		string? baseSha = BaseWorktreePath is null ? null : BaseSha;
 		sessionCts?.Cancel();
+		sessionCts?.Dispose();
+		sessionCts = null;
 		Blobs.Dispose();
 		DisposeSemantics();
 		CleanupReviewWorktreesAsync(headSha, baseSha, CancellationToken.None).GetAwaiter().GetResult();
@@ -2239,24 +2245,31 @@ public sealed class ReviewWorkspace(string repoPath, IPullRequestHost host)
 	/// </summary>
 	async Task LoadOtherLanguagesAsync(CancellationToken ct)
 	{
-		var extensions = Files.Select(f => Path.GetExtension(f.Path)).ToHashSet(StringComparer.OrdinalIgnoreCase);
-		bool startedAny = false;
-		foreach (var (language, languageExtensions) in LanguageServers.ExtensionsByLanguage)
+		try
 		{
-			if (!extensions.Overlaps(languageExtensions))
-				continue;
-			startedAny = true;
-			if (language == "python")
-				await LoadPythonAsync(languageExtensions, ct);
-			else if (language == "cpp")
-				await LoadConfiguredLanguageAsync("C++", LanguageServers.Cpp(), languageExtensions, ct);
+			var extensions = Files.Select(f => Path.GetExtension(f.Path)).ToHashSet(StringComparer.OrdinalIgnoreCase);
+			bool startedAny = false;
+			foreach (var (language, languageExtensions) in LanguageServers.ExtensionsByLanguage)
+			{
+				if (!extensions.Overlaps(languageExtensions))
+					continue;
+				startedAny = true;
+				if (language == "python")
+					await LoadPythonAsync(languageExtensions, ct);
+				else if (language == "cpp")
+					await LoadConfiguredLanguageAsync("C++", LanguageServers.Cpp(), languageExtensions, ct);
+			}
+			if (!startedAny)
+			{
+				// Said out loud, because the alternative is a reader wondering why a tool that
+				// claims to read more than C# is not reading theirs.
+				CliLog.Write("semantics", "no extra-language server for this review ("
+					+ $"{Files.Count} changed file(s): {string.Join(", ", extensions.Order())})");
+			}
 		}
-		if (!startedAny)
+		catch (OperationCanceledException) when (ct.IsCancellationRequested)
 		{
-			// Said out loud, because the alternative is a reader wondering why a tool that
-			// claims to read more than C# is not reading theirs.
-			CliLog.Write("semantics", "no extra-language server for this review ("
-				+ $"{Files.Count} changed file(s): {string.Join(", ", extensions.Order())})");
+			CliLog.Write("semantics", "extra-language server startup cancelled");
 		}
 	}
 
@@ -2308,17 +2321,19 @@ public sealed class ReviewWorkspace(string repoPath, IPullRequestHost host)
 		CancellationToken ct, (LanguageOptions Options, Func<string, object?> Settings)? configuration = null)
 	{
 		using var busy = Busy.Begin($"Starting {spec.Name}");
+		LspSemanticProvider? head = null;
+		LspSemanticProvider? baseSide = null;
+		bool attached = false;
 		try
 		{
 			var options = configuration?.Options.InitializationOptions;
 			var settings = configuration?.Settings;
-			var head = new LspSemanticProvider(
+			head = new LspSemanticProvider(
 				await LspConnection.StartAsync(spec, WorktreePath!, ct, options, settings),
 				WorktreePath!, spec.Name);
 			head.StateChanged += () => SemanticsChanged?.Invoke();
 			// The base side is a second server on a checkout of the base revision: a language
 			// server holds one text per file, so the two revisions cannot be one process.
-			ISemanticProvider? baseSide = null;
 			if (await EnsureBaseWorktreeAsync(ct) is { } baseTree)
 			{
 				baseSide = new LspSemanticProvider(
@@ -2327,6 +2342,7 @@ public sealed class ReviewWorkspace(string repoPath, IPullRequestHost host)
 			}
 			ct.ThrowIfCancellationRequested();
 			languages.Add(new LanguageProviders(extensions, head, baseSide));
+			attached = true;
 			if (Scopes.InScope)
 				await ApplyScopeSemanticsAsync();
 			else
@@ -2338,6 +2354,14 @@ public sealed class ReviewWorkspace(string repoPath, IPullRequestHost host)
 			CliLog.Write(spec.Name, $"did not start: {ex.Message}. Command was: "
 				+ $"{spec.Executable} {string.Join(' ', spec.Arguments)}");
 			return false;
+		}
+		finally
+		{
+			if (!attached)
+			{
+				baseSide?.Dispose();
+				head?.Dispose();
+			}
 		}
 	}
 

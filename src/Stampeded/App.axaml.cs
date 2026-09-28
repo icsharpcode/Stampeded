@@ -236,8 +236,11 @@ public class App : Application
 		if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
 		{
 			desktop.MainWindow = new MainWindow();
-			desktop.ShutdownRequested += (_, _) => Workspace?.Shutdown();
-			foreach (var signal in new[] { PosixSignal.SIGTERM, PosixSignal.SIGINT, PosixSignal.SIGHUP })
+			desktop.ShutdownRequested += (_, _) => {
+				Workspace?.Shutdown();
+				Workspace = null;
+			};
+			foreach (var signal in new[] { PosixSignal.SIGTERM, PosixSignal.SIGHUP })
 			{
 				signalHandlers.Add(PosixSignalRegistration.Create(signal, context => {
 					// Not cancelled: the process is still going to end, and holding it open

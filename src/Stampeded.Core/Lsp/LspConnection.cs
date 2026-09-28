@@ -94,6 +94,7 @@ public sealed class LspConnection : IDisposable
 		foreach (var variable in new[] { "MSBUILD_EXE_PATH", "MSBuildSDKsPath", "MSBuildExtensionsPath" })
 			startInfo.Environment.Remove(variable);
 
+		CliLog.Write(spec.Name, $"starting: {spec.Executable} {string.Join(' ', spec.Arguments)} in {rootPath}");
 		Process process;
 		try
 		{
@@ -104,32 +105,53 @@ public sealed class LspConnection : IDisposable
 			CliLog.Write(spec.Name, $"start FAILED: {ex.Message}");
 			throw new ToolFailedException(spec.Executable, -1, ex.Message);
 		}
-		CliLog.Write(spec.Name, $"{string.Join(' ', spec.Arguments)} -> started (pid {process.Id})");
+		CliLog.Write(spec.Name, $"started pid {process.Id}");
 
 		var connection = new LspConnection(spec, process);
-		if (settings is not null)
-			connection.settings = settings;
-		connection.PumpStdErrAsync().HandleFailure(spec.Name);
-		connection.ReadLoopAsync().HandleFailure(spec.Name);
+		try
+		{
+			if (settings is not null)
+				connection.settings = settings;
+			connection.PumpStdErrAsync().HandleFailure(spec.Name);
+			connection.ReadLoopAsync().HandleFailure(spec.Name);
 
-		// A longer deadline than a question about code gets: a server installed through npx
-		// downloads itself on first use, and the handshake is what waits for that. Still a
-		// deadline, because a server that never finishes starting leaves the review saying it
-		// is starting one forever.
-		var initialize = await connection.RequestAsync("initialize", new {
-			processId = Environment.ProcessId,
-			rootUri = LspUri.FromPath(rootPath),
-			capabilities = ClientCapabilities,
-			trace = Tracing ? "verbose" : "off",
-			initializationOptions,
-			workspaceFolders = new[] { new { uri = LspUri.FromPath(rootPath), name = Path.GetFileName(rootPath) } },
-		}, HandshakeTimeout, ct);
-		connection.Capabilities = initialize.TryGetProperty("capabilities", out var capabilities)
-			? capabilities.Clone()
-			: default;
-		connection.ReportWhatItCanDo(initialize);
-		connection.Notify("initialized", new { });
-		return connection;
+			// A longer deadline than a question about code gets: a server installed through npx
+			// downloads itself on first use, and the handshake is what waits for that. Still a
+			// deadline, because a server that never finishes starting leaves the review saying it
+			// is starting one forever.
+			var initialize = await connection.RequestAsync("initialize", new {
+				processId = Environment.ProcessId,
+				rootUri = LspUri.FromPath(rootPath),
+				capabilities = ClientCapabilities,
+				trace = Tracing ? "verbose" : "off",
+				initializationOptions,
+				workspaceFolders = new[] { new { uri = LspUri.FromPath(rootPath), name = Path.GetFileName(rootPath) } },
+			}, HandshakeTimeout, ct);
+			connection.Capabilities = initialize.TryGetProperty("capabilities", out var capabilities)
+				? capabilities.Clone()
+				: default;
+			connection.ReportWhatItCanDo(initialize);
+			connection.Notify("initialized", new { });
+			return connection;
+		}
+		catch
+		{
+			CliLog.Write(spec.Name, $"initialize FAILED{ProcessStateForLog(process)}");
+			connection.Dispose();
+			throw;
+		}
+	}
+
+	static string ProcessStateForLog(Process process)
+	{
+		try
+		{
+			return process.HasExited ? $": process exited {process.ExitCode}" : ": process still running";
+		}
+		catch (InvalidOperationException)
+		{
+			return ": process state unavailable";
+		}
 	}
 
 	/// <summary>
@@ -307,9 +329,9 @@ public sealed class LspConnection : IDisposable
 
 	async Task ReadLoopAsync()
 	{
+		var stream = process.StandardOutput.BaseStream;
 		try
 		{
-			var stream = process.StandardOutput.BaseStream;
 			while (!stopping.IsCancellationRequested)
 			{
 				if (await LspStream.ReadMessageAsync(stream, stopping.Token) is not { } payload)
@@ -322,25 +344,13 @@ public sealed class LspConnection : IDisposable
 		}
 		finally
 		{
-			// Nothing else will answer these. A server that ended - crashed, was killed, closed
-			// its output - leaves every request made of it waiting forever otherwise, and the
-			// panes behind them wait with it.
-			FailPending();
-		}
-	}
-
-	/// <summary>Answers every outstanding request with nothing, because the connection that was
-	/// going to answer them is gone.</summary>
-	void FailPending()
-	{
-		foreach (int id in pending.Keys)
-		{
-			if (!pending.TryRemove(id, out var waiting) || !waiting.Completion.TrySetResult(default))
-				continue;
-			// Shutting down is the expected end and says nothing; ending underneath a review
-			// that is still being read is the thing to report.
-			if (!disposed)
-				CliLog.Write(spec.Name, $"{waiting.Method} unanswered: the server's output ended");
+			if (!stopping.IsCancellationRequested)
+			{
+				CliLog.Write(spec.Name, $"stdout closed{ProcessStateForLog(process)}");
+				foreach (var (_, waiting) in pending)
+					waiting.Completion.TrySetException(new ToolFailedException(spec.Name, -1,
+						$"language server exited while waiting for {waiting.Method}"));
+			}
 		}
 	}
 
