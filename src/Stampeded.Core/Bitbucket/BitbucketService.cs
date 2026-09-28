@@ -184,9 +184,17 @@ public sealed class BitbucketService(string repoPath, string baseUrl, string pro
 		if (defaultBranch is { Length: > 0 })
 			return defaultBranch;
 		using var doc = await JsonAsync("GET", ApiBase, null, ct);
-		return defaultBranch = StripRefsHeads(Str(doc.RootElement, "defaultBranch")
-			?? Str(doc.RootElement, "defaultBranch", "id")
-			?? Str(doc.RootElement, "defaultBranch", "displayId"));
+		string? branchText = Str(doc.RootElement, "defaultBranch");
+		string? branchId = Str(doc.RootElement, "defaultBranch", "id");
+		string? branchDisplay = Str(doc.RootElement, "defaultBranch", "displayId");
+		CliLog.Write("bitbucket", "repository defaultBranch: "
+			+ $"string={(branchText is null ? "missing" : "present")}, "
+			+ $"id={(branchId is null ? "missing" : "present")}, "
+			+ $"displayId={(branchDisplay is null ? "missing" : "present")}");
+		defaultBranch = StripRefsHeads(branchText ?? branchId ?? branchDisplay);
+		if (defaultBranch.Length == 0)
+			throw new RefusedException("Bitbucket did not name the repository's default branch.");
+		return defaultBranch;
 	}
 
 	public async Task<IReadOnlyList<PrSummary>> ListOpenPrsAsync(CancellationToken ct = default)

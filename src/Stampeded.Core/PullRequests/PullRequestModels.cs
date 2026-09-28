@@ -1,3 +1,5 @@
+using System.ComponentModel;
+using System.Runtime.CompilerServices;
 using System.Text.Json.Serialization;
 
 namespace Stampeded.Core.PullRequests;
@@ -31,7 +33,52 @@ public sealed record PrSummary(
 	IReadOnlyList<PrLatestReview>? LatestReviews = null,
 	IReadOnlyList<PrReviewRequest>? ReviewRequests = null,
 	PrRepoOwner? HeadRepositoryOwner = null)
+	: INotifyPropertyChanged
 {
+	int? loadedAdditions;
+	int? loadedDeletions;
+	int? loadedChangedFiles;
+	bool statsLoading;
+
+	public event PropertyChangedEventHandler? PropertyChanged;
+
+	void OnPropertyChanged([CallerMemberName] string? propertyName = null)
+		=> PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+
+	public void BeginStatsLoading()
+	{
+		StatsLoading = true;
+	}
+
+	public void SetDiffStats(PrDiffStats stats)
+	{
+		loadedAdditions = stats.Additions;
+		loadedDeletions = stats.Deletions;
+		loadedChangedFiles = stats.ChangedFiles;
+		StatsLoading = false;
+		OnPropertyChanged(nameof(AddedDisplay));
+		OnPropertyChanged(nameof(RemovedDisplay));
+		OnPropertyChanged(nameof(StatsTip));
+	}
+
+	public void EndStatsLoading()
+	{
+		StatsLoading = false;
+		OnPropertyChanged(nameof(StatsTip));
+	}
+
+	public bool StatsLoading
+	{
+		get => statsLoading;
+		private set
+		{
+			if (statsLoading == value)
+				return;
+			statsLoading = value;
+			OnPropertyChanged();
+		}
+	}
+
 	/// <summary>The login gh is authenticated as, stamped on after the list is read: only
 	/// that tells "approved" apart from "approved by the reader".</summary>
 	public string? ViewerLogin { get; init; }
@@ -94,15 +141,23 @@ public sealed record PrSummary(
 
 	/// <summary>The size of the change, as the host counts it. Kept to the line totals: this
 	/// shares a line with the branches, and the file count is in the tooltip.</summary>
-	public string AddedDisplay => $"+{Additions}";
+	int DisplayAdditions => loadedAdditions ?? Additions;
 
-	public string RemovedDisplay => $"-{Deletions}";
+	int DisplayDeletions => loadedDeletions ?? Deletions;
+
+	int DisplayChangedFiles => loadedChangedFiles ?? ChangedFiles;
+
+	public string AddedDisplay => $"+{DisplayAdditions}";
+
+	public string RemovedDisplay => $"-{DisplayDeletions}";
 
 	/// <summary>The whole of the branch line, for when the column is too narrow to show it.</summary>
 	public string BranchesTip => $"{HeadRefName} -> {BaseRefName}, by {Author?.Login ?? "unknown"}";
 
-	public string StatsTip => $"{ChangedFiles} changed file(s), {Additions} line(s) added, "
-		+ $"{Deletions} removed, as the host counts them";
+	public string StatsTip => StatsLoading
+		? "Line counts are still loading."
+		: $"{DisplayChangedFiles} changed file(s), {DisplayAdditions} line(s) added, "
+			+ $"{DisplayDeletions} removed, as the host counts them";
 }
 
 public sealed record PrDetail(

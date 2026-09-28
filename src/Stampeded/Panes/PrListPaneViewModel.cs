@@ -18,6 +18,9 @@ public sealed partial class PrListState : ObservableObject
 	/// on a good connection and forever on none, and an empty list says neither.</summary>
 	[ObservableProperty]
 	bool loading;
+
+	[ObservableProperty]
+	bool statsLoading;
 }
 
 /// <summary>
@@ -76,6 +79,7 @@ public class PrListPaneViewModel : Tool
 		statsCts = new CancellationTokenSource();
 		State.Status = "Loading pull requests...";
 		State.Loading = true;
+		State.StatsLoading = false;
 		var rows = new List<PrSummary>();
 		bool loaded = false;
 		try
@@ -119,28 +123,42 @@ public class PrListPaneViewModel : Tool
 
 	async Task LoadDeferredStatsAsync(IPullRequestStatsProvider stats, int version, CancellationToken ct)
 	{
-		foreach (var pr in Items.ToList())
+		var rows = Items.ToList();
+		foreach (var pr in rows)
+			pr.BeginStatsLoading();
+		State.StatsLoading = rows.Count > 0;
+		var loaded = new Dictionary<int, PrDiffStats>();
+		try
 		{
-			ct.ThrowIfCancellationRequested();
-			if (version != loadVersion)
-				return;
-			try
+			foreach (var pr in rows)
 			{
-				var diff = await stats.GetDiffStatsAsync(pr.Number, ct);
-				int index = Items.ToList().FindIndex(row => row.Number == pr.Number);
-				if (index >= 0 && version == loadVersion)
+				ct.ThrowIfCancellationRequested();
+				if (version != loadVersion)
+					return;
+				try
 				{
-					Items[index] = Items[index] with {
-						Additions = diff.Additions,
-						Deletions = diff.Deletions,
-						ChangedFiles = diff.ChangedFiles,
-					};
+					var diff = await stats.GetDiffStatsAsync(pr.Number, ct);
+					loaded[pr.Number] = diff;
+				}
+				catch (Exception ex) when (ex is ToolFailedException or System.Text.Json.JsonException)
+				{
+					CliLog.Write("host", $"pull request #{pr.Number} line counts unavailable: {ex.Message}");
 				}
 			}
-			catch (Exception ex) when (ex is ToolFailedException or System.Text.Json.JsonException)
+			if (version != loadVersion)
+				return;
+			foreach (var pr in rows)
 			{
-				CliLog.Write("host", $"pull request #{pr.Number} line counts unavailable: {ex.Message}");
+				if (loaded.TryGetValue(pr.Number, out var diff))
+					pr.SetDiffStats(diff);
+				else
+					pr.EndStatsLoading();
 			}
+		}
+		finally
+		{
+			if (version == loadVersion)
+				State.StatsLoading = false;
 		}
 	}
 

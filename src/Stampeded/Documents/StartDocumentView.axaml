@@ -137,6 +137,11 @@
                    IsVisible="{Binding #PrFilterToggle.IsChecked}" />
         </Panel>
         <StackPanel Grid.Column="1" Orientation="Horizontal">
+          <StackPanel Orientation="Horizontal" Spacing="4" Margin="0,0,6,0"
+                      IsVisible="{Binding PrList.State.StatsLoading}">
+            <controls:WaveSpinner SquareSize="2.5" Width="32" VerticalAlignment="Center" />
+            <TextBlock Text="line counts" FontSize="11" Opacity="0.7" VerticalAlignment="Center" />
+          </StackPanel>
           <ToggleButton x:Name="PrFilterToggle" Classes="tool" IsCheckedChanged="OnFilterToggled"
                         ToolTip.Tip="Filter (Ctrl+F, or just start typing in the list) - show only the pull requests matching every word typed, by number, title, author, head branch or target branch">
             <Image Source="{x:Static app:Images.Filter}" />

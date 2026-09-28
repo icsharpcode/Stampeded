@@ -2914,9 +2914,12 @@ public sealed class ReviewWorkspace(string repoPath, IPullRequestHost host)
 			return known;
 		try
 		{
-			return defaultBranch = await Host.GetDefaultBranchAsync();
+			string branch = await Host.GetDefaultBranchAsync();
+			if (string.IsNullOrWhiteSpace(branch))
+				throw new RefusedException($"{HostName} did not name a default branch.");
+			return defaultBranch = branch;
 		}
-		catch (ToolFailedException)
+		catch (Exception ex) when (ex is ToolFailedException or RefusedException)
 		{
 			string local = await Git.GetDefaultBaseAsync();
 			string prefix = await Git.GetRemoteAsync() + "/";
