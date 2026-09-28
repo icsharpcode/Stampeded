@@ -259,7 +259,7 @@ public sealed class GitService(string repoPath)
 
 	static void RefuseEmptyRevision(string reference, string operation)
 	{
-		if (string.IsNullOrWhiteSpace(reference))
+		if (string.IsNullOrWhiteSpace(reference) || reference.EndsWith("/", StringComparison.Ordinal))
 			throw new RefusedException($"git {operation} needs a revision, but Stampeded was handed an empty one.");
 	}
 
@@ -270,7 +270,7 @@ public sealed class GitService(string repoPath)
 		{
 			return await RevParseAsync(reference, ct);
 		}
-		catch (ToolFailedException)
+		catch (Exception ex) when (ex is ToolFailedException or RefusedException)
 		{
 			return null;
 		}

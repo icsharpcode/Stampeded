@@ -26,6 +26,8 @@ public sealed partial class PrListState : ObservableObject
 public class PrListPaneViewModel : Tool
 {
 	readonly ReviewWorkspace workspace;
+	CancellationTokenSource? statsCts;
+	int loadVersion;
 	/// <summary>Whose pull request it is - "GitHub", "Azure DevOps" - for the headers and
 	/// tooltips that name the host.</summary>
 	public string HostName => workspace.HostName;
@@ -69,9 +71,13 @@ public class PrListPaneViewModel : Tool
 
 	public async Task LoadAsync()
 	{
+		int version = ++loadVersion;
+		statsCts?.Cancel();
+		statsCts = new CancellationTokenSource();
 		State.Status = "Loading pull requests...";
 		State.Loading = true;
 		var rows = new List<PrSummary>();
+		bool loaded = false;
 		try
 		{
 			if (!await workspace.Git.IsRepositoryAsync())
@@ -96,6 +102,7 @@ public class PrListPaneViewModel : Tool
 				.OrderBy(p => p.ListPriority))
 				rows.Add(pr);
 			State.Status = $"{prs.Count} open pull request(s)";
+			loaded = true;
 		}
 		catch (ToolFailedException ex)
 		{
@@ -105,6 +112,35 @@ public class PrListPaneViewModel : Tool
 		{
 			Items.Replace(rows);
 			State.Loading = false;
+		}
+		if (loaded && workspace.Host is IPullRequestStatsProvider stats)
+			LoadDeferredStatsAsync(stats, version, statsCts.Token).HandleExceptions();
+	}
+
+	async Task LoadDeferredStatsAsync(IPullRequestStatsProvider stats, int version, CancellationToken ct)
+	{
+		foreach (var pr in Items.ToList())
+		{
+			ct.ThrowIfCancellationRequested();
+			if (version != loadVersion)
+				return;
+			try
+			{
+				var diff = await stats.GetDiffStatsAsync(pr.Number, ct);
+				int index = Items.ToList().FindIndex(row => row.Number == pr.Number);
+				if (index >= 0 && version == loadVersion)
+				{
+					Items[index] = Items[index] with {
+						Additions = diff.Additions,
+						Deletions = diff.Deletions,
+						ChangedFiles = diff.ChangedFiles,
+					};
+				}
+			}
+			catch (Exception ex) when (ex is ToolFailedException or System.Text.Json.JsonException)
+			{
+				CliLog.Write("host", $"pull request #{pr.Number} line counts unavailable: {ex.Message}");
+			}
 		}
 	}
 

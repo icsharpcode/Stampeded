@@ -10,7 +10,7 @@ namespace Stampeded.Core.Bitbucket;
 /// shape gh and az provide, so curl is the external tool that owns HTTP and authentication.
 /// </summary>
 public sealed class BitbucketService(string repoPath, string baseUrl, string projectKey, string repo)
-	: IPullRequestHost
+	: IPullRequestHost, IPullRequestStatsProvider
 {
 	readonly string baseUrl = baseUrl.TrimEnd('/');
 	readonly Dictionary<int, Task<JsonDocument>> pullRequests = [];
@@ -193,35 +193,16 @@ public sealed class BitbucketService(string repoPath, string baseUrl, string pro
 	{
 		var prs = await PageAsync($"{ApiBase}/pull-requests?state=OPEN", ct);
 		string viewer = await GetViewerLoginAsync(ct);
-		var summaries = new List<PrSummary>();
-		foreach (var pr in prs)
-		{
-			var summary = Summary(pr);
-			try
-			{
-				var stats = await DiffStatsAsync(summary.Number, ct);
-				summary = summary with {
-					Additions = stats.Additions,
-					Deletions = stats.Deletions,
-					ChangedFiles = stats.ChangedFiles,
-				};
-			}
-			catch (Exception ex) when (ex is ToolFailedException or JsonException)
-			{
-				CliLog.Write("bitbucket", $"diff stats unavailable for pull request {summary.Number}: {ex.Message}");
-			}
-			summaries.Add(summary with { ViewerLogin = viewer, OriginOwner = projectKey });
-		}
-		return summaries;
+		return [.. prs.Select(pr => Summary(pr) with { ViewerLogin = viewer, OriginOwner = projectKey })];
 	}
 
-	async Task<(int Additions, int Deletions, int ChangedFiles)> DiffStatsAsync(int number, CancellationToken ct)
+	public async Task<PrDiffStats> GetDiffStatsAsync(int number, CancellationToken ct = default)
 	{
 		using var doc = await JsonAsync("GET", $"{ApiBase}/pull-requests/{number}/diff?contextLines=0", null, ct);
 		return DiffStats(doc.RootElement);
 	}
 
-	public static (int Additions, int Deletions, int ChangedFiles) DiffStats(JsonElement root)
+	public static PrDiffStats DiffStats(JsonElement root)
 	{
 		int additions = 0, deletions = 0, changedFiles = 0;
 		foreach (var diff in Array(Node(root, "diffs")))
@@ -246,7 +227,7 @@ public sealed class BitbucketService(string repoPath, string baseUrl, string pro
 				}
 			}
 		}
-		return (additions, deletions, changedFiles);
+		return new PrDiffStats(additions, deletions, changedFiles);
 	}
 
 	PrSummary Summary(JsonElement pr)
