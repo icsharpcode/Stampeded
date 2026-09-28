@@ -245,10 +245,23 @@ public sealed class GitService(string repoPath)
 	}
 
 	public async Task<string> GetMergeBaseAsync(string a, string b, CancellationToken ct = default)
-		=> (await RunAsync(ct, "merge-base", a, b)).Trim();
+	{
+		RefuseEmptyRevision(a, "merge-base");
+		RefuseEmptyRevision(b, "merge-base");
+		return (await RunAsync(ct, "merge-base", a, b)).Trim();
+	}
 
 	public async Task<string> RevParseAsync(string reference, CancellationToken ct = default)
-		=> (await RunAsync(ct, "rev-parse", "--verify", reference)).Trim();
+	{
+		RefuseEmptyRevision(reference, "rev-parse");
+		return (await RunAsync(ct, "rev-parse", "--verify", reference)).Trim();
+	}
+
+	static void RefuseEmptyRevision(string reference, string operation)
+	{
+		if (string.IsNullOrWhiteSpace(reference))
+			throw new RefusedException($"git {operation} needs a revision, but Stampeded was handed an empty one.");
+	}
 
 	/// <summary>The commit a ref names, or null when there is no such ref.</summary>
 	public async Task<string?> TryRevParseAsync(string reference, CancellationToken ct = default)
@@ -328,12 +341,18 @@ public sealed class GitService(string repoPath)
 	/// Azure DevOps does not and the source branch is fetched instead.</summary>
 	public async Task<string> FetchPrHeadAsync(string refspec, int number, CancellationToken ct = default)
 	{
+		if (string.IsNullOrWhiteSpace(refspec))
+			throw new RefusedException($"Cannot fetch pull request {number}: the host did not name a source branch.");
 		await RunAsync(ct, "fetch", await GetRemoteAsync(ct), refspec);
 		return (await RunAsync(ct, "rev-parse", $"refs/stampeded/pr/{number}")).Trim();
 	}
 
 	public async Task FetchBranchAsync(string branch, CancellationToken ct = default)
-		=> await RunAsync(ct, "fetch", await GetRemoteAsync(ct), branch);
+	{
+		if (string.IsNullOrWhiteSpace(branch))
+			throw new RefusedException("Cannot fetch the target branch: the host did not name one.");
+		await RunAsync(ct, "fetch", await GetRemoteAsync(ct), branch);
+	}
 
 	public async Task<IReadOnlyList<FileDiff>> DiffAsync(string baseRev, string headRev, CancellationToken ct = default)
 		=> GitDiffParser.Parse(await RunAsync(ct, "diff", "-U3", "--find-renames", baseRev, headRev));

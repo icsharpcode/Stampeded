@@ -71,6 +71,9 @@ public sealed class BitbucketService(string repoPath, string baseUrl, string pro
 			? name["refs/heads/".Length..]
 			: refName ?? "";
 
+	static string RefName(JsonElement element, string name)
+		=> StripRefsHeads(Str(element, name, "id") ?? Str(element, name, "displayId") ?? Str(element, name));
+
 	async Task<JsonDocument> JsonAsync(string method, string url, string? jsonBody, CancellationToken ct)
 	{
 		string output = await CurlAsync(method, url, jsonBody, ct);
@@ -261,8 +264,8 @@ public sealed class BitbucketService(string repoPath, string baseUrl, string pro
 			Int(pr, "id"),
 			Str(pr, "title") ?? "",
 			new PrAuthor(User(Node(pr, "author") ?? default)),
-			StripRefsHeads(Str(pr, "fromRef", "id") ?? Str(pr, "fromRef", "displayId")),
-			StripRefsHeads(Str(pr, "toRef", "id") ?? Str(pr, "toRef", "displayId")),
+			RefName(pr, "fromRef"),
+			RefName(pr, "toRef"),
 			Bool(pr, "draft"),
 			FromBitbucketTime(Long(pr, "updatedDate")),
 			StatusCheckRollup: null,
@@ -281,8 +284,8 @@ public sealed class BitbucketService(string repoPath, string baseUrl, string pro
 			number,
 			Str(pr, "title") ?? "",
 			Str(pr, "description"),
-			StripRefsHeads(Str(pr, "toRef", "id") ?? Str(pr, "toRef", "displayId")),
-			StripRefsHeads(Str(pr, "fromRef", "id") ?? Str(pr, "fromRef", "displayId")),
+			RefName(pr, "toRef"),
+			RefName(pr, "fromRef"),
 			Str(pr, "state") ?? "",
 			new PrAuthor(User(Node(pr, "author") ?? default)),
 			Bool(pr, "draft"));
@@ -319,7 +322,7 @@ public sealed class BitbucketService(string repoPath, string baseUrl, string pro
 		if (!string.Equals(fromProject, projectKey, StringComparison.OrdinalIgnoreCase)
 			|| !string.Equals(fromRepo, repo, StringComparison.OrdinalIgnoreCase))
 			throw new RefusedException("Pull requests from another Bitbucket repository are not supported yet.");
-		string branch = Str(pr, "fromRef", "id") ?? "";
+		string branch = RefName(pr, "fromRef");
 		if (branch.Length == 0)
 			throw new RefusedException($"Bitbucket did not name a source branch for pull request {number}.");
 		return $"+{branch}:refs/stampeded/pr/{number}";
@@ -346,7 +349,7 @@ public sealed class BitbucketService(string repoPath, string baseUrl, string pro
 			draft ? "DRAFT" : canMerge ? "CLEAN" : "BLOCKED",
 			Decision([.. Array(Node(pr, "reviewers"))]),
 			draft,
-			StripRefsHeads(Str(pr, "toRef", "id") ?? Str(pr, "toRef", "displayId")),
+			RefName(pr, "toRef"),
 			rollup.RootElement.Clone(),
 			Str(pr, "state"),
 			Str(pr, "fromRef", "latestCommit")) {
