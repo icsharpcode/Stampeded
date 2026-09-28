@@ -43,7 +43,6 @@ public partial class MainWindow : Window
 		lightThemeItem = Named("Light");
 		darkThemeItem = Named("Dark");
 		WindowPlacement.Attach(this);
-		DataContext = new MainViewModel();
 		ScreenshotWatcher.Attach(this);
 		// A menu about to be shown is the only moment its per-document state is not stale, and
 		// each platform says so differently: the exported macOS menu asks the model for an

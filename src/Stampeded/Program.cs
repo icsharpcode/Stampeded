@@ -12,8 +12,8 @@ internal static class Program
 
 	/// <summary>
 	/// Which host the repository's pull requests live on. A property of the repository, like
-	/// <see cref="RepoPath"/> beside it: decided from origin's URL here, before any window
-	/// exists, and again whenever another repository is opened.
+	/// <see cref="RepoPath"/> beside it: decided from origin's URL when the window opens, and
+	/// again whenever another repository is opened.
 	/// </summary>
 	public static IPullRequestHost Host { get; set; } = null!;
 
@@ -43,9 +43,6 @@ internal static class Program
 			.FirstOrDefault();
 		if (repoArg is not null)
 			RepoPath = Path.GetFullPath(repoArg);
-		// Waited for rather than awaited: there is no dispatcher to deadlock against yet, and
-		// the first window is built from the answer.
-		Host = PullRequestHosts.ForAsync(RepoPath).GetAwaiter().GetResult();
 		BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
 	}
 

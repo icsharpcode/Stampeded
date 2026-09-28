@@ -38,12 +38,37 @@ public class App : Application
 			return;
 		}
 		CliLog.Write("action", $"open repository {path}");
+		var host = await ResolveHostAsync(window, path);
+		if (host is null)
+		{
+			Workspace?.PostStatus($"Opening {path} cancelled: no pull-request provider chosen.");
+			return;
+		}
 		Workspace?.Shutdown();
 		Program.RepoPath = path;
-		Program.Host = await PullRequestHosts.ForAsync(path);
+		Program.Host = host;
 		window.DataContext = new MainViewModel();
 		if (prNumber is { } pr)
 			await (Workspace?.OpenPrAsync(pr) ?? Task.CompletedTask);
+	}
+
+	static async Task<IPullRequestHost?> ResolveHostAsync(Window owner, string path)
+	{
+		var host = await PullRequestHosts.TryForAsync(path);
+		if (host is not null)
+			return host;
+		bool useGitHub = await new ConfirmWindow("Pull Request Provider",
+			"Stampeded could not identify this checkout's pull-request provider from its origin remote. "
+			+ "Open it with the GitHub provider?\n\n"
+			+ "Azure DevOps and Bitbucket need a recognized remote URL so Stampeded can read the organization, project and repository.",
+			"Use GitHub").ShowDialog<bool>(owner);
+		if (!useGitHub)
+		{
+			CliLog.Write("host", "provider question declined");
+			return null;
+		}
+		CliLog.Write("host", "provider chosen as GitHub");
+		return PullRequestHosts.GitHub(path);
 	}
 
 	static bool IsRepository(string path)
@@ -221,12 +246,18 @@ public class App : Application
 					CliLog.Write("app", $"{context.Signal}: stopped the review's servers");
 				}));
 			}
-			if (Program.AutoOpenPr is { } pr)
-			{
-				// --pr N means "open guided": land the wizard on Triage like Open Guided does.
-				OpenAutoPrAsync(pr).HandleExceptions();
-			}
+			OpenStartupRepositoryAsync().HandleExceptions();
 		}
 		base.OnFrameworkInitializationCompleted();
+	}
+
+	static async Task OpenStartupRepositoryAsync()
+	{
+		await OpenRepositoryAsync(Program.RepoPath);
+		if (Program.AutoOpenPr is { } pr && Workspace is not null)
+		{
+			// --pr N means "open guided": land the wizard on Triage like Open Guided does.
+			await OpenAutoPrAsync(pr);
+		}
 	}
 }

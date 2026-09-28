@@ -11,37 +11,48 @@ public static class PullRequestHosts
 {
 	/// <summary>
 	/// The host for a checkout, from its remote's URL (see <see cref="GitService.GetRemoteAsync"/>
-	/// for which remote that is). Anything that URL does not name as Azure DevOps or Bitbucket is
-	/// GitHub on purpose: gh also serves GitHub Enterprise hosts, which nothing here can enumerate,
-	/// and a clone with no usable remote at all behaves as it always did.
+	/// for which remote that is). GitHub is selected only when the remote says GitHub; callers
+	/// decide what to do with a remote that names no supported host.
 	/// <c>STAMPEDED_PR_HOST=github|azdo|bitbucket</c> overrides the decision.
 	/// </summary>
-	public static async Task<IPullRequestHost> ForAsync(string repoPath, CancellationToken ct = default)
+	public static async Task<IPullRequestHost?> TryForAsync(string repoPath, CancellationToken ct = default)
 	{
 		var (remote, url) = await RemoteUrlAsync(repoPath, ct);
 		string? forced = Environment.GetEnvironmentVariable("STAMPEDED_PR_HOST");
 		bool azdo = AzureDevOpsUrl.TryParse(url, out string org, out string project, out string repo, out _);
 		bool bitbucket = BitbucketUrl.TryParse(url, out string bitbucketBase, out string bitbucketProject,
 			out string bitbucketRepo, out _);
+		bool github = GitHubUrl.TryParse(url, out _, out _, out _);
 		if (forced is { Length: > 0 })
 		{
 			CliLog.Write("host", $"STAMPEDED_PR_HOST={forced}");
 			azdo = forced.Equals("azdo", StringComparison.OrdinalIgnoreCase);
 			bitbucket = forced.Equals("bitbucket", StringComparison.OrdinalIgnoreCase);
+			github = forced.Equals("github", StringComparison.OrdinalIgnoreCase);
 		}
 		if (azdo)
 		{
 			CliLog.Write("host", $"{remote ?? "the repository"} is Azure DevOps ({org}/{project}/{repo})");
 			return new AzureDevOpsService(repoPath, org, project, repo);
 		}
+		if (github)
+		{
+			CliLog.Write("host", $"{remote ?? "the repository"} is GitHub");
+			return new GitHubService(repoPath);
+		}
 		if (bitbucket)
 		{
 			CliLog.Write("host", $"{remote ?? "the repository"} is Bitbucket Data Center ({bitbucketProject}/{bitbucketRepo})");
 			return new BitbucketService(repoPath, bitbucketBase, bitbucketProject, bitbucketRepo);
 		}
-		CliLog.Write("host", $"{remote ?? "the repository"} is GitHub");
-		return new GitHubService(repoPath);
+		string source = remote ?? "the repository";
+		CliLog.Write("host", url.Length == 0
+			? $"{source} does not name a pull-request host"
+			: $"{source} does not name a supported pull-request host: {url}");
+		return null;
 	}
+
+	public static GitHubService GitHub(string repoPath) => new(repoPath);
 
 	static async Task<(string? Remote, string Url)> RemoteUrlAsync(string repoPath, CancellationToken ct)
 	{
