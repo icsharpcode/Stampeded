@@ -8,7 +8,7 @@ namespace Stampeded.Core.Tests;
 public class PrApprovalTests
 {
 	static PrSummary Pr(string? decision, params (string Login, string State)[] reviews)
-		=> new PrSummary(1, "t", null, "head", "base", false, default, null, null, decision,
+		=> new PrSummary(1, "t", new PrAuthor("author"), "head", "base", false, default, null, null, decision,
 			LatestReviews: [.. reviews.Select(r => new PrLatestReview(new PrAuthor(r.Login), r.State))]) {
 			ViewerLogin = "me",
 		};
@@ -43,5 +43,31 @@ public class PrApprovalTests
 		Assert.That(team.ReviewRequestedFromMe, Is.False);
 		Assert.That(Pr(null).ReviewRequestedFromMe, Is.False);
 		Assert.That((asked with { ViewerLogin = null }).ReviewRequestedFromMe, Is.False);
+	}
+
+	[Test]
+	public void AuthorshipIsReadFromTheViewerLogin()
+	{
+		Assert.That((Pr(null) with { Author = new PrAuthor("me") }).AuthoredByMe, Is.True);
+		Assert.That((Pr(null) with { Author = new PrAuthor("someone") }).AuthoredByMe, Is.False);
+		Assert.That((Pr(null) with { Author = new PrAuthor("me"), ViewerLogin = null }).AuthoredByMe, Is.False);
+	}
+
+	[Test]
+	public void ListPriorityPutsRequestsAndOwnPullRequestsFirst()
+	{
+		var requested = Pr(null) with { Number = 1, ReviewRequests = [new PrReviewRequest("me")] };
+		var mine = Pr(null) with { Number = 2, Author = new PrAuthor("me") };
+		var open = Pr(null) with { Number = 3 };
+		var reviewed = Pr("APPROVED", ("someone", "APPROVED")) with { Number = 4 };
+		var approvedByMe = Pr("APPROVED", ("me", "APPROVED")) with { Number = 5 };
+		var draft = Pr(null) with { Number = 6, IsDraft = true };
+
+		var sorted = new[] { draft, approvedByMe, reviewed, open, mine, requested }
+			.OrderBy(pr => pr.ListPriority)
+			.Select(pr => pr.Number)
+			.ToList();
+
+		Assert.That(sorted, Is.EqualTo(new[] { 1, 2, 3, 4, 5, 6 }));
 	}
 }

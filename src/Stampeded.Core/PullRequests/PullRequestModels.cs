@@ -72,6 +72,21 @@ public sealed record PrSummary(
 	public bool ReviewRequestedFromMe => ViewerLogin is { Length: > 0 } me
 		&& ReviewRequests?.Any(r => string.Equals(r.Login, me, StringComparison.OrdinalIgnoreCase)) == true;
 
+	public bool AuthoredByMe => ViewerLogin is { Length: > 0 } me
+		&& string.Equals(Author?.Login, me, StringComparison.OrdinalIgnoreCase);
+
+	/// <summary>
+	/// The provider-neutral order for open pull request lists: what asks the reader for a review,
+	/// then their own work, then reviews still needing attention. Rows that are already handled
+	/// sink, and drafts go last because they are not asking for review yet.
+	/// </summary>
+	public int ListPriority => ReviewRequestedFromMe ? 0
+		: AuthoredByMe ? 1
+		: IsDraft ? 5
+		: ApprovedByMe ? 4
+		: IsApproved || ChangesRequested ? 3
+		: 2;
+
 	/// <summary>Approved, but not by the reader - so the two badges never both show.</summary>
 	public bool ApprovedByOthers => IsApproved && !ApprovedByMe;
 
