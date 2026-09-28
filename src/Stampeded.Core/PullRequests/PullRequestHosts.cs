@@ -42,6 +42,11 @@ public static class PullRequestHosts
 		}
 		if (bitbucket)
 		{
+			if (Environment.GetEnvironmentVariable("STAMPEDED_BITBUCKET_BASE_URL") is { Length: > 0 } overrideBase)
+			{
+				bitbucketBase = overrideBase.TrimEnd('/');
+				CliLog.Write("host", $"STAMPEDED_BITBUCKET_BASE_URL={bitbucketBase}");
+			}
 			CliLog.Write("host", $"{remote ?? "the repository"} is Bitbucket Data Center ({bitbucketProject}/{bitbucketRepo})");
 			return new BitbucketService(repoPath, bitbucketBase, bitbucketProject, bitbucketRepo);
 		}
