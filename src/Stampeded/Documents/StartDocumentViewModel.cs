@@ -215,6 +215,7 @@ public class StartDocumentViewModel : Document
 	// answers hold only for the default branch they were measured against, which is what
 	// mergeCheckedAgainst records.
 	readonly Dictionary<string, MergeState> mergeByBranchSha = [];
+	CancellationTokenSource? rebaseMergedCts;
 	string? mergeCheckedAgainst;
 	IReadOnlySet<string> mergedBranches = new HashSet<string>();
 	// Which checkout has each branch, so a row can offer to open it - and so the reader can
@@ -448,23 +449,26 @@ public class StartDocumentViewModel : Document
 				Branches.Add(row);
 		}
 		RefreshSyncStatesAsync(prsByBranch).HandleExceptions();
-		RefreshRebaseMergedAsync().HandleExceptions();
+		rebaseMergedCts?.Cancel();
+		var rebaseCts = rebaseMergedCts = new CancellationTokenSource();
+		RefreshRebaseMergedAsync(Branches.ToList(), rebaseCts.Token).HandleExceptions();
 	}
 
 	/// <summary>
 	/// Asks the more expensive question only of the branches the cheap one did not answer:
 	/// whether a branch that is not an ancestor of the default branch nonetheless has all of
 	/// its commits there as equivalent patches, which is what a rebase merge produces. One
-	/// git call per branch, so it runs behind the list rather than delaying it, and the
-	/// answer is cached against the branch tip.
+	/// git call per visible branch, so it runs behind the list rather than delaying it, and the
+	/// answer is cached against the branch tip. It is cancelled when the list changes or when a
+	/// review starts, because then the start page is no longer what the reader is waiting on.
 	/// </summary>
-	async Task RefreshRebaseMergedAsync()
+	async Task RefreshRebaseMergedAsync(IReadOnlyList<BranchRow> visibleRows, CancellationToken ct)
 	{
 		using var logTask = CliLog.BeginTask("detect rebase-merged branches");
 		// The cached answers were measured against the default branch as it stood. When a
 		// fetch moves it - which is the moment a branch becomes rebase-merged - every one of
 		// them is about a history that no longer exists, so they all go.
-		string? baseSha = await workspace.Git.TryRevParseAsync(defaultBase);
+		string? baseSha = await workspace.Git.TryRevParseAsync(defaultBase, ct);
 		if (baseSha is null)
 			return;
 		if (!string.Equals(baseSha, mergeCheckedAgainst, StringComparison.Ordinal))
@@ -473,8 +477,10 @@ public class StartDocumentViewModel : Document
 			mergeCheckedAgainst = baseSha;
 		}
 		bool changed = false;
-		foreach (var branch in rawBranches.ToList())
+		foreach (var row in visibleRows)
 		{
+			ct.ThrowIfCancellationRequested();
+			var branch = row.Info;
 			if (mergedBranches.Contains(branch.Name)
 				|| string.Equals(branch.Name, defaultBranch, StringComparison.Ordinal)
 				|| mergeByBranchSha.ContainsKey(branch.Sha))
@@ -483,10 +489,14 @@ public class StartDocumentViewModel : Document
 			}
 			try
 			{
-				mergeByBranchSha[branch.Sha] = await workspace.Git.IsMergedByPatchAsync(branch.Name, defaultBase)
+				mergeByBranchSha[branch.Sha] = await workspace.Git.IsMergedByPatchAsync(branch.Name, defaultBase, ct)
 					? MergeState.RebaseMerged
 					: MergeState.Unknown;
 				changed = true;
+			}
+			catch (OperationCanceledException)
+			{
+				throw;
 			}
 			catch (ToolFailedException)
 			{
@@ -993,6 +1003,7 @@ public class StartDocumentViewModel : Document
 
 	void BeginPreparation()
 	{
+		rebaseMergedCts?.Cancel();
 		openOverviewWhenReady = true;
 		State.PrepareError = "";
 		State.IsPreparing = true;
