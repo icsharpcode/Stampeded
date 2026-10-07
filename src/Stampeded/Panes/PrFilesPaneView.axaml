@@ -11,8 +11,9 @@
          out of its middle instead - the end is what tells two files of a pair apart
          (a view from its code-behind, a source file from its generated twin). -->
     <TreeView x:Name="FileTree" ItemsSource="{Binding Roots}" DoubleTapped="OnDoubleTapped"
-              SelectionChanged="OnSelectionChanged"
-              ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+               SelectionChanged="OnSelectionChanged"
+               PointerPressed="OnPointerPressed"
+               ScrollViewer.HorizontalScrollBarVisibility="Disabled">
     <!-- Open by default: the pane is the review's queue, and a queue that starts folded
          hides what there is to do. A reader can still fold what they are done with. -->
     <TreeView.Styles>
@@ -21,10 +22,13 @@
       </Style>
     </TreeView.Styles>
     <TreeView.ContextMenu>
-      <ContextMenu>
+      <ContextMenu Opening="OnContextMenuOpening">
         <MenuItem Header="Open Diff (click)" Click="OnOpenClicked" />
         <MenuItem Header="Toggle Viewed" Click="OnToggleViewedClicked" />
         <Separator />
+        <MenuItem Header="Copy File Name" x:Name="CopyFileNameItem" Click="OnCopyFileName" />
+        <MenuItem Header="Copy Path" x:Name="CopyPathItem" Click="OnCopyPath" />
+        <MenuItem Header="Copy Relative Path" x:Name="CopyRelativePathItem" Click="OnCopyRelativePath" />
       </ContextMenu>
     </TreeView.ContextMenu>
     <TreeView.ItemTemplate>

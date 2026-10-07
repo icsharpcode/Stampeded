@@ -216,6 +216,7 @@ public class StartDocumentViewModel : Document
 	// mergeCheckedAgainst records.
 	readonly Dictionary<string, MergeState> mergeByBranchSha = [];
 	CancellationTokenSource? rebaseMergedCts;
+	CancellationTokenSource lifetimeCts = new();
 	string? mergeCheckedAgainst;
 	IReadOnlySet<string> mergedBranches = new HashSet<string>();
 	// Which checkout has each branch, so a row can offer to open it - and so the reader can
@@ -281,25 +282,46 @@ public class StartDocumentViewModel : Document
 		// review here turns out to be; any other language pays its own load once.
 		Task.Run(() => Editor.SyntaxPainter.For("warm.cs")?.Paint("class C { void M() { } }").Count())
 			.HandleExceptions();
-		LoadStartPageAsync().HandleExceptions();
+		LoadStartPageAsync(lifetimeCts.Token).HandleExceptions();
+		PrList.LoadAsync(lifetimeCts.Token).HandleExceptions();
 	}
 
-	async Task LoadStartPageAsync()
+	public void Activate()
+	{
+		if (!lifetimeCts.IsCancellationRequested)
+			return;
+		lifetimeCts.Dispose();
+		lifetimeCts = new CancellationTokenSource();
+	}
+
+	public void CancelBackgroundWork()
+	{
+		if (!lifetimeCts.IsCancellationRequested)
+			lifetimeCts.Cancel();
+		rebaseMergedCts?.Cancel();
+		PrList.CancelBackgroundWork();
+	}
+
+	async Task LoadStartPageAsync(CancellationToken ct)
 	{
 		State.RefsLoading = true;
 		try
 		{
 			// What is local first: a clone whose remote cannot be told still has branches to
 			// list, and only the labels measured against the remote's default branch are lost.
-			rawBranches = await workspace.Git.ListBranchesAsync();
-			rawStashes = await workspace.Git.ListStashesAsync();
-			worktreeByBranch = (await workspace.Git.ListWorktreesAsync())
+			rawBranches = await workspace.Git.ListBranchesAsync(ct);
+			rawStashes = await workspace.Git.ListStashesAsync(ct);
+			worktreeByBranch = (await workspace.Git.ListWorktreesAsync(ct))
 				.Where(w => w.Branch is not null)
 				.ToDictionary(w => w.Branch!, w => w.Path, StringComparer.Ordinal);
-			defaultBranch = await workspace.GetDefaultBranchAsync();
-			defaultBase = await workspace.GetDefaultBaseAsync();
-			mergedBranches = await workspace.Git.ListMergedBranchesAsync(defaultBase);
-			aheadByBranch = await workspace.Git.GetAheadCountsAsync(defaultBase);
+			defaultBranch = await workspace.GetDefaultBranchAsync(ct);
+			defaultBase = await workspace.GetDefaultBaseAsync(ct);
+			mergedBranches = await workspace.Git.ListMergedBranchesAsync(defaultBase, ct);
+			aheadByBranch = await workspace.Git.GetAheadCountsAsync(defaultBase, ct);
+		}
+		catch (OperationCanceledException)
+		{
+			throw;
 		}
 		catch (ToolFailedException ex)
 		{
@@ -309,12 +331,15 @@ public class StartDocumentViewModel : Document
 		}
 		finally
 		{
-			State.RefsLoading = false;
+			if (!ct.IsCancellationRequested)
+				State.RefsLoading = false;
 			// Both load paths ask, and both from the finally: the start page is exactly where a
 			// reader lands after a rebase stopped on conflicts, and reading the refs is what
 			// fails first in the clone that is in that state.
-			await RefreshInProgressAsync();
+			if (!ct.IsCancellationRequested)
+				await RefreshInProgressAsync(ct);
 		}
+		ct.ThrowIfCancellationRequested();
 		AnnotateBranches();
 	}
 
@@ -324,45 +349,60 @@ public class StartDocumentViewModel : Document
 	/// leaves the list it had, which is the same thing it does at startup.</summary>
 	public void Refresh()
 	{
+		Activate();
 		ReloadRefs();
-		PrList.LoadAsync().HandleExceptions();
+		PrList.LoadAsync(lifetimeCts.Token).HandleExceptions();
 	}
 
 	public void ReloadRefs() => ReloadRefsAsync().HandleExceptions();
 
+	public void ReloadPullRequests()
+	{
+		Activate();
+		PrList.LoadAsync(lifetimeCts.Token).HandleExceptions();
+	}
+
 	/// <summary>Re-reads branches and stashes after an operation changed them.</summary>
 	async Task ReloadRefsAsync()
 	{
+		Activate();
+		var ct = lifetimeCts.Token;
 		State.RefsLoading = true;
 		try
 		{
-			await ReloadRefsCoreAsync();
+			await ReloadRefsCoreAsync(ct);
 		}
 		finally
 		{
-			State.RefsLoading = false;
+			if (!ct.IsCancellationRequested)
+				State.RefsLoading = false;
 			// In the finally, not after the reload: reading the refs is what fails in a clone
 			// with no remote, and a half-finished operation is exactly the thing still worth
 			// reporting when the rest of the page could not be built.
-			await RefreshInProgressAsync();
+			if (!ct.IsCancellationRequested)
+				await RefreshInProgressAsync(ct);
 		}
 	}
 
-	async Task ReloadRefsCoreAsync()
+	async Task ReloadRefsCoreAsync(CancellationToken ct)
 	{
-		rawBranches = await workspace.Git.ListBranchesAsync();
-		rawStashes = await workspace.Git.ListStashesAsync();
+		rawBranches = await workspace.Git.ListBranchesAsync(ct);
+		rawStashes = await workspace.Git.ListStashesAsync(ct);
 		try
 		{
-			worktreeByBranch = (await workspace.Git.ListWorktreesAsync())
+			worktreeByBranch = (await workspace.Git.ListWorktreesAsync(ct))
 				.Where(w => w.Branch is not null)
 				.ToDictionary(w => w.Branch!, w => w.Path, StringComparer.Ordinal);
 			// Asked again rather than kept from the first load: a remote that could not be told
 			// then may have been configured since.
-			defaultBase = await workspace.GetDefaultBaseAsync();
-			mergedBranches = await workspace.Git.ListMergedBranchesAsync(defaultBase);
-			aheadByBranch = await workspace.Git.GetAheadCountsAsync(defaultBase);
+			defaultBase = await workspace.GetDefaultBaseAsync(ct);
+			mergedBranches = await workspace.Git.ListMergedBranchesAsync(defaultBase, ct);
+			aheadByBranch = await workspace.Git.GetAheadCountsAsync(defaultBase, ct);
 			State.RefsStatus = "";
+		}
+		catch (OperationCanceledException)
+		{
+			throw;
 		}
 		catch (ToolFailedException ex)
 		{
@@ -370,6 +410,7 @@ public class StartDocumentViewModel : Document
 			// the whole list failing to reload, and the reason is shown above the list.
 			State.RefsStatus = ExternalTool.Explain(ex);
 		}
+		ct.ThrowIfCancellationRequested();
 		AnnotateBranches();
 	}
 
@@ -395,6 +436,8 @@ public class StartDocumentViewModel : Document
 
 	void AnnotateBranches()
 	{
+		if (lifetimeCts.IsCancellationRequested)
+			return;
 		// Both counts stay visible whichever list is showing: the pair of options is the
 		// column header, so it also reports what the other option holds.
 		State.BranchesLabel = $"Branches ({rawBranches.Count})";
@@ -448,9 +491,10 @@ public class StartDocumentViewModel : Document
 			if (WordFilter.Matches(State.BranchFilter, row.Info.Name, row.Info.Subject, row.PrTag))
 				Branches.Add(row);
 		}
-		RefreshSyncStatesAsync(prsByBranch).HandleExceptions();
+		var ct = lifetimeCts.Token;
+		RefreshSyncStatesAsync(prsByBranch, ct).HandleExceptions();
 		rebaseMergedCts?.Cancel();
-		var rebaseCts = rebaseMergedCts = new CancellationTokenSource();
+		var rebaseCts = rebaseMergedCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
 		RefreshRebaseMergedAsync(Branches.ToList(), rebaseCts.Token).HandleExceptions();
 	}
 
@@ -510,11 +554,12 @@ public class StartDocumentViewModel : Document
 	/// <summary>Measures how far the branches that do not match their PR head have drifted.
 	/// Only those need a git call, and only once each: a branch whose head equals the PR's
 	/// is already known to be in sync.</summary>
-	async Task RefreshSyncStatesAsync(Dictionary<string, PrSummary> prsByBranch)
+	async Task RefreshSyncStatesAsync(Dictionary<string, PrSummary> prsByBranch, CancellationToken ct)
 	{
 		bool changed = false;
 		foreach (var branch in rawBranches)
 		{
+			ct.ThrowIfCancellationRequested();
 			if (!prsByBranch.TryGetValue(branch.Name, out var pr)
 				|| pr.HeadRefOid is not { Length: > 0 } oid
 				|| string.Equals(oid, branch.Sha, StringComparison.OrdinalIgnoreCase)
@@ -522,12 +567,13 @@ public class StartDocumentViewModel : Document
 			{
 				continue;
 			}
-			if (await workspace.Git.GetSyncStateAsync(branch.Sha, oid) is { } sync)
+			if (await workspace.Git.GetSyncStateAsync(branch.Sha, oid, ct) is { } sync)
 			{
 				syncByBranch[branch.Name] = sync;
 				changed = true;
 			}
 		}
+		ct.ThrowIfCancellationRequested();
 		if (changed)
 			AnnotateBranches();
 	}
@@ -643,7 +689,7 @@ public class StartDocumentViewModel : Document
 				await workspace.Git.FetchAsync();
 				syncByBranch.Clear();
 				await ReloadRefsAsync();
-				await PrList.LoadAsync();
+				await PrList.LoadAsync(lifetimeCts.Token);
 				State.Status = $"Fetched from {remote}.";
 			}
 			catch (ToolFailedException ex)
@@ -737,7 +783,7 @@ public class StartDocumentViewModel : Document
 				await workspace.Host.MarkReadyForReviewAsync(pr.Number);
 				CliLog.Write("action", $"marked #{pr.Number} ready for review");
 				State.Status = $"#{pr.Number} is ready for review.";
-				await PrList.LoadAsync();
+				await PrList.LoadAsync(lifetimeCts.Token);
 			}
 			catch (ToolFailedException ex)
 			{
@@ -796,11 +842,12 @@ public class StartDocumentViewModel : Document
 	}
 
 	/// <summary>Whether anything is half-finished, and which ways out of it are open.</summary>
-	public async Task RefreshInProgressAsync()
+	public async Task RefreshInProgressAsync(CancellationToken ct = default)
 	{
 		try
 		{
-			var pending = await workspace.Git.ListInProgressAsync();
+			var pending = await workspace.Git.ListInProgressAsync(ct);
+			ct.ThrowIfCancellationRequested();
 			State.InProgress = pending.Count switch {
 				0 => "",
 				1 => pending[0].Headline,
@@ -814,6 +861,10 @@ public class StartDocumentViewModel : Document
 			State.CanResolve = first?.CanResolve ?? false;
 			State.CanContinue = first?.CanContinue ?? false;
 			State.CanSkip = first?.CanSkip ?? false;
+		}
+		catch (OperationCanceledException)
+		{
+			throw;
 		}
 		catch (ToolFailedException)
 		{
@@ -920,7 +971,7 @@ public class StartDocumentViewModel : Document
 				// head GitHub reported when the list was read. A push is what moves that head,
 				// so the row would go on reporting the drift it just resolved until something
 				// else happened to re-read the list.
-				await PrList.LoadAsync();
+				await PrList.LoadAsync(lifetimeCts.Token);
 				State.Status = result.Outcome switch {
 					PushOutcome.Created => $"Pushed {branch} to {remote}, which did not have it before.",
 					PushOutcome.Pushed => $"Pushed {branch} to {remote} ({result.Sha[..9]}).",
@@ -1003,7 +1054,7 @@ public class StartDocumentViewModel : Document
 
 	void BeginPreparation()
 	{
-		rebaseMergedCts?.Cancel();
+		CancelBackgroundWork();
 		openOverviewWhenReady = true;
 		State.PrepareError = "";
 		State.IsPreparing = true;
@@ -1033,13 +1084,17 @@ public class StartDocumentViewModel : Document
 				// Cancelled by a later open, whose overlay this now is, or by the workspace
 				// going away. Only in the second case is there an overlay left to take down.
 				if (attempt == openAttempt)
+				{
+					Activate();
 					State.IsPreparing = false;
+				}
 			}
 			catch (Exception ex)
 			{
 				CliLog.Write("error", $"open of {what} failed: {ex.Message}");
 				if (attempt != openAttempt)
 					return;
+				Activate();
 				openOverviewWhenReady = false;
 				string reason = ex is ToolFailedException failure ? ExternalTool.Explain(failure) : ex.Message;
 				State.PrepareError = $"Could not open {what}: {reason}";

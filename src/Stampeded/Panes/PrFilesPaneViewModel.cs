@@ -100,9 +100,11 @@ public sealed class FileEntry(FileDiff file, bool viewed) : ObservableObject
 /// each hold one directory is a single row ("src/Stampeded/Panes"), because a level with no
 /// choice in it is a level nobody navigates - it only costs indentation and a click.
 /// </summary>
-public sealed class FileNode(string name)
+public sealed class FileNode(string name, string relativePath)
 {
 	public string Name { get; private set; } = name;
+
+	public string RelativePath { get; private set; } = relativePath;
 
 	public List<FileNode> Children { get; private set; } = [];
 
@@ -111,7 +113,7 @@ public sealed class FileNode(string name)
 
 	public bool IsFile => Entry is not null;
 
-	public string ToolTip => Entry?.Display ?? Name;
+	public string ToolTip => Entry?.Display ?? RelativePath;
 
 	/// <summary>Builds the tree over files in the order they should be read, so a directory
 	/// appears where its first file would have and the order within one is unchanged.</summary>
@@ -122,14 +124,16 @@ public sealed class FileNode(string name)
 		{
 			var segments = entry.File.Path.Split('/');
 			var siblings = roots;
+			string current = "";
 			for (int i = 0; i < segments.Length - 1; i++)
 			{
+				current = current.Length == 0 ? segments[i] : current + "/" + segments[i];
 				var directory = siblings.FirstOrDefault(n => !n.IsFile && n.Name == segments[i]);
 				if (directory is null)
-					siblings.Add(directory = new FileNode(segments[i]));
+					siblings.Add(directory = new FileNode(segments[i], current));
 				siblings = directory.Children;
 			}
-			siblings.Add(new FileNode(segments[^1]) { Entry = entry });
+			siblings.Add(new FileNode(segments[^1], entry.File.Path) { Entry = entry });
 		}
 		Compact(roots);
 		return roots;
@@ -143,6 +147,7 @@ public sealed class FileNode(string name)
 			while (!node.IsFile && node.Children is [{ IsFile: false } only])
 			{
 				node.Name += "/" + only.Name;
+				node.RelativePath = only.RelativePath;
 				node.Children = only.Children;
 			}
 		}

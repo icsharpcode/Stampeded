@@ -195,6 +195,7 @@
          documents that stand for a file carry this - the rest answer null and show nothing. -->
     <Style Selector="dockControls|DocumentTabStripItem">
       <Setter Property="ToolTip.Tip" Value="{ReflectionBinding TabTooltip}" />
+      <Setter Property="local:FilePathContextMenu.Enable" Value="True" />
     </Style>
     <Style Selector="dockControls|DocumentTabStripItem:selected">
       <Setter Property="Background" Value="{x:Static local:ScopePalette.Accent}" />

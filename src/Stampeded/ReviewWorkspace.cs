@@ -1745,6 +1745,7 @@ public sealed class ReviewWorkspace(string repoPath, IPullRequestHost host)
 		// own constructor and needs no second pass.
 		bool stale = StartPage is not null;
 		StartPage ??= new Documents.StartDocumentViewModel(this);
+		StartPage.Activate();
 		ShowDocument("start", () => StartPage);
 		if (stale)
 			StartPage.Refresh();
@@ -1957,6 +1958,7 @@ public sealed class ReviewWorkspace(string repoPath, IPullRequestHost host)
 
 	void CloseStartPage()
 	{
+		StartPage?.CancelBackgroundWork();
 		if (Documents?.VisibleDockables?.FirstOrDefault(d => d.Id == "start") is { } start && Factory is not null)
 			Factory.CloseDockable(start);
 	}
@@ -2976,21 +2978,21 @@ public sealed class ReviewWorkspace(string repoPath, IPullRequestHost host)
 	/// and is missing or stale often enough to matter. Cached for the process - a repository
 	/// does not change its default branch while it is being reviewed.
 	/// </summary>
-	public async Task<string> GetDefaultBranchAsync()
+	public async Task<string> GetDefaultBranchAsync(CancellationToken ct = default)
 	{
 		if (defaultBranch is { } known)
 			return known;
 		try
 		{
-			string branch = await Host.GetDefaultBranchAsync();
+			string branch = await Host.GetDefaultBranchAsync(ct);
 			if (string.IsNullOrWhiteSpace(branch))
 				throw new RefusedException($"{HostName} did not name a default branch.");
 			return defaultBranch = branch;
 		}
 		catch (Exception ex) when (ex is ToolFailedException or RefusedException)
 		{
-			string local = await Git.GetDefaultBaseAsync();
-			string prefix = await Git.GetRemoteAsync() + "/";
+			string local = await Git.GetDefaultBaseAsync(ct);
+			string prefix = await Git.GetRemoteAsync(ct) + "/";
 			return defaultBranch = local.StartsWith(prefix, StringComparison.Ordinal)
 				? local[prefix.Length..]
 				: local;
@@ -2998,7 +3000,8 @@ public sealed class ReviewWorkspace(string repoPath, IPullRequestHost host)
 	}
 
 	/// <summary>The ref to review and rebase against: the default branch as the remote has it.</summary>
-	public async Task<string> GetDefaultBaseAsync() => await Git.RemoteBranchAsync(await GetDefaultBranchAsync());
+	public async Task<string> GetDefaultBaseAsync(CancellationToken ct = default)
+		=> await Git.RemoteBranchAsync(await GetDefaultBranchAsync(ct), ct);
 
 	/// <summary>
 	/// Takes the current pull request out of draft, and says what happened either way.

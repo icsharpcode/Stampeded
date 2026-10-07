@@ -89,6 +89,9 @@ public partial class MainViewModel : ObservableObject
 	bool passFromOpened;
 
 	[ObservableProperty]
+	bool passFromCommit;
+
+	[ObservableProperty]
 	bool hasPassFromMarked;
 
 	[ObservableProperty]
@@ -98,6 +101,9 @@ public partial class MainViewModel : ObservableObject
 	bool hasPassFromOpened;
 
 	[ObservableProperty]
+	bool canChoosePassCommit;
+
+	[ObservableProperty]
 	string passFromMarkedTip = "";
 
 	[ObservableProperty]
@@ -105,6 +111,9 @@ public partial class MainViewModel : ObservableObject
 
 	[ObservableProperty]
 	string passFromOpenedTip = "";
+
+	[ObservableProperty]
+	string passFromCommitTip = "";
 
 	[ObservableProperty]
 	bool hasDecompilerTestCases;
@@ -198,12 +207,15 @@ public partial class MainViewModel : ObservableObject
 		PassFromMarked = InUse(PassBaselineKind.MarkedViewed);
 		PassFromSubmitted = InUse(PassBaselineKind.SubmittedReview);
 		PassFromOpened = InUse(PassBaselineKind.Opened);
+		PassFromCommit = InUse(PassBaselineKind.Commit);
 		HasPassFromMarked = Available(PassBaselineKind.MarkedViewed);
 		HasPassFromSubmitted = Available(PassBaselineKind.SubmittedReview);
 		HasPassFromOpened = Available(PassBaselineKind.Opened);
+		CanChoosePassCommit = Available(PassBaselineKind.Commit);
 		PassFromMarkedTip = Tip(PassBaselineKind.MarkedViewed);
 		PassFromSubmittedTip = Tip(PassBaselineKind.SubmittedReview);
 		PassFromOpenedTip = Tip(PassBaselineKind.Opened);
+		PassFromCommitTip = Tip(PassBaselineKind.Commit);
 
 		PassBaselineOption? Option(PassBaselineKind kind) => options.FirstOrDefault(o => o.Kind == kind);
 		bool InUse(PassBaselineKind kind) => Option(kind)?.InUse ?? false;

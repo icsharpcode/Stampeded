@@ -1,4 +1,9 @@
 using Avalonia.Controls;
+using Avalonia.Input;
+using Avalonia.VisualTree;
+
+using Stampeded;
+using Stampeded.Controls.TreeView;
 
 namespace Stampeded.Panes;
 
@@ -29,4 +34,32 @@ public partial class FileBrowserPaneView : UserControl
 		}
 		return Task.CompletedTask;
 	}
+
+	void OnPointerPressed(object? sender, PointerPressedEventArgs e)
+	{
+		if (e.GetCurrentPoint(Tree).Properties.PointerUpdateKind != PointerUpdateKind.RightButtonPressed)
+			return;
+		if (e.Source is Avalonia.Visual source
+			&& source.FindAncestorOfType<SharpTreeViewItem>(includeSelf: true)?.Node is FsNode node)
+		{
+			Tree.SelectedItem = node;
+		}
+	}
+
+	void OnContextMenuOpening(object? sender, System.ComponentModel.CancelEventArgs e)
+	{
+		var target = CopyTarget;
+		bool hasTarget = target is not null;
+		CopyFileNameItem.IsEnabled = hasTarget;
+		CopyPathItem.IsEnabled = hasTarget;
+		CopyRelativePathItem.IsEnabled = hasTarget;
+	}
+
+	FilePathCopyTarget? CopyTarget => Tree.SelectedItem is FsNode node ? PathCopy.ForAbsolute(node.AbsPath) : null;
+
+	void OnCopyFileName(object? sender, Avalonia.Interactivity.RoutedEventArgs e) => PathCopy.CopyFileName(this, CopyTarget);
+
+	void OnCopyPath(object? sender, Avalonia.Interactivity.RoutedEventArgs e) => PathCopy.CopyPath(this, CopyTarget);
+
+	void OnCopyRelativePath(object? sender, Avalonia.Interactivity.RoutedEventArgs e) => PathCopy.CopyRelativePath(this, CopyTarget);
 }

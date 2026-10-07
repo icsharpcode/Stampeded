@@ -70,6 +70,10 @@
                               IsChecked="{Binding PassFromOpened, Mode=OneWay}"
                               ToolTip="{Binding PassFromOpenedTip}"
                               IsEnabled="{Binding HasPassFromOpened}" />
+              <NativeMenuItem Header="Git Commit..." Click="OnPassFromCommit" ToggleType="Radio"
+                              IsChecked="{Binding PassFromCommit, Mode=OneWay}"
+                              ToolTip="{Binding PassFromCommitTip}"
+                              IsEnabled="{Binding CanChoosePassCommit}" />
             </NativeMenu>
           </NativeMenuItem>
           <NativeMenuItemSeparator />

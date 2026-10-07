@@ -7,6 +7,15 @@
   <DockPanel>
     <TextBlock DockPanel.Dock="Bottom" Margin="6,4" Opacity="0.7" TextWrapping="Wrap"
                Text="{Binding State.Status}" />
-    <tv:SharpTreeView x:Name="Tree" Root="{Binding Root}" ShowRoot="False" FontSize="12" />
+    <tv:SharpTreeView x:Name="Tree" Root="{Binding Root}" ShowRoot="False" FontSize="12"
+                      PointerPressed="OnPointerPressed">
+      <tv:SharpTreeView.ContextMenu>
+        <ContextMenu Opening="OnContextMenuOpening">
+          <MenuItem Header="Copy File Name" x:Name="CopyFileNameItem" Click="OnCopyFileName" />
+          <MenuItem Header="Copy Path" x:Name="CopyPathItem" Click="OnCopyPath" />
+          <MenuItem Header="Copy Relative Path" x:Name="CopyRelativePathItem" Click="OnCopyRelativePath" />
+        </ContextMenu>
+      </tv:SharpTreeView.ContextMenu>
+    </tv:SharpTreeView>
   </DockPanel>
 </UserControl>

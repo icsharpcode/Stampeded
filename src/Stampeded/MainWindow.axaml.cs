@@ -424,6 +424,7 @@ public partial class MainWindow : Window
 	void OnPassFromMarked(object? s, EventArgs e) => UsePassBaseline(PassBaselineKind.MarkedViewed);
 	void OnPassFromSubmitted(object? s, EventArgs e) => UsePassBaseline(PassBaselineKind.SubmittedReview);
 	void OnPassFromOpened(object? s, EventArgs e) => UsePassBaseline(PassBaselineKind.Opened);
+	void OnPassFromCommit(object? s, EventArgs e) => PromptPassBaselineCommitAsync().HandleExceptions();
 
 	static void UsePassBaseline(PassBaselineKind kind)
 	{
@@ -431,6 +432,20 @@ public partial class MainWindow : Window
 			return;
 		workspace.Scopes.UsePassBaseline(kind);
 		workspace.Scopes.EnterSinceLastPassAsync().HandleExceptions();
+	}
+
+	async Task PromptPassBaselineCommitAsync()
+	{
+		if (App.Workspace is not { } workspace)
+			return;
+		string? reference = await new TextPromptWindow("Review Changes Since",
+			"Git commit-ish to compare this review against:", "Review", "HEAD~1, main, abc123")
+			.ShowDialog<string?>(this);
+		if (!string.IsNullOrWhiteSpace(reference)
+			&& await workspace.Scopes.UsePassBaselineCommitAsync(reference))
+		{
+			await workspace.Scopes.EnterSinceLastPassAsync();
+		}
 	}
 
 	void OnOpenStart(object? s, EventArgs e) => App.Workspace?.OpenStart();

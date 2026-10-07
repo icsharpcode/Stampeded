@@ -38,7 +38,7 @@ public partial class StartDocumentView : UserControl
 		vm.PrList.PrioritizeStatsFor(visible);
 	}
 
-	void OnPrRefresh(object? sender, RoutedEventArgs e) => Vm?.PrList.LoadAsync().HandleExceptions();
+	void OnPrRefresh(object? sender, RoutedEventArgs e) => Vm?.ReloadPullRequests();
 
 	void OnRefsRefresh(object? sender, RoutedEventArgs e) => Vm?.ReloadRefs();
 
@@ -311,6 +311,7 @@ public partial class StartDocumentView : UserControl
 	protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
 	{
 		base.OnAttachedToVisualTree(e);
+		Vm?.Activate();
 		if (TopLevel.GetTopLevel(this) is Window window)
 		{
 			// The IsActive property rather than the Activated event: the event does not reach
@@ -325,6 +326,7 @@ public partial class StartDocumentView : UserControl
 
 	protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
 	{
+		Vm?.CancelBackgroundWork();
 		activation?.Dispose();
 		activation = null;
 		base.OnDetachedFromVisualTree(e);

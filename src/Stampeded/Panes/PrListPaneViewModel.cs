@@ -44,7 +44,14 @@ public class PrListPaneViewModel : Tool
 	{
 		this.workspace = workspace;
 		workspace.StatusMessage += message => State.Status = message;
-		LoadAsync().HandleExceptions();
+	}
+
+	public void CancelBackgroundWork()
+	{
+		loadVersion++;
+		statsCts?.Cancel();
+		State.Loading = false;
+		State.StatsLoading = false;
 	}
 
 	/// <summary>Opens a local base..head range review ("master..my-branch"; merge-base
@@ -74,11 +81,11 @@ public class PrListPaneViewModel : Tool
 		}
 	}
 
-	public async Task LoadAsync()
+	public async Task LoadAsync(CancellationToken ct = default)
 	{
 		int version = ++loadVersion;
 		statsCts?.Cancel();
-		statsCts = new CancellationTokenSource();
+		statsCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
 		State.Status = "Loading pull requests...";
 		State.Loading = true;
 		State.StatsLoading = false;
@@ -92,11 +99,12 @@ public class PrListPaneViewModel : Tool
 				return;
 			}
 			var prs = await workspace.Host.ListOpenPrsAsync();
-			string? originOwner = await workspace.Git.GetOriginOwnerAsync();
+			ct.ThrowIfCancellationRequested();
+			string? originOwner = await workspace.Git.GetOriginOwnerAsync(ct);
 			string viewer = "";
 			try
 			{
-				viewer = await workspace.Host.GetViewerLoginAsync();
+				viewer = await workspace.Host.GetViewerLoginAsync(ct);
 			}
 			catch (ToolFailedException)
 			{
@@ -116,8 +124,11 @@ public class PrListPaneViewModel : Tool
 		}
 		finally
 		{
-			Items.Replace(rows);
-			State.Loading = false;
+			if (!ct.IsCancellationRequested && version == loadVersion)
+			{
+				Items.Replace(rows);
+				State.Loading = false;
+			}
 		}
 		if (loaded && workspace.Host is IPullRequestStatsProvider stats)
 			LoadDeferredStatsAsync(stats, version, statsCts.Token).HandleExceptions();

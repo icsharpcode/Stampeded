@@ -4,6 +4,8 @@ using Avalonia.Interactivity;
 
 using Avalonia.VisualTree;
 
+using Stampeded;
+
 namespace Stampeded.Panes;
 
 public partial class PrFilesPaneView : UserControl
@@ -33,13 +35,26 @@ public partial class PrFilesPaneView : UserControl
 		OpenSelected();
 	}
 
+	void OnPointerPressed(object? sender, PointerPressedEventArgs e)
+	{
+		if (e.GetCurrentPoint(FileTree).Properties.PointerUpdateKind != PointerUpdateKind.RightButtonPressed)
+			return;
+		if (e.Source is Avalonia.Visual source
+			&& source.FindAncestorOfType<TreeViewItem>(includeSelf: true)?.DataContext is FileNode node)
+		{
+			FileTree.SelectedItem = node;
+		}
+	}
+
 	void OnOpenClicked(object? sender, RoutedEventArgs e)
 	{
 		OpenSelected();
 	}
 
+	FileNode? SelectedNode => FileTree.SelectedItem as FileNode;
+
 	/// <summary>The selected file, or null when a directory row is selected.</summary>
-	FileEntry? Selected => (FileTree.SelectedItem as FileNode)?.Entry;
+	FileEntry? Selected => SelectedNode?.Entry;
 
 	void OpenSelected()
 	{
@@ -52,6 +67,23 @@ public partial class PrFilesPaneView : UserControl
 		if (Selected is { } entry)
 			entry.IsViewed = !entry.IsViewed;
 	}
+
+	void OnContextMenuOpening(object? sender, System.ComponentModel.CancelEventArgs e)
+	{
+		var target = CopyTarget;
+		bool hasTarget = target is not null;
+		CopyFileNameItem.IsEnabled = hasTarget;
+		CopyPathItem.IsEnabled = hasTarget;
+		CopyRelativePathItem.IsEnabled = hasTarget;
+	}
+
+	FilePathCopyTarget? CopyTarget => SelectedNode is { } node ? PathCopy.ForRelative(node.RelativePath) : null;
+
+	void OnCopyFileName(object? sender, RoutedEventArgs e) => PathCopy.CopyFileName(this, CopyTarget);
+
+	void OnCopyPath(object? sender, RoutedEventArgs e) => PathCopy.CopyPath(this, CopyTarget);
+
+	void OnCopyRelativePath(object? sender, RoutedEventArgs e) => PathCopy.CopyRelativePath(this, CopyTarget);
 
 	/// <summary>Selects and reveals the row for a repo-relative path, if listed.</summary>
 	public void RevealFile(string relPath)

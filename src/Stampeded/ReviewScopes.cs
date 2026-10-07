@@ -26,6 +26,9 @@ public enum PassBaselineKind
 
 	/// <summary>The head the review was last opened at, whether or not anything came of it.</summary>
 	Opened,
+
+	/// <summary>A commit named by the reader for this review.</summary>
+	Commit,
 }
 
 /// <summary>One of the points a pass can be measured from, as the entries offering them need
@@ -41,6 +44,7 @@ public sealed record PassBaseline(PassBaselineKind Kind, string Head, string? Ba
 	public string Label => Kind switch {
 		PassBaselineKind.MarkedViewed => "the last file you ticked off",
 		PassBaselineKind.SubmittedReview => "your last submitted review",
+		PassBaselineKind.Commit => "the chosen commit",
 		_ => "the last time you opened it",
 	};
 }
@@ -177,22 +181,28 @@ public sealed class ReviewScopes(ReviewWorkspace workspace)
 	/// </summary>
 	public PassBaselineKind PreferredPassBaseline { get; private set; } = PassBaselineKind.MarkedViewed;
 
+	/// <summary>A reader-supplied baseline for "since last pass". It is kept only for the open
+	/// review: a commit-ish typed for one branch is likely meaningless on the next one.</summary>
+	PassBaseline? customPassBaseline;
+
 	/// <summary>
 	/// The pass to read against: the one the reader asked for, or the next one recorded. A
 	/// review that has been opened and never read has only the head it was opened at, and
 	/// saying so beats offering nothing.
 	/// </summary>
 	public PassBaseline? PassBaseline
-		=> workspace.PassBaselines.FirstOrDefault(b => b.Kind == PreferredPassBaseline)
+		=> PreferredPassBaseline == PassBaselineKind.Commit && customPassBaseline is { } custom
+			? custom
+			: workspace.PassBaselines.FirstOrDefault(b => b.Kind == PreferredPassBaseline)
 			?? workspace.PassBaselines.FirstOrDefault();
 
-	/// <summary>The three points, in the order they are offered.</summary>
+	/// <summary>The points, in the order they are offered.</summary>
 	public IReadOnlyList<PassBaselineOption> PassBaselineOptions
 	{
 		get
 		{
 			var inUse = PassBaseline?.Kind;
-			return [.. new[] {
+			var options = new[] {
 				(Kind: PassBaselineKind.MarkedViewed, Header: "The last file you ticked off",
 					Missing: "No file has been ticked off at an earlier head of this review yet."),
 				(Kind: PassBaselineKind.SubmittedReview, Header: "Your last submitted review",
@@ -204,7 +214,14 @@ public sealed class ReviewScopes(ReviewWorkspace workspace)
 				return new PassBaselineOption(entry.Kind, entry.Header,
 					found is null ? entry.Missing : $"Read what changed since {found.Label} ({found.Head[..9]})",
 					found is not null, inUse == entry.Kind);
-			})];
+			});
+			var custom = customPassBaseline;
+			return [.. options, new PassBaselineOption(PassBaselineKind.Commit, "Git commit...",
+				custom is null
+					? "Name a commit-ish to read what changed since it."
+					: $"Read what changed since commit {custom.Head[..9]}",
+				workspace.HeadSha is not null && workspace.DirtyWorktreePath is null,
+				PreferredPassBaseline == PassBaselineKind.Commit && custom is not null)];
 		}
 	}
 
@@ -257,6 +274,28 @@ public sealed class ReviewScopes(ReviewWorkspace workspace)
 		Changed?.Invoke();
 	}
 
+	/// <summary>Sets the commit the since-last-pass scope should start from. The revision is
+	/// resolved before it is kept, so later scoping reads the same commit even if a branch name
+	/// moves.</summary>
+	public async Task<bool> UsePassBaselineCommitAsync(string reference, CancellationToken ct = default)
+	{
+		if (string.IsNullOrWhiteSpace(reference))
+			return false;
+		try
+		{
+			string commit = await workspace.Git.RevParseAsync($"{reference.Trim()}^{{commit}}", ct);
+			customPassBaseline = new PassBaseline(PassBaselineKind.Commit, commit, null);
+			PreferredPassBaseline = PassBaselineKind.Commit;
+			Changed?.Invoke();
+			return true;
+		}
+		catch (Exception ex) when (ex is ToolFailedException or RefusedException)
+		{
+			workspace.PostStatus($"'{reference}' is not a commit Git can read here.");
+			return false;
+		}
+	}
+
 	/// <summary>Why the work since the reader's last pass cannot be read on its own, or null
 	/// when it can.</summary>
 	public string? SinceLastPassRefusal
@@ -305,6 +344,7 @@ public sealed class ReviewScopes(ReviewWorkspace workspace)
 		SinceLastPassBase = null;
 		ScopeLine = "";
 		sinceLastPassTree = null;
+		customPassBaseline = null;
 		fullRange = null;
 	}
 
@@ -567,7 +607,8 @@ public sealed class ReviewScopes(ReviewWorkspace workspace)
 		if (PassBaseline is not { } baseline || ReviewRange is not { } range)
 			return;
 		string previous = baseline.Head;
-		using var busy = workspace.Busy.Begin("Diffing against your last pass");
+		string baselineName = baseline.Kind == PassBaselineKind.Commit ? "the chosen commit" : "your last pass";
+		using var busy = workspace.Busy.Begin($"Diffing against {baselineName}");
 		if (sinceLastPassTree?.Head != previous)
 		{
 			sinceLastPassTree = null;
@@ -584,7 +625,7 @@ public sealed class ReviewScopes(ReviewWorkspace workspace)
 		}
 		if (sinceLastPassTree is null)
 		{
-			workspace.PostStatus($"The work you read at {previous[..9]} does not replay onto {range.Base[..9]} "
+			workspace.PostStatus($"The work at {previous[..9]} does not replay onto {range.Base[..9]} "
 				+ "without conflicts, so there is no clean diff of the author's edits alone. Showing the raw "
 				+ "interdiff instead - it includes the commits the rebase brought in.");
 			await workspace.OpenInterdiffAsync();
@@ -594,7 +635,7 @@ public sealed class ReviewScopes(ReviewWorkspace workspace)
 		var files = await workspace.Git.DiffAsync(replayedTree, range.Head);
 		if (files.Count == 0)
 		{
-			workspace.PostStatus($"Nothing has changed since your last pass at {previous[..9]}"
+			workspace.PostStatus($"Nothing has changed since {baseline.Label} at {previous[..9]}"
 				+ (await workspace.Git.IsAncestorAsync(previous, range.Head) ? "." : " - the branch was only rebased."));
 			return;
 		}
@@ -607,7 +648,7 @@ public sealed class ReviewScopes(ReviewWorkspace workspace)
 		fullRange ??= range;
 		SinceLastPassBase = replayedTree;
 		workspace.SetScopeContent(replayedTree, range.Head, files);
-		ScopeLine = $"Since your pass at {previous[..9]} ({baseline.Label}){(rewritten ? ", head rewritten" : "")}: "
+		ScopeLine = $"Since {baseline.Label} at {previous[..9]}{(rewritten ? ", head rewritten" : "")}: "
 			+ $"{files.Count} file(s). Whole change: {neverViewed} of {wholeChange} file(s) never viewed.";
 		await workspace.ApplyScopeSemanticsAsync();
 		workspace.PostStatus(ScopeLine);

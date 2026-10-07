@@ -29,11 +29,30 @@ static class PassBaselineFlyout
 			ToolTip.SetTip(item, option.Tip);
 			ToolTip.SetShowOnDisabled(item, true);
 			item.Click += (_, _) => {
-				workspace.Scopes.UsePassBaseline(kind);
-				workspace.Scopes.EnterSinceLastPassAsync().HandleExceptions();
+				if (kind == PassBaselineKind.Commit)
+					PromptCommitAsync(anchor, workspace).HandleExceptions();
+				else
+				{
+					workspace.Scopes.UsePassBaseline(kind);
+					workspace.Scopes.EnterSinceLastPassAsync().HandleExceptions();
+				}
 			};
 			menu.Items.Add(item);
 		}
 		menu.ShowAt(anchor);
+	}
+
+	static async Task PromptCommitAsync(Control anchor, ReviewWorkspace workspace)
+	{
+		if (TopLevel.GetTopLevel(anchor) is not Window owner)
+			return;
+		string? reference = await new TextPromptWindow("Review Changes Since",
+			"Git commit-ish to compare this review against:", "Review", "HEAD~1, main, abc123")
+			.ShowDialog<string?>(owner);
+		if (!string.IsNullOrWhiteSpace(reference)
+			&& await workspace.Scopes.UsePassBaselineCommitAsync(reference))
+		{
+			await workspace.Scopes.EnterSinceLastPassAsync();
+		}
 	}
 }
