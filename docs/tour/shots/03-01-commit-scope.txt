@@ -1,0 +1,6 @@
+pane:Explorer
+overview
+---
+commit-scope
+sleep:5
+---

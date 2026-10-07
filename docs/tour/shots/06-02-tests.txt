@@ -1,0 +1,6 @@
+menu:Run Tests
+sleep:45
+---
+pane:Tests
+sleep:1
+---

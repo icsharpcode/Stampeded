@@ -1,0 +1,15 @@
+open-file:src/Corral/HerdReport.cs
+sleep:2
+---
+press:560,263
+release:560,263
+---
+callgraph
+sleep:4
+---
+expand:CallTree:2
+sleep:2
+---
+expand:CallTree:1
+sleep:2
+---

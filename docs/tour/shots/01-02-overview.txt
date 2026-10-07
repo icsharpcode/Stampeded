@@ -1,0 +1,3 @@
+open-url:christophwille/stampeded-demo/pull/1
+sleep:25
+---

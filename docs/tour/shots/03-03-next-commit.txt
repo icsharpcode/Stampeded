@@ -1,0 +1,6 @@
+key:Ctrl+OemCloseBrackets
+sleep:4
+---
+open-file:src/Corral/PriceCalculator.cs
+sleep:3
+---

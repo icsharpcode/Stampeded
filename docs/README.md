@@ -16,6 +16,8 @@ Start with [architecture.md](architecture.md). The rest can be read in any order
 
 `CLAUDE.md` in the repository root is the short orientation version of the same material.
 
+What the tool does, as opposed to how it is built, is in the [feature tours](tour/README.md).
+
 ## The shortest possible tour
 
 A review is opened (`ReviewWorkspace.OpenPrAsync`), which fetches the PR head, computes the merge

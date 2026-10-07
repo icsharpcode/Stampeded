@@ -1,0 +1,4 @@
+pane:Run
+menu:Run Application
+sleep:25
+---

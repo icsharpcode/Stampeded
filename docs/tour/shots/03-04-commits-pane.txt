@@ -1,0 +1,6 @@
+pane:Commits
+sleep:2
+---
+select:CommitList:1
+sleep:2
+---

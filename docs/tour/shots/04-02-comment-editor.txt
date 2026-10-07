@@ -1,0 +1,9 @@
+press:450,473
+release:450,473
+---
+comment
+sleep:1
+---
+type:Where do 0.9 and 1.1 come from? A constant with a name would say.
+sleep:1
+screen

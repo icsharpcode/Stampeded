@@ -1,0 +1,6 @@
+open-file:src/Corral/HerdReport.cs
+sleep:2
+---
+pane:Structure
+sleep:2
+---

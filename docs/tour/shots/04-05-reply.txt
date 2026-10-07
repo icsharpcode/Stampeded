@@ -1,0 +1,8 @@
+click:Reply
+sleep:1
+---
+type:Standard is meant to start at 350. I will fix the table rather than the code.
+---
+key:Ctrl+Enter
+sleep:2
+---

@@ -1,0 +1,3 @@
+open-file:src/Corral/PriceCalculator.cs
+sleep:3
+---

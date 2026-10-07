@@ -1,0 +1,9 @@
+open-file:src/Corral/HerdReport.cs
+sleep:2
+---
+move:795,455
+sleep:2
+screen:795,455
+---
+move:345,71
+sleep:1

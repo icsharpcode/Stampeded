@@ -1,0 +1,13 @@
+pane:References
+open-url:christophwille/stampeded-demo/pull/4
+sleep:25
+---
+menu:Merge Pull Request...
+sleep:5
+---
+# GitHub works the merge state out when it is first asked, and the answer to that first
+# question is "unknown": ask again.
+press:1259,64
+release:1259,64
+sleep:6
+---

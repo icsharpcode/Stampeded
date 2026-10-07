@@ -1,0 +1,26 @@
+# The block is typed rather than taken from "Suggest a change": that button lives in the
+# editor popup, which is a window of its own that the harness cannot click into.
+goto:src/Corral/PriceCalculator.cs:14
+sleep:2
+---
+comment
+sleep:1
+---
+type:```suggestion
+---
+key:Enter
+---
+type:		<= 600 => WeightClass.Standard,
+---
+key:Enter
+---
+type:```
+---
+key:Enter
+---
+type:The table says heavy is above 600 kg, so 600 itself is still standard.
+sleep:1
+screen
+---
+key:Ctrl+Enter
+sleep:2
