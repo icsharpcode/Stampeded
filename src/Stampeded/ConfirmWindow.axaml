@@ -9,6 +9,7 @@
          caller names it, so every other confirmation keeps the shape it had. -->
     <CheckBox x:Name="OptionCheck" IsVisible="False" />
     <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
+      <Button x:Name="AlternateButton" IsVisible="False" Click="OnAlternate" />
       <Button x:Name="ConfirmButton" IsDefault="True" Click="OnConfirm" />
       <Button Content="Cancel" IsCancel="True" Click="OnCancel" />
     </StackPanel>

@@ -3,9 +3,13 @@ using Avalonia.Interactivity;
 
 namespace Stampeded;
 
-/// <summary>Modal question with one named action; closes with true for it, false otherwise.</summary>
+/// <summary>Modal question with one or two named actions; closes with the caller's result.</summary>
 public partial class ConfirmWindow : Window
 {
+	object? confirmResult = true;
+	object? alternateResult;
+	object? cancelResult = false;
+
 	public ConfirmWindow()
 	{
 		InitializeComponent();
@@ -16,6 +20,18 @@ public partial class ConfirmWindow : Window
 		Title = title;
 		MessageText.Text = message;
 		ConfirmButton.Content = confirmLabel;
+	}
+
+	public ConfirmWindow(string title, string message,
+		string confirmLabel, object confirmResult,
+		string alternateLabel, object alternateResult,
+		object? cancelResult = null) : this(title, message, confirmLabel)
+	{
+		this.confirmResult = confirmResult;
+		this.alternateResult = alternateResult;
+		this.cancelResult = cancelResult;
+		AlternateButton.Content = alternateLabel;
+		AlternateButton.IsVisible = true;
 	}
 
 	/// <summary>The same question with a checkbox under it - something the action would also
@@ -33,7 +49,9 @@ public partial class ConfirmWindow : Window
 
 	public bool OptionChecked => OptionCheck.IsChecked == true;
 
-	void OnConfirm(object? sender, RoutedEventArgs e) => Close(true);
+	void OnConfirm(object? sender, RoutedEventArgs e) => Close(confirmResult);
 
-	void OnCancel(object? sender, RoutedEventArgs e) => Close(false);
+	void OnAlternate(object? sender, RoutedEventArgs e) => Close(alternateResult);
+
+	void OnCancel(object? sender, RoutedEventArgs e) => Close(cancelResult);
 }

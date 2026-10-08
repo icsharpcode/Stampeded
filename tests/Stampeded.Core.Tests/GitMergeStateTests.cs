@@ -185,6 +185,44 @@ public class GitMergeStateTests
 		await Git("worktree", "remove", "--force", worktree);
 	}
 
+	[Test]
+	public async Task ForceDeletesDirtyWorktreeWhenTheCallerConfirmedIt()
+	{
+		await Git("branch", "already-in");
+		string worktree = NewDirectory();
+		await Git("worktree", "add", "--quiet", worktree, "already-in");
+		string worktreeAsGitReportsIt = await AsGitReports(worktree);
+		await File.WriteAllTextAsync(Path.Combine(worktree, "scratch.txt"), "work in progress");
+
+		var deletion = await new GitService(repo).DeleteBranchAsync("already-in", DirtyWorktreeDisposition.Delete);
+
+		Assert.That(deletion.RemovedWorktree, Is.EqualTo(worktreeAsGitReportsIt));
+		Assert.That(Directory.Exists(worktree), Is.False);
+		Assert.That(await Git("branch", "--format=%(refname:short)"), Does.Not.Contain("already-in"));
+	}
+
+	[Test]
+	public async Task KeepsDirtyWorktreeAsDetachedCommitWhenTheCallerConfirmedIt()
+	{
+		await Git("branch", "already-in");
+		string worktree = NewDirectory();
+		await Git("worktree", "add", "--quiet", worktree, "already-in");
+		await File.WriteAllTextAsync(Path.Combine(worktree, "scratch.txt"), "work in progress");
+
+		var deletion = await new GitService(repo).DeleteBranchAsync(
+			"already-in", DirtyWorktreeDisposition.KeepDetachedCommit);
+
+		Assert.That(deletion.KeptWorktree, Is.EqualTo(await AsGitReports(worktree)));
+		Assert.That(deletion.DetachedCommit, Is.EqualTo((await ExternalTool.RunAsync(
+			"git", ["rev-parse", "HEAD"], worktree)).Trim()));
+		Assert.That((await ExternalTool.RunAsync("git", ["symbolic-ref", "--quiet", "--short", "HEAD"],
+			worktree, okExitCodes: [1])).Trim(), Is.Empty);
+		Assert.That(await File.ReadAllTextAsync(Path.Combine(worktree, "scratch.txt")), Is.EqualTo("work in progress"));
+		Assert.That(await Git("branch", "--format=%(refname:short)"), Does.Not.Contain("already-in"));
+
+		await Git("worktree", "remove", "--force", worktree);
+	}
+
 	string NewDirectory()
 	{
 		string dir = Path.Combine(Path.GetTempPath(), "stampeded-test-" + Guid.NewGuid().ToString("N")[..8]);

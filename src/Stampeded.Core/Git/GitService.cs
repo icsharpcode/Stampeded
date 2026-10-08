@@ -36,7 +36,21 @@ public sealed record PushResult(PushOutcome Outcome, string Sha);
 
 /// <summary>A deleted branch: the commit it pointed at, and the worktree that went with it
 /// when one held the branch.</summary>
-public sealed record BranchDeletion(string Sha, string? RemovedWorktree);
+public sealed record BranchDeletion(string Sha, string? RemovedWorktree, string? KeptWorktree = null, string? DetachedCommit = null);
+
+public enum DirtyWorktreeDisposition
+{
+	Refuse,
+	Delete,
+	KeepDetachedCommit,
+}
+
+/// <summary>A worktree could not be removed because it contains work git would discard.</summary>
+public sealed class DirtyWorktreeException(string path, string message)
+	: ToolFailedException("git", RefusedException.Refused, message, "", message)
+{
+	public string Path { get; } = path;
+}
 
 public enum RebaseOutcome
 {
@@ -587,17 +601,50 @@ public sealed class GitService(string repoPath)
 	/// rebase merge at all. The caller establishes the fact that matters against the ref that
 	/// matters; there is no second opinion here worth having.
 	/// </summary>
-	public async Task<BranchDeletion> DeleteBranchAsync(string branch, CancellationToken ct = default)
+	public async Task<BranchDeletion> DeleteBranchAsync(
+		string branch,
+		DirtyWorktreeDisposition dirtyWorktreeDisposition = DirtyWorktreeDisposition.Refuse,
+		CancellationToken ct = default)
 	{
 		string sha = await RevParseAsync($"refs/heads/{branch}", ct);
 		string? removedWorktree = null;
+		string? keptWorktree = null;
+		string? detachedCommit = null;
 		if (await FindCheckoutAsync(branch, ct) is { } checkout)
 		{
-			await RemoveWorktreeAsync(checkout.Path, ct);
-			removedWorktree = checkout.Path;
+			try
+			{
+				await RemoveWorktreeAsync(checkout.Path, ct);
+				removedWorktree = checkout.Path;
+			}
+			catch (DirtyWorktreeException) when (dirtyWorktreeDisposition == DirtyWorktreeDisposition.Delete)
+			{
+				await RemoveWorktreeAsync(checkout.Path, force: true, ct);
+				removedWorktree = checkout.Path;
+			}
+			catch (DirtyWorktreeException) when (dirtyWorktreeDisposition == DirtyWorktreeDisposition.KeepDetachedCommit)
+			{
+				detachedCommit = await CommitAndDetachWorktreeAsync(checkout.Path, branch, ct);
+				keptWorktree = checkout.Path;
+			}
 		}
 		await RunAsync(ct, "branch", "-D", branch);
-		return new BranchDeletion(sha, removedWorktree);
+		return new BranchDeletion(sha, removedWorktree, keptWorktree, detachedCommit);
+	}
+
+	async Task<string> CommitAndDetachWorktreeAsync(string path, string branch, CancellationToken ct)
+	{
+		await ExternalTool.RunAsync("git", ["add", "-A"], path, ct);
+		var env = new Dictionary<string, string> {
+			["GIT_AUTHOR_NAME"] = "Stampeded",
+			["GIT_AUTHOR_EMAIL"] = "stampeded@localhost",
+			["GIT_COMMITTER_NAME"] = "Stampeded",
+			["GIT_COMMITTER_EMAIL"] = "stampeded@localhost",
+		};
+		await ExternalTool.RunAsync("git", ["commit", "-m", $"Save worktree before deleting {branch}"], path, ct, env);
+		string commit = (await ExternalTool.RunAsync("git", ["rev-parse", "HEAD"], path, ct)).Trim();
+		await ExternalTool.RunAsync("git", ["switch", "--detach"], path, ct);
+		return commit;
 	}
 
 	/// <summary>
@@ -610,20 +657,30 @@ public sealed class GitService(string repoPath)
 	/// be clean, submodules included, or nothing is deleted.
 	/// </summary>
 	async Task RemoveWorktreeAsync(string path, CancellationToken ct)
+		=> await RemoveWorktreeAsync(path, force: false, ct);
+
+	async Task RemoveWorktreeAsync(string path, bool force, CancellationToken ct)
 	{
 		try
 		{
-			await RunAsync(ct, "worktree", "remove", path);
+			if (force)
+				await RunAsync(ct, "worktree", "remove", "--force", path);
+			else
+				await RunAsync(ct, "worktree", "remove", path);
 			return;
+		}
+		catch (ToolFailedException ex) when (!force && IsDirtyWorktreeFailure(ex))
+		{
+			throw new DirtyWorktreeException(path, ex.Message);
 		}
 		catch (ToolFailedException ex) when (ex.StdErr.Contains("submodules", StringComparison.Ordinal))
 		{
 		}
 		string status = await ExternalTool.RunAsync(
 			"git", ["status", "--porcelain", "--ignore-submodules=none"], path, ct);
-		if (status.Trim().Length > 0)
+		if (!force && status.Trim().Length > 0)
 		{
-			throw new RefusedException(
+			throw new DirtyWorktreeException(path,
 				$"'{path}' contains modified or untracked files. It holds submodules, so git will not "
 				+ "remove it and it would have to be deleted outright - which is not something to do "
 				+ "to uncommitted work. Nothing was deleted.");
@@ -633,6 +690,11 @@ public sealed class GitService(string repoPath)
 		// checked out as far as git is concerned until it is gone.
 		await RunAsync(ct, "worktree", "prune");
 	}
+
+	static bool IsDirtyWorktreeFailure(ToolFailedException ex)
+		=> ex.StdErr.Contains("contains modified or untracked files", StringComparison.OrdinalIgnoreCase)
+			|| ex.StdOut.Contains("contains modified or untracked files", StringComparison.OrdinalIgnoreCase)
+			|| ex.Message.Contains("contains modified or untracked files", StringComparison.OrdinalIgnoreCase);
 
 	/// <summary>Local branches, most recently committed first.</summary>
 	public async Task<IReadOnlyList<BranchInfo>> ListBranchesAsync(CancellationToken ct = default)

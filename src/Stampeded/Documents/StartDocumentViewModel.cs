@@ -1017,6 +1017,35 @@ public class StartDocumentViewModel : Document
 			{
 				deletion = await workspace.Git.DeleteBranchAsync(branch);
 			}
+			catch (DirtyWorktreeException ex)
+			{
+				if (ReviewWorkspace.MainWindowOrNull() is not { } owner)
+				{
+					State.Status = $"Delete of {branch} stopped: {ex.Message}";
+					return;
+				}
+				var choice = await new ConfirmWindow("Delete branch with dirty worktree",
+					$"The worktree for {branch} contains modified or untracked files:\n{ex.Path}\n\n"
+					+ "Delete the worktree and discard those files, or keep the worktree by committing "
+					+ "its current contents and switching it to detached HEAD before deleting the branch?",
+					"Keep worktree", DirtyWorktreeDisposition.KeepDetachedCommit,
+					"Delete worktree", DirtyWorktreeDisposition.Delete)
+					.ShowDialog<DirtyWorktreeDisposition?>(owner);
+				if (choice is null or DirtyWorktreeDisposition.Refuse)
+				{
+					State.Status = $"Delete of {branch} cancelled; nothing was removed.";
+					return;
+				}
+				try
+				{
+					deletion = await workspace.Git.DeleteBranchAsync(branch, choice.Value);
+				}
+				catch (ToolFailedException retryEx)
+				{
+					State.Status = $"Delete of {branch} failed; the branch was not removed: {ExternalTool.Explain(retryEx)}";
+					return;
+				}
+			}
 			catch (ToolFailedException ex)
 			{
 				// Only the deletion itself is caught here. Reporting a failure for anything
@@ -1030,6 +1059,9 @@ public class StartDocumentViewModel : Document
 			await ReloadRefsAsync();
 			State.Status = $"Deleted {branch}, which was {row.MergeText}"
 				+ (deletion.RemovedWorktree is { } path ? $", and its worktree {path}" : "")
+				+ (deletion.KeptWorktree is { } kept && deletion.DetachedCommit is { } commit
+					? $", and kept its worktree {kept} at detached commit {commit[..9]}"
+					: "")
 				+ $" (restore with: git branch {branch} {deletion.Sha[..9]}).";
 		}
 	}
