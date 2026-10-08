@@ -239,8 +239,20 @@ public sealed class BitbucketService(string repoPath, string baseUrl, string pro
 
 	public async Task<PrDiffStats> GetDiffStatsAsync(int number, CancellationToken ct = default)
 	{
-		using var doc = await JsonAsync("GET", $"{ApiBase}/pull-requests/{number}/diff?contextLines=0", null, ct);
-		return DiffStats(doc.RootElement);
+		var stats = await PageAsync($"{ApiBase}/pull-requests/{number}/diffstat", ct);
+		return DiffStatStats(stats);
+	}
+
+	public static PrDiffStats DiffStatStats(IEnumerable<JsonElement> stats)
+	{
+		int additions = 0, deletions = 0, changedFiles = 0;
+		foreach (var file in stats)
+		{
+			changedFiles++;
+			additions += Int(file, "linesAdded");
+			deletions += Int(file, "linesRemoved");
+		}
+		return new PrDiffStats(additions, deletions, changedFiles);
 	}
 
 	public static PrDiffStats DiffStats(JsonElement root)
