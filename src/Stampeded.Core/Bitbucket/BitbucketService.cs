@@ -10,10 +10,11 @@ namespace Stampeded.Core.Bitbucket;
 /// shape gh and az provide, so curl is the external tool that owns HTTP and authentication.
 /// </summary>
 public sealed class BitbucketService(string repoPath, string baseUrl, string projectKey, string repo)
-	: IPullRequestHost, IPullRequestStatsProvider
+	: IPullRequestHost
 {
 	readonly string baseUrl = baseUrl.TrimEnd('/');
 	readonly Dictionary<int, Task<JsonDocument>> pullRequests = [];
+	readonly Dictionary<int, string> headRefspecs = [];
 	string? viewerLogin;
 	string? defaultBranch;
 
@@ -234,25 +235,13 @@ public sealed class BitbucketService(string repoPath, string baseUrl, string pro
 	{
 		var prs = await PageAsync($"{ApiBase}/pull-requests?state=OPEN", ct);
 		string viewer = await GetViewerLoginAsync(ct);
-		return [.. prs.Select(pr => Summary(pr) with { ViewerLogin = viewer, OriginOwner = projectKey })];
-	}
-
-	public async Task<PrDiffStats> GetDiffStatsAsync(int number, CancellationToken ct = default)
-	{
-		var stats = await PageAsync($"{ApiBase}/pull-requests/{number}/diffstat", ct);
-		return DiffStatStats(stats);
-	}
-
-	public static PrDiffStats DiffStatStats(IEnumerable<JsonElement> stats)
-	{
-		int additions = 0, deletions = 0, changedFiles = 0;
-		foreach (var file in stats)
+		foreach (var pr in prs)
 		{
-			changedFiles++;
-			additions += Int(file, "linesAdded");
-			deletions += Int(file, "linesRemoved");
+			int id = Int(pr, "id");
+			if (id > 0 && TryHeadRefspec(pr, id) is { } refspec)
+				headRefspecs[id] = refspec;
 		}
-		return new PrDiffStats(additions, deletions, changedFiles);
+		return [.. prs.Select(pr => Summary(pr) with { ViewerLogin = viewer, OriginOwner = projectKey })];
 	}
 
 	public static PrDiffStats DiffStats(JsonElement root)
@@ -349,16 +338,24 @@ public sealed class BitbucketService(string repoPath, string baseUrl, string pro
 
 	public async Task<string> PrHeadRefspecAsync(int number, CancellationToken ct = default)
 	{
+		if (headRefspecs.TryGetValue(number, out string? refspec))
+			return refspec;
 		var doc = await PrAsync(number, ct);
-		var pr = doc.RootElement;
+		if (TryHeadRefspec(doc.RootElement, number) is { } computed)
+			return computed;
+		throw new RefusedException($"Bitbucket did not name a source branch for pull request {number}.");
+	}
+
+	string? TryHeadRefspec(JsonElement pr, int number)
+	{
 		string fromProject = Str(pr, "fromRef", "repository", "project", "key") ?? projectKey;
 		string fromRepo = Str(pr, "fromRef", "repository", "slug") ?? repo;
 		if (!string.Equals(fromProject, projectKey, StringComparison.OrdinalIgnoreCase)
 			|| !string.Equals(fromRepo, repo, StringComparison.OrdinalIgnoreCase))
-			throw new RefusedException("Pull requests from another Bitbucket repository are not supported yet.");
+			return null;
 		string branch = RefName(pr, "fromRef");
 		if (branch.Length == 0)
-			throw new RefusedException($"Bitbucket did not name a source branch for pull request {number}.");
+			return null;
 		return $"+refs/heads/{branch}:refs/stampeded/pr/{number}";
 	}
 

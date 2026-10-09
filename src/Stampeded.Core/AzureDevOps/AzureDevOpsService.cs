@@ -25,6 +25,7 @@ public sealed class AzureDevOpsService(string repoPath, string org, string proje
 
 	readonly string orgUrl = $"https://dev.azure.com/{org}";
 	readonly Dictionary<int, Task<JsonDocument>> pullRequests = [];
+	readonly Dictionary<int, string> headRefspecs = [];
 	readonly Dictionary<int, Task<string?>> workItemTitles = [];
 	string? viewerLogin;
 	MergeMethods? mergeMethods;
@@ -197,6 +198,8 @@ public sealed class AzureDevOpsService(string repoPath, string org, string proje
 	/// </summary>
 	public async Task<string> PrHeadRefspecAsync(int number, CancellationToken ct = default)
 	{
+		if (headRefspecs.TryGetValue(number, out string? refspec))
+			return refspec;
 		var doc = await PrAsync(number, ct);
 		if (Node(doc.RootElement, "forkSource") is { ValueKind: not JsonValueKind.Null })
 			throw new RefusedException("Pull requests from forks are not supported on Azure DevOps yet.");
@@ -231,6 +234,10 @@ public sealed class AzureDevOpsService(string repoPath, string org, string proje
 		var summaries = new List<PrSummary>();
 		foreach (var pr in Array(doc.RootElement))
 		{
+			int id = Node(pr, "pullRequestId")?.GetInt32() ?? 0;
+			string sourceBranch = StripRefsHeads(Str(pr, "sourceRefName"));
+			if (id > 0 && sourceBranch.Length > 0 && Node(pr, "forkSource") is not { ValueKind: not JsonValueKind.Null })
+				headRefspecs[id] = $"+refs/heads/{sourceBranch}:refs/stampeded/pr/{id}";
 			var reviewers = Array(Node(pr, "reviewers")).ToList();
 			// Votes: 10 approved, 5 approved with suggestions, 0 no vote, -5 waiting for the
 			// author, -10 rejected. Approval is the two positive ones; anything negative is a
@@ -246,10 +253,10 @@ public sealed class AzureDevOpsService(string repoPath, string org, string proje
 				.Select(r => new PrReviewRequest(Str(r, "uniqueName") ?? Str(r, "displayName")))
 				.ToList();
 			summaries.Add(new PrSummary(
-				Node(pr, "pullRequestId")?.GetInt32() ?? 0,
+				id,
 				Str(pr, "title") ?? "",
 				new PrAuthor(Str(pr, "createdBy", "uniqueName") ?? Str(pr, "createdBy", "displayName") ?? ""),
-				StripRefsHeads(Str(pr, "sourceRefName")),
+				sourceBranch,
 				StripRefsHeads(Str(pr, "targetRefName")),
 				Node(pr, "isDraft")?.ValueKind == JsonValueKind.True,
 				// The list carries no last-touched date, only when the pull request was opened.

@@ -86,7 +86,7 @@ public sealed partial class GitHubService(string repoPath) : IPullRequestHost
 	public Task<IReadOnlyList<PrSummary>> ListOpenPrsAsync(CancellationToken ct = default)
 		=> JsonAsync<IReadOnlyList<PrSummary>>(ct,
 			"pr", "list",
-			"--json", "number,title,author,headRefName,baseRefName,isDraft,updatedAt,statusCheckRollup,headRefOid,reviewDecision,additions,deletions,changedFiles,latestReviews,reviewRequests,headRepositoryOwner",
+			"--json", "number,title,author,headRefName,baseRefName,isDraft,updatedAt,statusCheckRollup,headRefOid,reviewDecision,latestReviews,reviewRequests,headRepositoryOwner",
 			"--limit", "50");
 
 	public Task<PrDetail> GetPrAsync(int number, CancellationToken ct = default)

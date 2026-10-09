@@ -4,8 +4,8 @@ using CommunityToolkit.Mvvm.ComponentModel;
 
 using Dock.Model.Mvvm.Controls;
 
-using Stampeded.Core.PullRequests;
 using Stampeded.Core.Infra;
+using Stampeded.Core.PullRequests;
 
 namespace Stampeded.Panes;
 
@@ -130,17 +130,18 @@ public class PrListPaneViewModel : Tool
 				State.Loading = false;
 			}
 		}
-		if (loaded && workspace.Host is IPullRequestStatsProvider stats)
-			LoadDeferredStatsAsync(stats, version, statsCts.Token).HandleExceptions();
+		if (loaded)
+			LoadDeferredStatsAsync(version, statsCts.Token).HandleExceptions();
 	}
 
-	async Task LoadDeferredStatsAsync(IPullRequestStatsProvider stats, int version, CancellationToken ct)
+	async Task LoadDeferredStatsAsync(int version, CancellationToken ct)
 	{
 		var rows = Items.ToList();
 		foreach (var pr in rows)
 			pr.BeginStatsLoading();
 		State.StatsLoading = rows.Count > 0;
 		var pending = rows.ToDictionary(pr => pr.Number);
+		var fetchedBaseBranches = new HashSet<string>(StringComparer.Ordinal);
 		try
 		{
 			while (pending.Count > 0)
@@ -158,7 +159,7 @@ public class PrListPaneViewModel : Tool
 				}
 				try
 				{
-					var diff = await stats.GetDiffStatsAsync(pr.Number, ct);
+					var diff = await LoadDiffStatsAsync(pr, fetchedBaseBranches, ct);
 					pr.SetDiffStats(diff);
 				}
 				catch (Exception ex) when (ex is ToolFailedException or System.Text.Json.JsonException)
@@ -174,6 +175,21 @@ public class PrListPaneViewModel : Tool
 			if (version == loadVersion)
 				State.StatsLoading = false;
 		}
+	}
+
+	async Task<PrDiffStats> LoadDiffStatsAsync(PrSummary pr, HashSet<string> fetchedBaseBranches, CancellationToken ct)
+	{
+		if (fetchedBaseBranches.Add(pr.BaseRefName))
+			await workspace.Git.FetchBranchAsync(pr.BaseRefName, ct);
+		string target = await workspace.Git.RevParseAsync(await workspace.Git.RemoteBranchAsync(pr.BaseRefName, ct), ct);
+
+		string head = pr.HeadRefOid is { Length: > 0 } oid && await workspace.Git.HasCommitAsync(oid, ct)
+			? oid
+			: await workspace.Git.FetchPrHeadAsync(await workspace.Host.PrHeadRefspecAsync(pr.Number, ct), pr.Number, ct);
+
+		string mergeBase = await workspace.Git.GetMergeBaseAsync(target, head, ct);
+		var stats = await workspace.Git.GetDiffStatsAsync(mergeBase, head, ct);
+		return new PrDiffStats(stats.Added, stats.Removed, stats.ChangedFiles);
 	}
 
 	PrSummary? NextStatsRow(IReadOnlyList<PrSummary> rows, Dictionary<int, PrSummary> pending, bool allowDeferred)

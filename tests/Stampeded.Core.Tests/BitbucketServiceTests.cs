@@ -9,27 +9,6 @@ namespace Stampeded.Core.Tests;
 public class BitbucketServiceTests
 {
 	[Test]
-	public void DiffStatStatsUsesBitbucketLineTotalsInsteadOfRenderedDiffLines()
-	{
-		using var doc = JsonDocument.Parse("""
-			{
-			  "values": [
-			    { "linesAdded": 12345, "linesRemoved": 10000 },
-			    { "linesAdded": 7, "linesRemoved": 8 }
-			  ]
-			}
-			""");
-
-		var stats = BitbucketService.DiffStatStats(doc.RootElement.GetProperty("values").EnumerateArray());
-
-		Assert.Multiple(() => {
-			Assert.That(stats.Additions, Is.EqualTo(12352));
-			Assert.That(stats.Deletions, Is.EqualTo(10008));
-			Assert.That(stats.ChangedFiles, Is.EqualTo(2));
-		});
-	}
-
-	[Test]
 	public void DiffStatsCountsAddedAndRemovedLines()
 	{
 		using var doc = JsonDocument.Parse("""

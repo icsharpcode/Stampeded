@@ -470,6 +470,11 @@ public sealed class GitService(string repoPath)
 		=> GitLogParser.ParseShortStat(
 			await RunAsync(ct, "log", "--format=%H", "--shortstat", $"{baseRev}..{headRev}"));
 
+	public async Task<(int ChangedFiles, int Added, int Removed)> GetDiffStatsAsync(
+		string baseRev, string headRev, CancellationToken ct = default)
+		=> GitLogParser.ParseDiffShortStat(
+			await RunAsync(ct, "diff", "--shortstat", "--find-renames", baseRev, headRev));
+
 	/// <summary>How many commits touched each file in the recent past - the repository's hot
 	/// spots. <paramref name="since"/> is a git date expression such as "1.year".</summary>
 	public async Task<IReadOnlyDictionary<string, int>> GetChurnAsync(

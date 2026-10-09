@@ -65,12 +65,3 @@ public interface IPullRequestHost
 }
 
 public sealed record PrDiffStats(int Additions, int Deletions, int ChangedFiles);
-
-/// <summary>
-/// Optional host capability for line totals that are too expensive for the initial list call.
-/// A pane can show the pull requests first and fill these in row-by-row afterwards.
-/// </summary>
-public interface IPullRequestStatsProvider
-{
-	Task<PrDiffStats> GetDiffStatsAsync(int number, CancellationToken ct = default);
-}

@@ -38,6 +38,9 @@ public static partial class GitLogParser
 	[System.Text.RegularExpressions.GeneratedRegex(@"(\d+) deletion")]
 	private static partial System.Text.RegularExpressions.Regex Deletions();
 
+	[System.Text.RegularExpressions.GeneratedRegex(@"(\d+) files? changed")]
+	private static partial System.Text.RegularExpressions.Regex ChangedFiles();
+
 	/// <summary>
 	/// Lines added and removed per commit, from `git log --format=%H --shortstat`: a full SHA
 	/// on a line of its own, then git's summary of that commit. A commit that changed nothing
@@ -64,6 +67,20 @@ public static partial class GitLogParser
 			}
 		}
 		return stats;
+	}
+
+	public static (int ChangedFiles, int Added, int Removed) ParseDiffShortStat(string output)
+	{
+		string trimmed = output.Trim();
+		if (trimmed.Length == 0)
+			return (0, 0, 0);
+		var files = ChangedFiles().Match(trimmed);
+		var insertions = Insertions().Match(trimmed);
+		var deletions = Deletions().Match(trimmed);
+		return (
+			files.Success ? int.Parse(files.Groups[1].Value) : 0,
+			insertions.Success ? int.Parse(insertions.Groups[1].Value) : 0,
+			deletions.Success ? int.Parse(deletions.Groups[1].Value) : 0);
 	}
 
 	/// <summary>

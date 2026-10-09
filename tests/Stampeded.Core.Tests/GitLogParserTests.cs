@@ -69,6 +69,22 @@ public class GitLogParserTests
 	}
 
 	[Test]
+	public void ParsesDiffShortStat()
+	{
+		var stats = GitLogParser.ParseDiffShortStat(" 2 files changed, 12 insertions(+), 4 deletions(-)\n");
+
+		Assert.That(stats, Is.EqualTo((2, 12, 4)));
+	}
+
+	[Test]
+	public void ParsesDiffShortStatWithOnlyDeletions()
+	{
+		var stats = GitLogParser.ParseDiffShortStat(" 1 file changed, 7 deletions(-)\n");
+
+		Assert.That(stats, Is.EqualTo((1, 0, 7)));
+	}
+
+	[Test]
 	public void CountsHowManyCommitsTouchedEachPath()
 	{
 		const string output = "src/A.cs\nsrc/B.cs\n\nsrc/A.cs\n\nsrc/A.cs\nsrc/C.cs\n";
