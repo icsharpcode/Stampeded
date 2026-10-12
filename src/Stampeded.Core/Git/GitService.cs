@@ -734,6 +734,10 @@ public sealed class GitService(string repoPath)
 		=> GitLogParser.ParseBranches(await RunAsync(ct,
 			"stash", "list", "--format=%gd%x09%H%x09%cs%x09%gs"));
 
+	/// <summary>Drops a stash entry by its reflog name, e.g. <c>stash@{0}</c>.</summary>
+	public Task DropStashAsync(string stash, CancellationToken ct = default)
+		=> RunAsync(ct, "stash", "drop", stash);
+
 	/// <summary>Points a new branch at an existing commit. Used to give a stash a durable
 	/// name: the stash itself is left in place, and nothing is checked out or applied
 	/// (unlike `git stash branch`, which would rewrite the user's working tree).</summary>

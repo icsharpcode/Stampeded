@@ -207,6 +207,12 @@ public partial class StartDocumentView : UserControl
 	void OnCreateBranchFromStash(object? sender, RoutedEventArgs e)
 		=> PromptBranchNameAsync().HandleExceptions();
 
+	void OnDropStash(object? sender, RoutedEventArgs e)
+	{
+		if (Vm is { } vm && BranchList.SelectedItem is BranchRow { IsStash: true } row)
+			vm.DropStash(row);
+	}
+
 	async Task PromptBranchNameAsync()
 	{
 		if (BranchList.SelectedItem is BranchRow { IsStash: true } row)
@@ -292,6 +298,12 @@ public partial class StartDocumentView : UserControl
 	{
 		if (RowOf<BranchRow>(sender) is { IsStash: true } row)
 			PromptBranchNameForAsync(row).HandleExceptions();
+	}
+
+	void OnRowStashDrop(object? sender, RoutedEventArgs e)
+	{
+		if (Vm is { } vm && RowOf<BranchRow>(sender) is { IsStash: true } row)
+			vm.DropStash(row);
 	}
 
 	/// <summary>Keeps the draft-only context item in step with what is selected. The menu is

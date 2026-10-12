@@ -564,9 +564,6 @@ public partial class DiffDocumentView : UserControl, IReviewDocumentView
 		CtxFindReferences.IsEnabled = ready;
 		CtxHighlightOccurrences.IsEnabled = ready;
 		CtxCallGraph.IsEnabled = ready;
-		CtxCopyAsGitDiff.IsEnabled = viewModel is { IsPatch: false, IsSourceView: false }
-			&& model is not null
-			&& !Editor.TextArea.Selection.IsEmpty;
 	}
 
 	void OnCtxGoToDefinition(object? s, RoutedEventArgs e) => GoToDefinitionCommand();
@@ -610,22 +607,38 @@ public partial class DiffDocumentView : UserControl, IReviewDocumentView
 		=> App.Workspace?.Scopes.LastCommitAsync().HandleExceptions();
 
 	void OnCtxHistoryOfSelection(object? s, RoutedEventArgs e) => HistoryOfSelectionCommand();
-	void OnCtxCopy(object? s, RoutedEventArgs e) => Editor.Copy();
-	void OnCtxCopyAsGitDiff(object? s, RoutedEventArgs e) => CopySelectionAsGitDiff();
-
-	void CopySelectionAsGitDiff()
+	void OnCtxCopy(object? s, RoutedEventArgs e)
 	{
-		if (viewModel is null || model is null || Editor.TextArea.Selection.IsEmpty)
-			return;
-		var selected = SelectedDocumentLineRange();
-		if (selected is not { } range)
-			return;
-		string patch = BuildGitDiffForSelection(viewModel.File, model, range.FirstLine, range.LastLine);
-		if (patch.Length > 0)
-			TopLevel.GetTopLevel(this)?.Clipboard?.SetTextAsync(patch).HandleExceptions();
+		if (!CopySelectionAsGitDiff(requireFullLines: true))
+			Editor.Copy();
 	}
 
-	(int FirstLine, int LastLine)? SelectedDocumentLineRange()
+	bool CopySelectionAsGitDiff(bool requireFullLines = false)
+	{
+		if (!CanCopySelectionAsGitDiff())
+			return false;
+		var selected = SelectedDocumentLineRange(ignoreEmptyBoundaryLines: requireFullLines);
+		if (selected is not { } range)
+			return false;
+		if (requireFullLines && !SelectionCoversFullLines(range.FirstLine, range.LastLine))
+			return false;
+		if (viewModel is null || model is null)
+			return false;
+		string patch = BuildGitDiffForSelection(viewModel.File, model, range.FirstLine, range.LastLine);
+		if (patch.Length > 0)
+		{
+			TopLevel.GetTopLevel(this)?.Clipboard?.SetTextAsync(patch).HandleExceptions();
+			return true;
+		}
+		return false;
+	}
+
+	bool CanCopySelectionAsGitDiff()
+		=> viewModel is { IsPatch: false, IsSourceView: false }
+			&& model is not null
+			&& !Editor.TextArea.Selection.IsEmpty;
+
+	(int FirstLine, int LastLine)? SelectedDocumentLineRange(bool ignoreEmptyBoundaryLines = false)
 	{
 		int start = Editor.SelectionStart;
 		int end = start + Editor.SelectionLength;
@@ -634,9 +647,29 @@ public partial class DiffDocumentView : UserControl, IReviewDocumentView
 		int lastOffset = Math.Min(end, Editor.Document.TextLength) - 1;
 		if (lastOffset < 0)
 			return null;
-		return (
-			Editor.Document.GetLineByOffset(start).LineNumber,
-			Editor.Document.GetLineByOffset(lastOffset).LineNumber);
+		var firstLine = Editor.Document.GetLineByOffset(start);
+		var lastLine = Editor.Document.GetLineByOffset(lastOffset);
+		if (ignoreEmptyBoundaryLines)
+		{
+			while (firstLine.LineNumber < lastLine.LineNumber && firstLine.Length == 0)
+				firstLine = firstLine.NextLine;
+			while (lastLine.LineNumber > firstLine.LineNumber && lastLine.Length == 0)
+				lastLine = lastLine.PreviousLine;
+		}
+		return (firstLine.LineNumber, lastLine.LineNumber);
+	}
+
+	bool SelectionCoversFullLines(int firstLineNumber, int lastLineNumber)
+	{
+		int start = Editor.SelectionStart;
+		int end = start + Editor.SelectionLength;
+		if (end <= start || Editor.Document is null)
+			return false;
+		var firstLine = Editor.Document.GetLineByNumber(firstLineNumber);
+		var lastLine = Editor.Document.GetLineByNumber(lastLineNumber);
+		int afterLastLine = lastLine.Offset + lastLine.TotalLength;
+		return start <= firstLine.Offset
+			&& end >= afterLastLine;
 	}
 
 	static string BuildGitDiffForSelection(FileDiff file, DiffDocumentModel m, int firstLine, int lastLine)
@@ -729,6 +762,11 @@ public partial class DiffDocumentView : UserControl, IReviewDocumentView
 		// commands act on the symbol that was clicked, matching IDE behavior.
 		if (!e.GetCurrentPoint(Editor).Properties.IsRightButtonPressed)
 			return;
+		if (!Editor.TextArea.Selection.IsEmpty)
+		{
+			e.Handled = true;
+			return;
+		}
 		var position = Editor.GetPositionFromPoint(e.GetPosition(Editor));
 		if (position is null)
 			return;
@@ -1072,6 +1110,12 @@ public partial class DiffDocumentView : UserControl, IReviewDocumentView
 		// leave every keystroke aimed at a text box alone.
 		if (e.Source is Avalonia.Visual source && source.FindAncestorOfType<TextBox>(includeSelf: true) is not null)
 			return;
+		if (e.Key == Key.C && e.KeyModifiers.HasFlag(KeyModifiers.Control))
+		{
+			if (CopySelectionAsGitDiff(requireFullLines: true))
+				e.Handled = true;
+			return;
+		}
 		// Escape is this layout's own: it clears the markers only it draws, and it is not a
 		// review gesture - anything else listening for it should still hear it.
 		if (e is { Key: Key.Escape, KeyModifiers: KeyModifiers.None })

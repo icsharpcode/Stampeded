@@ -8,6 +8,7 @@ using AvaloniaEdit.Document;
 using AvaloniaEdit.Rendering;
 
 using Stampeded.Core.Diff;
+using Stampeded.Themes;
 
 namespace Stampeded.Diff;
 
@@ -464,6 +465,48 @@ sealed class ContextGapBackgroundRenderer(Func<int, bool> hasBar) : IBackgroundR
 public sealed class ContextGapFoldingMargin : AvaloniaEdit.Folding.FoldingMargin
 {
 	public Func<int, bool>? IsContextGapRow { get; set; }
+
+	public ContextGapFoldingMargin()
+	{
+		ApplyTheme();
+	}
+
+	protected override void OnAttachedToVisualTree(Avalonia.VisualTreeAttachmentEventArgs e)
+	{
+		base.OnAttachedToVisualTree(e);
+		ThemeManager.Current.ThemeChanged += OnThemeChanged;
+		ApplyTheme();
+	}
+
+	protected override void OnDetachedFromVisualTree(Avalonia.VisualTreeAttachmentEventArgs e)
+	{
+		ThemeManager.Current.ThemeChanged -= OnThemeChanged;
+		base.OnDetachedFromVisualTree(e);
+	}
+
+	void OnThemeChanged(object? sender, EventArgs e)
+	{
+		ApplyTheme();
+		InvalidateVisual();
+	}
+
+	void ApplyTheme()
+	{
+		if (ThemeManager.Current.IsDarkTheme)
+		{
+			FoldingMarkerBackgroundBrush = new SolidColorBrush(Color.Parse("#1E1E1E"));
+			FoldingMarkerBrush = new SolidColorBrush(Color.Parse("#A0A0A0"));
+			SelectedFoldingMarkerBackgroundBrush = new SolidColorBrush(Color.Parse("#2D2D30"));
+			SelectedFoldingMarkerBrush = new SolidColorBrush(Color.Parse("#DCDCDC"));
+		}
+		else
+		{
+			FoldingMarkerBackgroundBrush = Brushes.White;
+			FoldingMarkerBrush = new SolidColorBrush(Color.Parse("#808080"));
+			SelectedFoldingMarkerBackgroundBrush = Brushes.White;
+			SelectedFoldingMarkerBrush = Brushes.Black;
+		}
+	}
 
 	public override void Render(DrawingContext context)
 	{

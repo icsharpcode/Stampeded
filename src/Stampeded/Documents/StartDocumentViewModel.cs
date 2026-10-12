@@ -622,6 +622,41 @@ public class StartDocumentViewModel : Document
 		}
 	}
 
+	/// <summary>Drops a stash entry after confirmation. Stash names shift after a drop, so the
+	/// list is re-read immediately before anything else can act on the old names.</summary>
+	public void DropStash(BranchRow row)
+	{
+		if (!row.IsStash)
+			return;
+		DropAsync().HandleExceptions();
+
+		async Task DropAsync()
+		{
+			string stash = row.Info.Name;
+			if (ReviewWorkspace.MainWindowOrNull() is { } owner)
+			{
+				bool drop = await new ConfirmWindow("Drop stash",
+					$"Drop {stash}?\n\n{row.Info.Subject}\n\nThis removes the stash entry from the stash list.",
+					"Drop stash").ShowDialog<bool>(owner);
+				if (!drop)
+				{
+					State.Status = $"Drop of {stash} cancelled; nothing was removed.";
+					return;
+				}
+			}
+			try
+			{
+				await workspace.Git.DropStashAsync(stash);
+				await ReloadRefsAsync();
+				State.Status = $"Dropped {stash}.";
+			}
+			catch (ToolFailedException ex)
+			{
+				State.Status = $"Drop of {stash} failed; nothing was removed: {ExternalTool.Explain(ex)}";
+			}
+		}
+	}
+
 	/// <summary>Rebases a local branch onto the default base, in a throwaway worktree unless
 	/// a checkout already has the branch. On conflict the branch is left untouched; on success
 	/// the pre-rebase SHA is reported so the old state can be recovered.</summary>

@@ -277,12 +277,13 @@
         <Panel Classes="headtitle">
           <StackPanel Orientation="Horizontal" Spacing="8">
             <RadioButton x:Name="BranchesMode" Classes="colhead" GroupName="RefKind"
-                         Content="{Binding State.BranchesLabel}"
-                         IsChecked="True" IsCheckedChanged="OnRefKindChanged" />
+                          Content="{Binding State.BranchesLabel}"
+                          IsChecked="{Binding !State.ShowStashes}" IsCheckedChanged="OnRefKindChanged" />
             <RadioButton x:Name="StashesMode" Classes="colhead" GroupName="RefKind"
-                         Content="{Binding State.StashesLabel}"
-                         IsCheckedChanged="OnRefKindChanged"
-                         ToolTip.Tip="Review a stash as the diff between the commit it was taken on and the stashed state" />
+                          Content="{Binding State.StashesLabel}"
+                          IsChecked="{Binding State.ShowStashes}"
+                          IsCheckedChanged="OnRefKindChanged"
+                          ToolTip.Tip="Review a stash as the diff between the commit it was taken on and the stashed state" />
           </StackPanel>
           <TextBox x:Name="BranchFilterBox" Classes="filter" KeyDown="OnFilterKeyDown" PlaceholderText="Filter branches"
                    Text="{Binding State.BranchFilter}"
@@ -348,6 +349,9 @@
                       IsVisible="{Binding !State.ShowStashes}" />
             <MenuItem Header="Create Branch from Stash..." Click="OnCreateBranchFromStash"
                       IsVisible="{Binding State.ShowStashes}" />
+            <MenuItem Header="Drop Stash" Click="OnDropStash"
+                      IsVisible="{Binding State.ShowStashes}"
+                      ToolTip.Tip="Drop this stash entry. This removes it from the stash list." />
             <MenuItem Header="Pull from Remote" Click="OnPullBranch"
                       IsVisible="{Binding !State.ShowStashes}"
                       ToolTip.Tip="Fast-forward this branch to the remote's copy; a diverged branch is left alone" />
@@ -426,6 +430,10 @@
                   <Button Classes="tool" Click="OnRowStashBranch" IsVisible="{Binding IsStash}"
                           ToolTip.Tip="Branch - point a new branch at this stash; the stash is kept and nothing is checked out">
                     <Image Source="{x:Static app:Images.Branch}" />
+                  </Button>
+                  <Button Classes="tool" Click="OnRowStashDrop" IsVisible="{Binding IsStash}"
+                          ToolTip.Tip="Drop this stash entry. This removes it from the stash list.">
+                    <Image Source="{x:Static app:Images.Delete}" />
                   </Button>
                   <Button Classes="tool" Click="OnRowBranchPrHost" IsVisible="{Binding HasPrTag}"
                           ToolTip.Tip="Open this branch's pull request in the browser">
