@@ -1,0 +1,4 @@
+pane:MergeQueue
+click:Merge (merge)
+sleep:15
+---

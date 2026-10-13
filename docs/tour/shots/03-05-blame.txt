@@ -1,0 +1,9 @@
+commit-exit
+sleep:4
+---
+open-file:src/Corral/HerdReport.cs
+sleep:2
+---
+key:B
+sleep:3
+---

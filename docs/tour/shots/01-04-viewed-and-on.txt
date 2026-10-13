@@ -1,0 +1,6 @@
+key:V
+sleep:3
+---
+key:N
+sleep:1
+---

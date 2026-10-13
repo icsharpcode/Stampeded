@@ -6,6 +6,8 @@ Built on AvaloniaEdit; editor components adapted from [ILSpy](https://github.com
 
 Siegi and Chris recorded a brief [Introduction to Stampeded!](https://youtu.be/r16YIcvLlg4) for you to get a glimpse at what the IRE is capable of.
 
+To see it at work on a C# repository, take the [feature tours](docs/tour/README.md): eight short walks with screenshots, each under five minutes, that you can follow in a demo repository.
+
 # Motivation
 
 ## What was great in eg gitk, Fork and other tools?

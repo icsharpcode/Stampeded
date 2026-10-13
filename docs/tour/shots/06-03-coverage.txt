@@ -1,0 +1,9 @@
+menu:Run + Coverage
+sleep:60
+---
+open-file:src/Corral/Herd.cs
+sleep:3
+---
+key:U
+sleep:1
+---

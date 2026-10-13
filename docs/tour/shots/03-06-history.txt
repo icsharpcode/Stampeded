@@ -1,0 +1,6 @@
+key:B
+sleep:2
+---
+pane:History
+sleep:3
+---

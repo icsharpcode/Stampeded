@@ -1,0 +1,3 @@
+pane:Map
+sleep:2
+---

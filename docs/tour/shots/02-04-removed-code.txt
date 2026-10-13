@@ -1,0 +1,8 @@
+open-file:src/Corral/HerdReport.cs
+sleep:2
+---
+press:1005,403
+release:1005,403
+key:F12
+sleep:2
+---
