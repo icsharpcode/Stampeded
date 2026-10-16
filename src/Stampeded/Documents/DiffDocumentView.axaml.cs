@@ -1,5 +1,6 @@
 using Avalonia.Controls;
 using Avalonia.Input;
+using Avalonia.Input.Platform;
 using Avalonia.Interactivity;
 using Avalonia.Media;
 using Avalonia.Threading;
@@ -10,6 +11,8 @@ using AvaloniaEdit.Folding;
 using AvaloniaEdit.Highlighting;
 using AvaloniaEdit.Rendering;
 using AvaloniaEdit.Search;
+
+using System.Text;
 
 using Stampeded.Core.Diff;
 using Stampeded.Core.Roslyn;
@@ -561,6 +564,9 @@ public partial class DiffDocumentView : UserControl, IReviewDocumentView
 		CtxFindReferences.IsEnabled = ready;
 		CtxHighlightOccurrences.IsEnabled = ready;
 		CtxCallGraph.IsEnabled = ready;
+		CtxCopyAsGitDiff.IsEnabled = viewModel is { IsPatch: false, IsSourceView: false }
+			&& model is not null
+			&& !Editor.TextArea.Selection.IsEmpty;
 	}
 
 	void OnCtxGoToDefinition(object? s, RoutedEventArgs e) => GoToDefinitionCommand();
@@ -599,6 +605,101 @@ public partial class DiffDocumentView : UserControl, IReviewDocumentView
 
 	void OnCtxHistoryOfSelection(object? s, RoutedEventArgs e) => HistoryOfSelectionCommand();
 	void OnCtxCopy(object? s, RoutedEventArgs e) => Editor.Copy();
+	void OnCtxCopyAsGitDiff(object? s, RoutedEventArgs e) => CopySelectionAsGitDiff();
+
+	void CopySelectionAsGitDiff()
+	{
+		if (viewModel is null || model is null || Editor.TextArea.Selection.IsEmpty)
+			return;
+		var selected = SelectedDocumentLineRange();
+		if (selected is not { } range)
+			return;
+		string patch = BuildGitDiffForSelection(viewModel.File, model, range.FirstLine, range.LastLine);
+		if (patch.Length > 0)
+			TopLevel.GetTopLevel(this)?.Clipboard?.SetTextAsync(patch).HandleExceptions();
+	}
+
+	(int FirstLine, int LastLine)? SelectedDocumentLineRange()
+	{
+		int start = Editor.SelectionStart;
+		int end = start + Editor.SelectionLength;
+		if (end <= start || Editor.Document is null)
+			return null;
+		int lastOffset = Math.Min(end, Editor.Document.TextLength) - 1;
+		if (lastOffset < 0)
+			return null;
+		return (
+			Editor.Document.GetLineByOffset(start).LineNumber,
+			Editor.Document.GetLineByOffset(lastOffset).LineNumber);
+	}
+
+	static string BuildGitDiffForSelection(FileDiff file, DiffDocumentModel m, int firstLine, int lastLine)
+	{
+		var sourceLines = m.Text.Split('\n');
+		int firstIndex = Math.Max(0, firstLine - 1);
+		int lastIndex = Math.Min(Math.Min(lastLine, m.Tags.Count), sourceLines.Length) - 1;
+		if (lastIndex < firstIndex)
+			return "";
+
+		var rows = new List<(DiffLineTag Tag, string Text)>();
+		for (int i = firstIndex; i <= lastIndex; i++)
+		{
+			var tag = m.Tags[i];
+			if (tag.Kind is DiffLineKind.Added or DiffLineKind.Removed or DiffLineKind.Context)
+				rows.Add((tag, sourceLines[i]));
+		}
+		if (rows.Count == 0)
+			return "";
+
+		int oldLength = rows.Count(r => r.Tag.OldLine > 0);
+		int newLength = rows.Count(r => r.Tag.NewLine > 0);
+		int oldStart = oldLength > 0
+			? rows.First(r => r.Tag.OldLine > 0).Tag.OldLine
+			: PreviousLine(m.Tags, firstIndex, oldSide: true);
+		int newStart = newLength > 0
+			? rows.First(r => r.Tag.NewLine > 0).Tag.NewLine
+			: PreviousLine(m.Tags, firstIndex, oldSide: false);
+
+		var text = new StringBuilder();
+		text.Append("diff --git ").Append(GitPath('a', file.OldPath)).Append(' ')
+			.Append(GitPath('b', file.NewPath)).Append('\n');
+		if (file.Kind == FileChangeKind.Renamed)
+		{
+			text.Append("rename from ").Append(file.OldPath).Append('\n');
+			text.Append("rename to ").Append(file.NewPath).Append('\n');
+		}
+		text.Append("--- ").Append(file.Kind == FileChangeKind.Added ? "/dev/null" : GitPath('a', file.OldPath)).Append('\n');
+		text.Append("+++ ").Append(file.Kind == FileChangeKind.Deleted ? "/dev/null" : GitPath('b', file.NewPath)).Append('\n');
+		text.Append("@@ -").Append(FormatRange(oldStart, oldLength))
+			.Append(" +").Append(FormatRange(newStart, newLength)).Append(" @@\n");
+
+		foreach (var (tag, line) in rows)
+		{
+			char prefix = tag.Kind switch {
+				DiffLineKind.Added => '+',
+				DiffLineKind.Removed => '-',
+				_ => ' ',
+			};
+			text.Append(prefix).Append(line).Append('\n');
+		}
+		return text.ToString();
+	}
+
+	static int PreviousLine(IReadOnlyList<DiffLineTag> tags, int firstIndex, bool oldSide)
+	{
+		for (int i = firstIndex - 1; i >= 0; i--)
+		{
+			int line = oldSide ? tags[i].OldLine : tags[i].NewLine;
+			if (line > 0)
+				return line;
+		}
+		return 0;
+	}
+
+	static string FormatRange(int start, int length)
+		=> length == 1 ? start.ToString() : $"{start},{length}";
+
+	static string GitPath(char side, string path) => $"{side}/{path}";
 
 	void OnCtxCallGraph(object? s, RoutedEventArgs e) => ShowCallGraphCommand();
 
