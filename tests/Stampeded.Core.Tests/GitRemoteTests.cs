@@ -76,7 +76,7 @@ public class GitRemoteTests
 		await Git(repo, "switch", "--quiet", "--detach");
 		var git = new GitService(repo);
 
-		var failure = Assert.ThrowsAsync<ToolFailedException>(async () => await git.FetchAsync());
+		var failure = await Assert.ThrowsAsync<ToolFailedException>(async () => await git.FetchAsync());
 		Assert.That(ExternalTool.Explain(failure!), Does.Contain("fork, github").And.Contain("checkout.defaultRemote"));
 
 		// The reader follows the advice; the same service sees it without being made again.
@@ -85,12 +85,12 @@ public class GitRemoteTests
 	}
 
 	[Test]
-	public void NoRemoteSaysSo()
+	public async Task NoRemoteSaysSo()
 	{
 		string repo = NewDirectory();
 		Assert.That(async () => await Git(repo, "init", "--quiet"), Throws.Nothing);
 
-		var failure = Assert.ThrowsAsync<ToolFailedException>(async () => await new GitService(repo).GetRemoteAsync());
+		var failure = await Assert.ThrowsAsync<ToolFailedException>(async () => await new GitService(repo).GetRemoteAsync());
 		Assert.That(ExternalTool.Explain(failure!), Does.Contain("no git remote"));
 	}
 
