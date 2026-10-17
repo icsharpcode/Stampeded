@@ -42,7 +42,7 @@ public class DiffFoldingTests
 		var ranges = DiffFolding.Members(MemberFolding.Compute(source), sideToDoc);
 
 		Assert.That(ranges, Is.Not.Empty);
-		Assert.That(ranges, Has.All.Matches<FoldRange>(r => r.FromHeaderEnd && !r.DefaultClosed));
+		Assert.That(ranges, Has.All.Matches<FoldRange>(r => r is { FromHeaderEnd: true, DefaultClosed: false }));
 		// The type spans source lines 1..7, i.e. document lines 2..14.
 		Assert.That(ranges[0].StartLine, Is.EqualTo(2));
 		Assert.That(ranges[0].EndLine, Is.EqualTo(14));
