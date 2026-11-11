@@ -667,7 +667,9 @@ public partial class DiffDocumentView : UserControl, IReviewDocumentView
 			return false;
 		var firstLine = Editor.Document.GetLineByNumber(firstLineNumber);
 		var lastLine = Editor.Document.GetLineByNumber(lastLineNumber);
-		int afterLastLine = lastLine.Offset + lastLine.TotalLength;
+		// A selection ending at the last character still contains the complete line; requiring
+		// its newline would make keyboard and word-based line selections copy as plain text.
+		int afterLastLine = lastLine.Offset + lastLine.Length;
 		return start <= firstLine.Offset
 			&& end >= afterLastLine;
 	}
