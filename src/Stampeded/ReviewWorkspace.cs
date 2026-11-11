@@ -1764,6 +1764,10 @@ public sealed class ReviewWorkspace(string repoPath, IPullRequestHost host)
 		if (drafts.Count > 0 && MainWindowOrNull() is { } owner)
 		{
 			int outdated = drafts.Count(d => d.CurrentLine is null);
+			// Let the close button finish processing and the modal window paint before any
+			// review cleanup can do synchronous filesystem work.
+			await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(
+				static () => { }, Avalonia.Threading.DispatcherPriority.Render);
 			bool close = await new ConfirmWindow("Close review",
 				$"{drafts.Count} draft comment(s) have not been submitted"
 					+ (outdated > 0 ? $" ({outdated} outdated)" : "") + ".\n\n"
@@ -1881,7 +1885,7 @@ public sealed class ReviewWorkspace(string repoPath, IPullRequestHost host)
 			return;
 		try
 		{
-			int removed = await Worktrees.RemoveAsync(shas, ct);
+			int removed = await Task.Run(() => Worktrees.RemoveAsync(shas, ct), ct);
 			if (removed > 0)
 				CliLog.Write("worktree", $"removed {removed} review worktree(s)");
 		}
