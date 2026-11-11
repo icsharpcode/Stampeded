@@ -9,6 +9,14 @@ namespace Stampeded.Core.Tests;
 public class BitbucketServiceTests
 {
 	[Test]
+	public void OwnPullRequestVerdictsAreBlocked()
+	{
+		var service = new BitbucketService(".", "https://bitbucket.example", "PROJECT", "repo");
+
+		Assert.That(service.AcceptsOwnApproval, Is.False);
+	}
+
+	[Test]
 	public void DiffStatsCountsAddedAndRemovedLines()
 	{
 		using var doc = JsonDocument.Parse("""

@@ -20,8 +20,8 @@ public sealed class BitbucketService(string repoPath, string baseUrl, string pro
 
 	public string Name => "Bitbucket Data Center";
 
-	/// <summary>Bitbucket Data Center lets an author approve their own pull request unless rules refuse it.</summary>
-	public bool AcceptsOwnApproval => true;
+	/// <summary>Own pull-request verdicts are blocked even though Bitbucket Data Center may allow them.</summary>
+	public bool AcceptsOwnApproval => false;
 
 	string ApiBase => $"{this.baseUrl}/rest/api/latest/projects/{Esc(projectKey)}/repos/{Esc(repo)}";
 
