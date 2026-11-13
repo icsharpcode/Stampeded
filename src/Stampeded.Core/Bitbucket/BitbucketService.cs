@@ -327,10 +327,12 @@ public sealed class BitbucketService(string repoPath, string baseUrl, string pro
 		{
 			if (!string.Equals(Str(activity, "action"), "MERGED", StringComparison.OrdinalIgnoreCase))
 				continue;
-			return MergeCommitId(activity)
+			string? commit = MergeCommitId(activity)
 				?? Str(activity, "commit", "id")
 				?? Str(activity, "merge", "commit", "id")
 				?? Str(activity, "activity", "commit", "id");
+			if (commit is { Length: > 0 })
+				return commit;
 		}
 		// Some Bitbucket Data Center versions omit the commit from the activity payload but
 		// expose it on the merge resource. The merge commit is the only stable base after a
