@@ -308,6 +308,7 @@ public partial class MainWindow : Window
 	}
 
 	void OnOpenFromUrl(object? s, EventArgs e) => PromptUrlAsync().HandleExceptions();
+	void OnOpenPrByNumber(object? s, EventArgs e) => PromptPrNumberAsync().HandleExceptions();
 
 	async Task PromptUrlAsync()
 	{
@@ -316,6 +317,25 @@ public partial class MainWindow : Window
 			"Open", "https://github.com/owner/repo/pull/123").ShowDialog<string?>(this);
 		if (!string.IsNullOrWhiteSpace(url))
 			await App.OpenFromUrlAsync(url);
+	}
+
+	async Task PromptPrNumberAsync()
+	{
+		if (App.Workspace is not { } workspace)
+			return;
+		string? input = await new TextPromptWindow("Open Pull Request",
+			"Pull request number (including closed pull requests):", "Open", "123")
+			.ShowDialog<string?>(this);
+		if (!int.TryParse(input, out int number) || number <= 0)
+		{
+			if (!string.IsNullOrWhiteSpace(input))
+				workspace.PostStatus($"Not a valid pull request number: {input}");
+			return;
+		}
+		if (workspace.StartPage is { } start)
+			start.OpenPrNumber(number);
+		else
+			await workspace.OpenPrAsync(number);
 	}
 
 	/// <summary>The view of the document in front. Commands go there rather than to whichever

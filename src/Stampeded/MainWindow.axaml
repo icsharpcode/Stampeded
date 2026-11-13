@@ -35,6 +35,7 @@
         <NativeMenu>
           <NativeMenuItem Header="Open Repository..." Click="OnOpenRepository" />
           <NativeMenuItem Header="Open from URL..." Click="OnOpenFromUrl" />
+          <NativeMenuItem Header="Open PR by Number..." Click="OnOpenPrByNumber" />
           <NativeMenuItem Header="Recent Repositories" CommandParameter="RecentMenu">
             <NativeMenu />
           </NativeMenuItem>
