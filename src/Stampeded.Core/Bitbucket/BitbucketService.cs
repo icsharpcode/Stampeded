@@ -329,9 +329,16 @@ public sealed class BitbucketService(string repoPath, string baseUrl, string pro
 				continue;
 			return MergeCommitId(activity)
 				?? Str(activity, "commit", "id")
-				?? Str(activity, "merge", "commit", "id");
+				?? Str(activity, "merge", "commit", "id")
+				?? Str(activity, "activity", "commit", "id");
 		}
-		return null;
+		// Some Bitbucket Data Center versions omit the commit from the activity payload but
+		// expose it on the merge resource. The merge commit is the only stable base after a
+		// source branch was force-pushed or deleted.
+		using var merge = await JsonAsync("GET", $"{ApiBase}/pull-requests/{number}/merge", null, ct);
+		return Str(merge.RootElement, "commit", "id")
+			?? Str(merge.RootElement, "mergeCommit", "id")
+			?? Str(merge.RootElement, "commitId");
 	}
 
 	static DateTimeOffset FromBitbucketTime(long milliseconds)
