@@ -364,6 +364,20 @@ public sealed class BitbucketService(string repoPath, string baseUrl, string pro
 			if (Str(refChange, "fromHash") is { Length: > 0 } previous)
 				return previous;
 		}
+
+		// The activity representation differs between Bitbucket Data Center versions. The PR
+		// commit list is stable: its first commit's parent is the `since` commit used by the
+		// Bitbucket web diff, even after the source branch was force-pushed.
+		var commits = await PageAsync($"{ApiBase}/pull-requests/{number}/commits", ct);
+		var ids = commits.Select(c => Str(c, "id")).OfType<string>().ToHashSet(StringComparer.OrdinalIgnoreCase);
+		if (!ids.Contains(currentHead))
+			return null;
+		foreach (var commit in commits)
+		{
+			foreach (var parent in Array(Node(commit, "parents")))
+				if (Str(parent, "id") is { Length: > 0 } parentId && !ids.Contains(parentId))
+					return parentId;
+		}
 		return null;
 	}
 
