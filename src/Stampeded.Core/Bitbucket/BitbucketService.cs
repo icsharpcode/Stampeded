@@ -303,21 +303,36 @@ public sealed class BitbucketService(string repoPath, string baseUrl, string pro
 	{
 		var doc = await FreshPrAsync(number, ct);
 		var pr = doc.RootElement;
+		string state = Str(pr, "state") ?? "";
 		return new PrDetail(
 			number,
 			Str(pr, "title") ?? "",
 			Str(pr, "description"),
 			RefName(pr, "toRef"),
 			RefName(pr, "fromRef"),
-			Str(pr, "state") ?? "",
+			state,
 			new PrAuthor(User(Node(pr, "author") ?? default)),
 			Bool(pr, "draft"),
-			MergeCommit: MergeCommitId(pr) is { } merge ? new PrCommit(merge) : null);
+			MergeCommit: state == "MERGED" && await MergedCommitIdAsync(number, ct) is { } merge
+				? new PrCommit(merge) : null);
 	}
 
 	static string? MergeCommitId(JsonElement pr)
 		=> Str(pr, "properties", "mergeCommit", "id")
 			?? Str(pr, "mergeCommit", "id");
+
+	async Task<string?> MergedCommitIdAsync(int number, CancellationToken ct)
+	{
+		foreach (var activity in await PageAsync($"{ApiBase}/pull-requests/{number}/activities", ct))
+		{
+			if (!string.Equals(Str(activity, "action"), "MERGED", StringComparison.OrdinalIgnoreCase))
+				continue;
+			return MergeCommitId(activity)
+				?? Str(activity, "commit", "id")
+				?? Str(activity, "merge", "commit", "id");
+		}
+		return null;
+	}
 
 	static DateTimeOffset FromBitbucketTime(long milliseconds)
 		=> milliseconds > 0 ? DateTimeOffset.FromUnixTimeMilliseconds(milliseconds) : default;
