@@ -353,6 +353,9 @@ public sealed class BitbucketService(string repoPath, string baseUrl, string pro
 		if (!string.Equals(fromProject, projectKey, StringComparison.OrdinalIgnoreCase)
 			|| !string.Equals(fromRepo, repo, StringComparison.OrdinalIgnoreCase))
 			return null;
+		string? commit = Str(pr, "fromRef", "latestCommit");
+		if (commit is { Length: > 0 })
+			return $"+{commit}:refs/stampeded/pr/{number}";
 		string branch = RefName(pr, "fromRef");
 		if (branch.Length == 0)
 			return null;

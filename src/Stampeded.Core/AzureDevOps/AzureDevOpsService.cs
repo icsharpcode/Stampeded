@@ -203,6 +203,9 @@ public sealed class AzureDevOpsService(string repoPath, string org, string proje
 		var doc = await PrAsync(number, ct);
 		if (Node(doc.RootElement, "forkSource") is { ValueKind: not JsonValueKind.Null })
 			throw new RefusedException("Pull requests from forks are not supported on Azure DevOps yet.");
+		string? commit = Str(doc.RootElement, "lastMergeSourceCommit", "commitId");
+		if (commit is { Length: > 0 })
+			return $"+{commit}:refs/stampeded/pr/{number}";
 		string branch = StripRefsHeads(Str(doc.RootElement, "sourceRefName"));
 		if (branch.Length == 0)
 			throw new RefusedException($"Azure DevOps did not name a source branch for pull request {number}.");
