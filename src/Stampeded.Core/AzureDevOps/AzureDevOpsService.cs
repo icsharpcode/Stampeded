@@ -227,7 +227,9 @@ public sealed class AzureDevOpsService(string repoPath, string org, string proje
 			// words; it is shown and logged.
 			Str(pr, "status") ?? "",
 			new PrAuthor(Str(pr, "createdBy", "uniqueName") ?? Str(pr, "createdBy", "displayName") ?? ""),
-			IsDraft: Node(pr, "isDraft")?.ValueKind == JsonValueKind.True);
+			IsDraft: Node(pr, "isDraft")?.ValueKind == JsonValueKind.True,
+			MergeCommit: Str(pr, "lastMergeCommit", "commitId") is { } merge
+				? new PrCommit(merge) : null);
 	}
 
 	public async Task<IReadOnlyList<PrSummary>> ListOpenPrsAsync(CancellationToken ct = default)

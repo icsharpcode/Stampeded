@@ -168,7 +168,10 @@ public sealed record PrDetail(
 	string HeadRefName,
 	string State,
 	PrAuthor? Author,
-	bool IsDraft = false);
+	bool IsDraft = false,
+	PrCommit? MergeCommit = null);
+
+public sealed record PrCommit(string Oid);
 
 /// <summary>One check on a pull request. <see cref="RunId"/> names the run whose failed log
 /// can be fetched - GitHub Actions' run id, Azure DevOps' build id - and is null for a check

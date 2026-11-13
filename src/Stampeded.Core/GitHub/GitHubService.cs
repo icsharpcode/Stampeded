@@ -95,7 +95,7 @@ public sealed partial class GitHubService(string repoPath) : IPullRequestHost
 			// isDraft rides along because it decides what the reader may do with the pull
 			// request, not merely how it merges: a draft cannot be queued and can be marked
 			// ready, and asking GitHub again for one flag would be a round trip for nothing.
-			"--json", "number,title,body,baseRefName,headRefName,state,author,isDraft");
+			"--json", "number,title,body,baseRefName,headRefName,state,author,isDraft,mergeCommit");
 
 	/// <summary>Check runs for a PR. `gh pr checks` exits non-zero when checks failed or
 	/// are pending, so the JSON is taken from stdout regardless of exit code.</summary>

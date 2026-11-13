@@ -311,8 +311,13 @@ public sealed class BitbucketService(string repoPath, string baseUrl, string pro
 			RefName(pr, "fromRef"),
 			Str(pr, "state") ?? "",
 			new PrAuthor(User(Node(pr, "author") ?? default)),
-			Bool(pr, "draft"));
+			Bool(pr, "draft"),
+			MergeCommit: MergeCommitId(pr) is { } merge ? new PrCommit(merge) : null);
 	}
+
+	static string? MergeCommitId(JsonElement pr)
+		=> Str(pr, "properties", "mergeCommit", "id")
+			?? Str(pr, "mergeCommit", "id");
 
 	static DateTimeOffset FromBitbucketTime(long milliseconds)
 		=> milliseconds > 0 ? DateTimeOffset.FromUnixTimeMilliseconds(milliseconds) : default;

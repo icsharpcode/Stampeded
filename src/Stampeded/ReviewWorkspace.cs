@@ -490,9 +490,19 @@ public sealed class ReviewWorkspace(string repoPath, IPullRequestHost host)
 		try
 		{
 			detail = await Host.GetPrAsync(number, ct);
-			headSha = await Git.FetchPrHeadAsync(await Host.PrHeadRefspecAsync(number, ct), number, ct);
-			await Git.FetchBranchAsync(detail.BaseRefName, ct);
-			baseSha = await Git.GetMergeBaseAsync(await Git.RemoteBranchAsync(detail.BaseRefName, ct), headSha, ct);
+			if (detail.MergeCommit?.Oid is { Length: > 0 } mergeCommit)
+			{
+				// The current target branch already contains a merged PR. The merge commit's first
+				// parent is the target as it stood before the PR landed, so it is the stable base.
+				headSha = await Git.FetchPrHeadAsync($"+{mergeCommit}:refs/stampeded/pr/{number}", number, ct);
+				baseSha = await Git.RevParseAsync($"{headSha}^1", ct);
+			}
+			else
+			{
+				headSha = await Git.FetchPrHeadAsync(await Host.PrHeadRefspecAsync(number, ct), number, ct);
+				await Git.FetchBranchAsync(detail.BaseRefName, ct);
+				baseSha = await Git.GetMergeBaseAsync(await Git.RemoteBranchAsync(detail.BaseRefName, ct), headSha, ct);
+			}
 		}
 		catch (ToolFailedException ex)
 		{
