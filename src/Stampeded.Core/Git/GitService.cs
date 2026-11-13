@@ -361,6 +361,15 @@ public sealed class GitService(string repoPath)
 		return (await RunAsync(ct, "rev-parse", $"refs/stampeded/pr/{number}")).Trim();
 	}
 
+	/// <summary>Fetches a historical pull-request revision into a private review ref.</summary>
+	public async Task<string> FetchCommitAsync(string commit, string destination, CancellationToken ct = default)
+	{
+		if (string.IsNullOrWhiteSpace(commit))
+			throw new RefusedException("Cannot fetch an unnamed review commit.");
+		await RunAsync(ct, "fetch", await GetRemoteAsync(ct), $"+{commit}:{destination}");
+		return (await RunAsync(ct, "rev-parse", destination)).Trim();
+	}
+
 	public async Task FetchBranchAsync(string branch, CancellationToken ct = default)
 	{
 		if (string.IsNullOrWhiteSpace(branch))

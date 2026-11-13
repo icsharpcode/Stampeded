@@ -304,6 +304,7 @@ public sealed class BitbucketService(string repoPath, string baseUrl, string pro
 		var doc = await FreshPrAsync(number, ct);
 		var pr = doc.RootElement;
 		string state = Str(pr, "state") ?? "";
+		string? currentHead = Str(pr, "fromRef", "latestCommit");
 		return new PrDetail(
 			number,
 			Str(pr, "title") ?? "",
@@ -314,7 +315,9 @@ public sealed class BitbucketService(string repoPath, string baseUrl, string pro
 			new PrAuthor(User(Node(pr, "author") ?? default)),
 			Bool(pr, "draft"),
 			MergeCommit: state == "MERGED" && await MergedCommitIdAsync(number, ct) is { } merge
-				? new PrCommit(merge) : null);
+				? new PrCommit(merge) : null,
+			ComparisonBaseSha: currentHead is { Length: > 0 }
+				? await PreviousHeadIdAsync(number, currentHead, ct) : null);
 	}
 
 	static string? MergeCommitId(JsonElement pr)
@@ -337,10 +340,31 @@ public sealed class BitbucketService(string repoPath, string baseUrl, string pro
 		// Some Bitbucket Data Center versions omit the commit from the activity payload but
 		// expose it on the merge resource. The merge commit is the only stable base after a
 		// source branch was force-pushed or deleted.
-		using var merge = await JsonAsync("GET", $"{ApiBase}/pull-requests/{number}/merge", null, ct);
-		return Str(merge.RootElement, "commit", "id")
-			?? Str(merge.RootElement, "mergeCommit", "id")
-			?? Str(merge.RootElement, "commitId");
+		try
+		{
+			using var merge = await JsonAsync("GET", $"{ApiBase}/pull-requests/{number}/merge", null, ct);
+			return Str(merge.RootElement, "commit", "id")
+				?? Str(merge.RootElement, "mergeCommit", "id")
+				?? Str(merge.RootElement, "commitId");
+		}
+		catch (ToolFailedException)
+		{
+			return null;
+		}
+	}
+
+	async Task<string?> PreviousHeadIdAsync(int number, string currentHead, CancellationToken ct)
+	{
+		foreach (var activity in await PageAsync($"{ApiBase}/pull-requests/{number}/activities", ct))
+		{
+			var change = Node(activity, "refChange");
+			if (change is not { } refChange
+				|| !string.Equals(Str(refChange, "toHash"), currentHead, StringComparison.OrdinalIgnoreCase))
+				continue;
+			if (Str(refChange, "fromHash") is { Length: > 0 } previous)
+				return previous;
+		}
+		return null;
 	}
 
 	static DateTimeOffset FromBitbucketTime(long milliseconds)

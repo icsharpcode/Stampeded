@@ -500,8 +500,13 @@ public sealed class ReviewWorkspace(string repoPath, IPullRequestHost host)
 			else
 			{
 				headSha = await Git.FetchPrHeadAsync(await Host.PrHeadRefspecAsync(number, ct), number, ct);
-				await Git.FetchBranchAsync(detail.BaseRefName, ct);
-				baseSha = await Git.GetMergeBaseAsync(await Git.RemoteBranchAsync(detail.BaseRefName, ct), headSha, ct);
+				if (detail.ComparisonBaseSha is { Length: > 0 } comparisonBase)
+					baseSha = await Git.FetchCommitAsync(comparisonBase, $"refs/stampeded/base/{number}", ct);
+				else
+				{
+					await Git.FetchBranchAsync(detail.BaseRefName, ct);
+					baseSha = await Git.GetMergeBaseAsync(await Git.RemoteBranchAsync(detail.BaseRefName, ct), headSha, ct);
+				}
 			}
 		}
 		catch (ToolFailedException ex)

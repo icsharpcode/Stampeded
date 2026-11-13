@@ -169,7 +169,8 @@ public sealed record PrDetail(
 	string State,
 	PrAuthor? Author,
 	bool IsDraft = false,
-	PrCommit? MergeCommit = null);
+	PrCommit? MergeCommit = null,
+	string? ComparisonBaseSha = null);
 
 public sealed record PrCommit(string Oid);
 
