@@ -32,7 +32,7 @@ public sealed record ReferenceItem(string RelPath, int Line, string Preview, boo
 public sealed class ReviewWorkspace(string repoPath, IPullRequestHost host)
 {
 	public string RepoPath { get; } = repoPath;
-	public GitService Git { get; } = new(repoPath);
+	public GitService Git { get; } = new(repoPath) { IgnoreWhitespace = IgnoreWhitespacePreference.Enabled };
 
 	/// <summary>Whichever host this repository's pull requests live on, decided once from
 	/// its remote's URL. Nothing above here knows which one answered.</summary>
@@ -802,7 +802,7 @@ public sealed class ReviewWorkspace(string repoPath, IPullRequestHost host)
 			}
 			SetGeneratedStatus("building base...", done: false);
 			await GeneratedSources.BuildAsync(baseTree, solution, ct);
-			var generated = await GeneratedSources.DiffAsync(baseTree, head, ct);
+			var generated = await GeneratedSources.DiffAsync(baseTree, head, ct, IgnoreWhitespacePreference.Enabled);
 			SetGeneratedFiles(generated);
 			SetGeneratedStatus(generated.Count == 0 ? "unchanged" : $"{generated.Count} file(s)", done: true);
 		}
@@ -1318,6 +1318,18 @@ public sealed class ReviewWorkspace(string repoPath, IPullRequestHost host)
 		DiffLayoutPreference.Set(sideBySide);
 		CliLog.Write("action", $"diff layout: {(sideBySide ? "side-by-side" : "unified")}");
 		await ApplyDiffLayoutAsync();
+	}
+
+	/// <summary>Changes how Git matches lines in review diffs and reloads the current review
+	/// so file lists, hunks, and open documents all use the same comparison.</summary>
+	public async Task SetIgnoreWhitespaceAsync(bool ignoreWhitespace)
+	{
+		if (IgnoreWhitespacePreference.Enabled == ignoreWhitespace)
+			return;
+		IgnoreWhitespacePreference.Set(ignoreWhitespace);
+		Git.IgnoreWhitespace = ignoreWhitespace;
+		if (HeadSha is not null)
+			await ReloadReviewAsync();
 	}
 
 	/// <summary>Removes cached worktrees except the current review's base and head.</summary>

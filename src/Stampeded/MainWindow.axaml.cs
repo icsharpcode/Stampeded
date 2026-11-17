@@ -19,7 +19,7 @@ public partial class MainWindow : Window
 	readonly NativeMenuItem recentMenu, buildSolutionMenu, exitItem,
 		nextHunkItem, prevHunkItem, nextUncoveredItem, historyOfSelectionItem,
 		backItem, forwardItem,
-		sideBySideItem, blameItem, markdownPreviewItem, multiRowTabsItem, pointerCrossHairItem, debugHereItem,
+		sideBySideItem, ignoreWhitespaceItem, blameItem, markdownPreviewItem, multiRowTabsItem, pointerCrossHairItem, debugHereItem,
 		lightThemeItem, darkThemeItem;
 
 	public MainWindow()
@@ -38,6 +38,7 @@ public partial class MainWindow : Window
 		backItem = Named("BackItem");
 		forwardItem = Named("ForwardItem");
 		sideBySideItem = Named("SideBySideItem");
+		ignoreWhitespaceItem = Named("IgnoreWhitespaceItem");
 		blameItem = Named("BlameItem");
 		markdownPreviewItem = Named("MarkdownPreviewItem");
 		multiRowTabsItem = Named("MultiRowTabsItem");
@@ -361,6 +362,8 @@ public partial class MainWindow : Window
 	void OnHighlightOccurrences(object? s, EventArgs e) => View?.HighlightOccurrencesCommand();
 	void OnSideBySide(object? s, EventArgs e)
 		=> App.Workspace?.SetDiffLayoutAsync(!DiffLayoutPreference.SideBySide).HandleExceptions();
+	void OnIgnoreWhitespace(object? s, EventArgs e)
+		=> App.Workspace?.SetIgnoreWhitespaceAsync(!IgnoreWhitespacePreference.Enabled).HandleExceptions();
 	void OnCloseDocument(object? s, EventArgs e) => App.Workspace?.CloseActiveDocument();
 
 	void OnShowPane(object? s, EventArgs e)
@@ -590,6 +593,7 @@ public partial class MainWindow : Window
 		prevHunkItem.IsEnabled = Has(ReviewCommands.JumpToHunk);
 		nextUncoveredItem.IsEnabled = Has(ReviewCommands.JumpToUncovered);
 		sideBySideItem.IsChecked = DiffLayoutPreference.SideBySide;
+		ignoreWhitespaceItem.IsChecked = IgnoreWhitespacePreference.Enabled;
 		blameItem.IsEnabled = Has(ReviewCommands.ToggleBlame);
 		blameItem.IsChecked = view?.BlameVisible ?? false;
 		// Only where there is something to render. Offered on a .cs file it would do nothing,

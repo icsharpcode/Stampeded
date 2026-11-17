@@ -168,6 +168,9 @@
           <NativeMenuItem Header="Side-by-Side Layout" CommandParameter="SideBySideItem" Click="OnSideBySide"
                           ToggleType="CheckBox"
                           ToolTip="Read every change as two panes instead of one interleaved document" />
+          <NativeMenuItem Header="Ignore Whitespace" CommandParameter="IgnoreWhitespaceItem"
+                          Click="OnIgnoreWhitespace" ToggleType="CheckBox"
+                          ToolTip="Hide changes consisting only of whitespace" />
           <NativeMenuItem Header="Blame Margin  ( b )" CommandParameter="BlameItem" Click="OnToggleBlame" ToggleType="CheckBox" />
           <!-- A tab of its own rather than a mode of the diff: the diff shows the source, and a
                document is reviewed for both. Enabled only where there is something to render,

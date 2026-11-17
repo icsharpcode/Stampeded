@@ -49,6 +49,28 @@ public class GitWorkingTreeTests
 	}
 
 	[Test]
+	public async Task IgnoreWhitespaceOmitsWhitespaceOnlyChanges()
+	{
+		await Write("tracked.txt", " one \t\n");
+		var git = new GitService(repo) { IgnoreWhitespace = true };
+
+		var files = await git.DiffWorkingTreeAsync(repo, "HEAD");
+
+		Assert.That(files, Is.Empty);
+	}
+
+	[Test]
+	public async Task IgnoreWhitespaceStillReportsContentChanges()
+	{
+		await Write("tracked.txt", " two \t\n");
+		var git = new GitService(repo) { IgnoreWhitespace = true };
+
+		var files = await git.DiffWorkingTreeAsync(repo, "HEAD");
+
+		Assert.That(files.Select(f => f.Path), Is.EqualTo(new[] { "tracked.txt" }));
+	}
+
+	[Test]
 	public async Task ACheckoutWithOnlyUntrackedFilesIsNotDirty()
 	{
 		await Write("untracked.txt", "scratch\n");

@@ -170,6 +170,9 @@ public sealed record InProgressOperation(
 /// </summary>
 public sealed class GitService(string repoPath)
 {
+	/// <summary>Whether textual diffs omit changes consisting only of whitespace.</summary>
+	public bool IgnoreWhitespace { get; set; }
+
 	public string RepoPath => repoPath;
 
 	Task<string> RunAsync(CancellationToken ct, params string[] args)
@@ -378,7 +381,12 @@ public sealed class GitService(string repoPath)
 	}
 
 	public async Task<IReadOnlyList<FileDiff>> DiffAsync(string baseRev, string headRev, CancellationToken ct = default)
-		=> GitDiffParser.Parse(await RunAsync(ct, "diff", "-U3", "--find-renames", baseRev, headRev));
+		=> GitDiffParser.Parse(await RunAsync(ct, DiffArguments(baseRev, headRev)));
+
+	string[] DiffArguments(params string[] revisions)
+		=> ["diff", "-U3", "--find-renames",
+			.. (IgnoreWhitespace ? new[] { "--ignore-all-space" } : Array.Empty<string>()),
+			.. revisions];
 
 	/// <summary>The checkouts of this repository - the main one and any linked worktrees -
 	/// with the branch each has checked out (null when detached).</summary>
@@ -433,7 +441,7 @@ public sealed class GitService(string repoPath)
 		string worktreePath, string baseRev, CancellationToken ct = default)
 	{
 		var files = GitDiffParser.Parse(await ExternalTool.RunAsync(
-			"git", ["diff", "-U3", "--find-renames", baseRev], worktreePath, ct)).ToList();
+			"git", [.. DiffArguments(baseRev)], worktreePath, ct)).ToList();
 		return [.. files.OrderBy(f => f.Path, StringComparer.Ordinal)];
 	}
 

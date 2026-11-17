@@ -93,7 +93,7 @@ public static class GeneratedSources
 	/// output did not move is not part of the change.
 	/// </summary>
 	public static async Task<IReadOnlyList<FileDiff>> DiffAsync(
-		string baseWorktree, string headWorktree, CancellationToken ct = default)
+		string baseWorktree, string headWorktree, CancellationToken ct = default, bool ignoreWhitespace = false)
 	{
 		var baseFiles = Collect(baseWorktree);
 		var headFiles = Collect(headWorktree);
@@ -106,7 +106,7 @@ public static class GeneratedSources
 			var kind = oldFile is null ? FileChangeKind.Added
 				: newFile is null ? FileChangeKind.Deleted
 				: FileChangeKind.Modified;
-			var hunks = await DiffFilesAsync(oldFile, newFile, ct);
+			var hunks = await DiffFilesAsync(oldFile, newFile, ct, ignoreWhitespace);
 			if (hunks.Count == 0)
 				continue;
 			files.Add(new FileDiff(key, key, kind, IsBinary: false, hunks, new GeneratedSource(oldFile, newFile)));
@@ -120,7 +120,8 @@ public static class GeneratedSources
 	/// caller already knows which pair it asked about, and they would be absolute paths into
 	/// two throwaway worktrees.
 	/// </summary>
-	static async Task<IReadOnlyList<DiffHunk>> DiffFilesAsync(string? oldFile, string? newFile, CancellationToken ct)
+	static async Task<IReadOnlyList<DiffHunk>> DiffFilesAsync(
+		string? oldFile, string? newFile, CancellationToken ct, bool ignoreWhitespace)
 	{
 		// --no-index answers "differences found" with exit 1, which is the interesting case.
 		// A side the other does not have is diffed against the platform's empty file: naming
@@ -129,7 +130,9 @@ public static class GeneratedSources
 		string nothing = OperatingSystem.IsWindows() ? "NUL" : "/dev/null";
 		string diff = await ExternalTool.RunAsync(
 			"git",
-			["diff", "-U3", "--no-index", "--", oldFile ?? nothing, newFile ?? nothing],
+			["diff", "-U3", "--no-index",
+				.. (ignoreWhitespace ? new[] { "--ignore-all-space" } : Array.Empty<string>()),
+				"--", oldFile ?? nothing, newFile ?? nothing],
 			Path.GetTempPath(), ct, okExitCodes: [1]);
 		var parsed = GitDiffParser.Parse(diff);
 		return parsed.Count > 0 ? parsed[0].Hunks : [];
