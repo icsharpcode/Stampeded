@@ -49,12 +49,12 @@ public class App : Application
 			if (window.DataContext is MainViewModel vm)
 			{
 				vm.ShutdownTitle = "Switching Repository";
-				vm.ShutdownText = "Stopping the current review and cleaning its worktrees...";
+				vm.ShutdownText = "Stopping the current review...";
 				vm.IsShuttingDown = true;
 			}
 			try
 			{
-				await current.ShutdownAsync(cleanupWorktrees: true, cleanupTimeout: TimeSpan.FromSeconds(10));
+				await current.ShutdownAsync(cleanupWorktrees: false);
 			}
 			catch (Exception ex)
 			{

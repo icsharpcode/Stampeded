@@ -1543,9 +1543,8 @@ public sealed class ReviewWorkspace(string repoPath, IPullRequestHost host)
 	public void Shutdown()
 		=> ShutdownCoreAsync(cleanupWorktrees: false, cleanupTimeout: null).GetAwaiter().GetResult();
 
-	/// <summary>Stops this workspace before another repository replaces it. Unlike process exit,
-	/// a repository switch stays inside the running app, so the abandoned review worktrees can be
-	/// cleaned up before the next workspace is built.</summary>
+	/// <summary>Stops this workspace before another repository replaces it. Worktrees remain
+	/// cached across a repository switch and are removed only on full application exit.</summary>
 	public Task ShutdownAsync(bool cleanupWorktrees, TimeSpan? cleanupTimeout = null)
 		=> ShutdownCoreAsync(cleanupWorktrees, cleanupTimeout);
 
@@ -1847,11 +1846,12 @@ public sealed class ReviewWorkspace(string repoPath, IPullRequestHost host)
 
 	async Task CloseReviewCoreAsync()
 	{
-		string? headSha = HeadSha;
-		string? baseSha = BaseWorktreePath is null ? null : BaseSha;
+		using var busy = Busy.Begin("Closing review");
+		// Let the busy indicator paint before cancellation and document teardown run.
+		await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(
+			static () => { }, Avalonia.Threading.DispatcherPriority.Render);
 		sessionCts?.Cancel();
 		DisposeSemantics();
-		await CleanupReviewWorktreesAsync(headSha, baseSha, CancellationToken.None);
 		CurrentPr = null;
 		PrHeadSha = null;
 		LocalRange = null;
