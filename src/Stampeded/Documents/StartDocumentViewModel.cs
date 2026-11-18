@@ -191,6 +191,7 @@ public class StartDocumentViewModel : Document
 	/// tooltips that name the host.</summary>
 	public string HostName => workspace.HostName;
 	bool openOverviewWhenReady;
+	bool prItemsRefreshQueued;
 	// Counts the opens started from here, so one that ends after a later one began can tell
 	// the overlay is no longer its to change.
 	int openAttempt;
@@ -245,11 +246,7 @@ public class StartDocumentViewModel : Document
 		{
 			PrepareItems.Add(new PrepareItem(label));
 		}
-		PrList.Items.CollectionChanged += (_, _) => {
-			State.PrColumnHeader = $"Pull Requests ({PrList.Items.Count})";
-			FilterPrs();
-			AnnotateBranches();
-		};
+		PrList.Items.CollectionChanged += (_, _) => QueuePrItemsRefresh();
 		FilterRecents();
 		workspace.ReviewChanged += () => Dispatcher.UIThread.Post(UpdatePreparation);
 		workspace.SemanticsChanged += () => Dispatcher.UIThread.Post(UpdatePreparation);
@@ -432,6 +429,21 @@ public class StartDocumentViewModel : Document
 			if (WordFilter.Matches(State.PrFilter, pr.NumberDisplay, pr.Title, pr.Author?.Login, pr.HeadRefName, pr.BaseRefName))
 				Prs.Add(pr);
 		}
+	}
+
+	/// <summary>Coalesce list changes into one UI pass for the dependent filtering and branch
+	/// annotation.</summary>
+	void QueuePrItemsRefresh()
+	{
+		if (prItemsRefreshQueued)
+			return;
+		prItemsRefreshQueued = true;
+		Dispatcher.UIThread.Post(() => {
+			prItemsRefreshQueued = false;
+			State.PrColumnHeader = $"Pull Requests ({PrList.Items.Count})";
+			FilterPrs();
+			AnnotateBranches();
+		});
 	}
 
 	void AnnotateBranches()

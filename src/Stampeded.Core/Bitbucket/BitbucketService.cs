@@ -148,14 +148,14 @@ public sealed class BitbucketService(string repoPath, string baseUrl, string pro
 	static string RouteForLog(string url)
 		=> Uri.TryCreate(url, UriKind.Absolute, out var uri) ? uri.PathAndQuery : url;
 
-	async Task<IReadOnlyList<JsonElement>> PageAsync(string url, CancellationToken ct)
+	async Task<IReadOnlyList<JsonElement>> PageAsync(string url, CancellationToken ct, int limit = 100)
 	{
 		var values = new List<JsonElement>();
 		int start = 0;
 		while (true)
 		{
 			string sep = url.Contains('?', StringComparison.Ordinal) ? "&" : "?";
-			using var page = await JsonAsync("GET", $"{url}{sep}start={start}&limit=100", null, ct);
+			using var page = await JsonAsync("GET", $"{url}{sep}start={start}&limit={limit}", null, ct);
 			values.AddRange(Array(Node(page.RootElement, "values")).Select(v => v.Clone()));
 			if (Bool(page.RootElement, "isLastPage"))
 				return values;
@@ -233,7 +233,9 @@ public sealed class BitbucketService(string repoPath, string baseUrl, string pro
 
 	public async Task<IReadOnlyList<PrSummary>> ListOpenPrsAsync(CancellationToken ct = default)
 	{
-		var prs = await PageAsync($"{ApiBase}/pull-requests?state=OPEN", ct);
+		// Open PR lists can be much larger than the activity and commit lists this helper
+		// also serves. Ask for a larger page to avoid spawning a curl request for every 100.
+		var prs = await PageAsync($"{ApiBase}/pull-requests?state=OPEN", ct, limit: 1000);
 		string viewer = await GetViewerLoginAsync(ct);
 		foreach (var pr in prs)
 		{

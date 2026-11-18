@@ -2291,8 +2291,12 @@ public sealed class ReviewWorkspace(string repoPath, IPullRequestHost host)
 		baseSemantics.StateChanged += () => SemanticsChanged?.Invoke();
 		using (Busy.Begin("Reading the base side"))
 		{
-			var (replaced, removed, added) = await BaseSideTextsAsync(baseSha, ct);
-			baseSemantics.LoadFrom(semantics, replaced, removed, added);
+			var (replaced, removed, added) = await Task.Run(
+				() => BaseSideTextsAsync(baseSha, ct), ct);
+			// Deriving a Roslyn solution walks the changed documents and projects. Keep that
+			// synchronous work off the UI thread; on a large PR it can otherwise stall input
+			// while the status bar continues to say "Reading the base side".
+			await Task.Run(() => baseSemantics.LoadFrom(semantics, replaced, removed, added), ct);
 		}
 	}
 
@@ -2319,7 +2323,8 @@ public sealed class ReviewWorkspace(string repoPath, IPullRequestHost host)
 			var head = new LspSemanticProvider(connection, WorktreePath!, spec.Name);
 			head.StateChanged += () => SemanticsChanged?.Invoke();
 			Semantics = head;
-			var (replaced, removed, added) = await BaseSideTextsAsync(baseSha, ct);
+			var (replaced, removed, added) = await Task.Run(
+				() => BaseSideTextsAsync(baseSha, ct), ct);
 			// No deadline: the server answers this once its own solution has loaded, and that
 			// takes as long as a solution takes. Giving up on it would abandon a base side that
 			// was going to arrive.

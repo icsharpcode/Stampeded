@@ -1,5 +1,3 @@
-using System.Collections.ObjectModel;
-
 using CommunityToolkit.Mvvm.ComponentModel;
 
 using Dock.Model.Mvvm.Controls;
@@ -29,6 +27,8 @@ public sealed partial class PrListState : ObservableObject
 public class PrListPaneViewModel : Tool
 {
 	readonly ReviewWorkspace workspace;
+	readonly object statsCacheGate = new();
+	readonly Dictionary<DiffStatsKey, PrDiffStats> statsCache = [];
 	CancellationTokenSource? statsCts;
 	int loadVersion;
 	readonly HashSet<int> visibleStatsPriority = [];
@@ -37,7 +37,7 @@ public class PrListPaneViewModel : Tool
 	/// tooltips that name the host.</summary>
 	public string HostName => workspace.HostName;
 
-	public ObservableCollection<PrSummary> Items { get; } = [];
+	public ResettableObservableCollection<PrSummary> Items { get; } = [];
 	public PrListState State { get; } = new();
 
 	public PrListPaneViewModel(ReviewWorkspace workspace)
@@ -98,7 +98,7 @@ public class PrListPaneViewModel : Tool
 				State.Status = $"Not a git repository: {workspace.RepoPath}";
 				return;
 			}
-			var prs = await workspace.Host.ListOpenPrsAsync();
+			var prs = await workspace.Host.ListOpenPrsAsync(ct);
 			ct.ThrowIfCancellationRequested();
 			string? originOwner = await workspace.Git.GetOriginOwnerAsync(ct);
 			string viewer = "";
@@ -126,7 +126,7 @@ public class PrListPaneViewModel : Tool
 		{
 			if (!ct.IsCancellationRequested && version == loadVersion)
 			{
-				Items.Replace(rows);
+				Items.ReplaceAll(rows);
 				State.Loading = false;
 			}
 		}
@@ -188,9 +188,19 @@ public class PrListPaneViewModel : Tool
 			: await workspace.Git.FetchPrHeadAsync(await workspace.Host.PrHeadRefspecAsync(pr.Number, ct), pr.Number, ct);
 
 		string mergeBase = await workspace.Git.GetMergeBaseAsync(target, head, ct);
+		var key = new DiffStatsKey(pr.Number, mergeBase, head);
+		lock (statsCacheGate)
+			if (statsCache.TryGetValue(key, out var cached))
+				return cached;
+
 		var stats = await workspace.Git.GetDiffStatsAsync(mergeBase, head, ct);
-		return new PrDiffStats(stats.Added, stats.Removed, stats.ChangedFiles);
+		var result = new PrDiffStats(stats.Added, stats.Removed, stats.ChangedFiles);
+		lock (statsCacheGate)
+			statsCache[key] = result;
+		return result;
 	}
+
+	readonly record struct DiffStatsKey(int PrNumber, string MergeBase, string Head);
 
 	PrSummary? NextStatsRow(IReadOnlyList<PrSummary> rows, Dictionary<int, PrSummary> pending, bool allowDeferred)
 	{

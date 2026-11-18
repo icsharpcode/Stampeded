@@ -1,4 +1,6 @@
 using System.Collections.ObjectModel;
+using System.Collections.Specialized;
+using System.ComponentModel;
 
 namespace Stampeded;
 
@@ -20,5 +22,21 @@ public static class Collections
 		list.Clear();
 		foreach (var item in items)
 			list.Add(item);
+	}
+}
+
+/// <summary>An observable collection that can replace its contents with one Reset event,
+/// rather than notifying bindings separately for every inserted item.</summary>
+public sealed class ResettableObservableCollection<T> : ObservableCollection<T>
+{
+	public void ReplaceAll(IEnumerable<T> items)
+	{
+		var replacement = items.ToList();
+		Items.Clear();
+		foreach (var item in replacement)
+			Items.Add(item);
+		OnPropertyChanged(new PropertyChangedEventArgs(nameof(Count)));
+		OnPropertyChanged(new PropertyChangedEventArgs("Item[]"));
+		OnCollectionChanged(new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Reset));
 	}
 }
