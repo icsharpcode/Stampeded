@@ -164,7 +164,7 @@ public class PrListPaneViewModel : Tool
 				}
 				catch (Exception ex) when (ex is ToolFailedException or System.Text.Json.JsonException)
 				{
-					CliLog.Write("host", $"pull request #{pr.Number} line counts unavailable: {ex.Message}");
+					CliLog.WriteException("host", $"pull request #{pr.Number} line counts unavailable", ex);
 					pr.EndStatsLoading();
 				}
 				pending.Remove(pr.Number);

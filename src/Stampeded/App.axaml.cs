@@ -58,7 +58,7 @@ public class App : Application
 			}
 			catch (Exception ex)
 			{
-				CliLog.Write("app", $"repository switch cleanup failed: {ex.Message}; opening {path} anyway");
+				CliLog.WriteException("app", $"repository switch cleanup failed; opening {path} anyway", ex);
 			}
 		}
 		Program.RepoPath = path;
@@ -220,7 +220,7 @@ public class App : Application
 			}
 			catch (ToolFailedException ex)
 			{
-				CliLog.Write("action", $"clone of {name} failed: {ex.Message}");
+				CliLog.WriteException("action", $"clone of {name} failed", ex);
 				Workspace?.PostStatus($"Clone failed: {ExternalTool.Explain(ex)}");
 				return;
 			}

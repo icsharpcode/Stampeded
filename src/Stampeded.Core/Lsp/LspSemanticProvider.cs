@@ -129,7 +129,7 @@ public sealed class LspSemanticProvider : ISemanticProvider, IDecompileTargets
 		}
 		catch (IOException ex)
 		{
-			CliLog.Write(name, $"read {relPath} FAILED: {ex.Message}");
+			CliLog.WriteException(name, $"read {relPath} FAILED", ex);
 			return null;
 		}
 	}

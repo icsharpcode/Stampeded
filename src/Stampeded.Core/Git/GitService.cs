@@ -1001,7 +1001,7 @@ public sealed class GitService(string repoPath)
 					}
 					catch (Exception e) when (e is IOException or UnauthorizedAccessException)
 					{
-						CliLog.Write("worktree", $"could not remove {dir}: {e.Message}");
+						CliLog.WriteException("worktree", $"could not remove {dir}", e);
 					}
 				}
 			}

@@ -273,6 +273,7 @@ public partial class MergeQueuePaneViewModel : Tool
 		}
 		catch (ToolFailedException ex)
 		{
+			CliLog.WriteException("mergequeue", $"queueing PR #{number} failed", ex);
 			Give(number, $"Could not queue #{number}: {ex.Message}");
 		}
 

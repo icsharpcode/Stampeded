@@ -39,7 +39,7 @@ static class Program
 		}
 		catch (Exception ex)
 		{
-			CliLog.Write("roslyn-lsp", $"stopped: {ex.Message}");
+			CliLog.WriteException("roslyn-lsp", "stopped", ex);
 			return 1;
 		}
 	}

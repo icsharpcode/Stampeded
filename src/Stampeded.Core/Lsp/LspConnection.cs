@@ -102,7 +102,7 @@ public sealed class LspConnection : IDisposable
 		}
 		catch (Exception ex) when (ex is not ToolFailedException)
 		{
-			CliLog.Write(spec.Name, $"start FAILED: {ex.Message}");
+			CliLog.WriteException(spec.Name, "start FAILED", ex);
 			throw new ToolFailedException(spec.Executable, -1, ex.Message);
 		}
 		CliLog.Write(spec.Name, $"started pid {process.Id}");
@@ -472,7 +472,7 @@ public sealed class LspConnection : IDisposable
 		}
 		catch (Exception ex)
 		{
-			CliLog.Write(spec.Name, $"shutdown FAILED: {ex.Message}");
+			CliLog.WriteException(spec.Name, "shutdown FAILED", ex);
 		}
 		try
 		{
@@ -524,7 +524,10 @@ static class TaskLogExtensions
 	internal static void HandleFailure(this Task task, string name)
 	{
 		_ = task.ContinueWith(
-			t => CliLog.Write(name, $"connection FAILED: {t.Exception?.GetBaseException().Message}"),
+			t => {
+				if (t.Exception is { } error)
+					CliLog.WriteException(name, "connection FAILED", error.GetBaseException());
+			},
 			CancellationToken.None,
 			TaskContinuationOptions.OnlyOnFaulted,
 			TaskScheduler.Default);

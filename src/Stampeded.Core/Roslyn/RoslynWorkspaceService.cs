@@ -138,7 +138,7 @@ public sealed class RoslynWorkspaceService : ISemanticProvider, IDecompileTarget
 					// interrupted restore in this cached worktree. The worktree is a
 					// disposable copy, so retry clean and unlocked.
 					Log("First restore failed, retrying clean with --force-evaluate:");
-					Log(ex.Message);
+					Log(ex.ToString());
 					SetState(SemanticState.Restoring, "clean retry");
 					await RestoreAsync(sln, cleanRetry: true, ct);
 				}
@@ -173,7 +173,7 @@ public sealed class RoslynWorkspaceService : ISemanticProvider, IDecompileTarget
 			try
 			{
 				LoadSyntaxOnly(worktree, ct);
-				SetState(SemanticState.SyntaxOnly, ex.Message);
+				SetState(SemanticState.SyntaxOnly, ex.ToString());
 			}
 			catch (Exception inner)
 			{
@@ -263,7 +263,7 @@ public sealed class RoslynWorkspaceService : ISemanticProvider, IDecompileTarget
 		}
 		catch (Exception ex)
 		{
-			CliLog.Write("env", $"dotnet --version failed to start: {ex.Message}");
+			CliLog.WriteException("env", "dotnet --version failed to start", ex);
 		}
 	}
 

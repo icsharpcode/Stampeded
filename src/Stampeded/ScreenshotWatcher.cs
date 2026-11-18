@@ -494,7 +494,7 @@ static class ScreenshotWatcher
 			}
 			catch (Exception ex)
 			{
-				CliLog.Write("action", $"screenshot FAILED: {ex.Message}");
+				CliLog.WriteException("action", "screenshot FAILED", ex);
 			}
 		};
 		timer.Start();

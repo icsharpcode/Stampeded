@@ -75,4 +75,11 @@ public static class CliLog
 		}
 		current?.Invoke(line);
 	}
+
+	/// <summary>Writes the exception message, type, stack trace and any inner exceptions to
+	/// the log as one expandable entry in the log pane.</summary>
+	public static void WriteException(string category, string context, Exception exception)
+	{
+		Write(category, $"{context}: {exception}");
+	}
 }

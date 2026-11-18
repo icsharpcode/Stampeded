@@ -360,6 +360,7 @@ public sealed class MergeQueueService(GitService git, IPullRequestHost host, str
 				// The lock is given back rather than left to run out: the next turn should get to
 				// try the entry behind this one straight away.
 				await ReleaseAsync(ct);
+				CliLog.WriteException("mergequeue", $"merging #{entry.Pr} failed", ex);
 				Pass(entry.Pr, ex.Message);
 				return new MergeQueueDriveResult($"Merging #{entry.Pr} failed: {ex.Message}", blocked);
 			}
@@ -394,7 +395,7 @@ public sealed class MergeQueueService(GitService git, IPullRequestHost host, str
 		}
 		catch (ToolFailedException ex)
 		{
-			CliLog.Write("mergequeue", $"could not wake the drainer workflow: {ex.Message}");
+			CliLog.WriteException("mergequeue", "could not wake the drainer workflow", ex);
 		}
 		return true;
 	}
@@ -473,7 +474,7 @@ public sealed class MergeQueueService(GitService git, IPullRequestHost host, str
 		catch (JsonException ex)
 		{
 			// A queue nobody can read is worse than an empty one only if it is silently emptied.
-			CliLog.Write("mergequeue", $"the queue on the remote does not parse: {ex.Message}");
+			CliLog.WriteException("mergequeue", "the queue on the remote does not parse", ex);
 			throw;
 		}
 	}

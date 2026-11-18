@@ -117,7 +117,7 @@ public sealed class ReviewWorkspace(string repoPath, IPullRequestHost host)
 		{
 			// Who has approved is worth knowing, and not knowing it is worth saying: an empty
 			// list would read as nobody having reviewed.
-			CliLog.Write("host", $"reviews unavailable: {ex.Message}");
+			CliLog.WriteException("host", "reviews unavailable", ex);
 			Reviewers = null;
 		}
 		ReviewersChanged?.Invoke();
@@ -394,7 +394,7 @@ public sealed class ReviewWorkspace(string repoPath, IPullRequestHost host)
 			{
 				// The branch is here either way, and reading it is the point. Losing the
 				// discussion is worth a line; failing the whole open over it is not.
-				CliLog.Write("host", $"PR #{number} not attached to this branch review: {ex.Message}");
+				CliLog.WriteException("host", $"PR #{number} not attached to this branch review", ex);
 				detail = null;
 				prHead = null;
 			}
@@ -516,7 +516,7 @@ public sealed class ReviewWorkspace(string repoPath, IPullRequestHost host)
 			// from that pass - so the review can be opened exactly as it was then, said so.
 			if (await OpenableSnapshotAsync(number, ct) is not { } cached)
 				throw;
-			CliLog.Write("action", $"PR #{number} opened offline, from the snapshot of {cached.TakenAt:g}: {ex.Message}");
+			CliLog.WriteException("action", $"PR #{number} opened offline, from the snapshot of {cached.TakenAt:g}", ex);
 			detail = cached.Detail;
 			headSha = cached.HeadSha;
 			baseSha = cached.BaseSha;
@@ -682,7 +682,7 @@ public sealed class ReviewWorkspace(string repoPath, IPullRequestHost host)
 		catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ToolFailedException)
 		{
 			// Housekeeping: a worktree that will not go away costs disk, not a review.
-			CliLog.Write("action", $"worktree cache not pruned: {ex.Message}");
+			CliLog.WriteException("action", "worktree cache not pruned", ex);
 		}
 	}
 
@@ -814,7 +814,7 @@ public sealed class ReviewWorkspace(string repoPath, IPullRequestHost host)
 		{
 			// A review of a change that does not build is still a review; this is the one
 			// part of the preparation whose failure is expected often enough to be normal.
-			CliLog.Write("dotnet", $"generated sources unavailable: {ex.Message}");
+			CliLog.WriteException("dotnet", "generated sources unavailable", ex);
 			SetGeneratedStatus("build failed", done: true);
 		}
 	}
@@ -1684,7 +1684,7 @@ public sealed class ReviewWorkspace(string repoPath, IPullRequestHost host)
 		}
 		catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
 		{
-			CliLog.Write("vscode", $"could not link .vscode: {ex.Message}");
+			CliLog.WriteException("vscode", "could not link .vscode", ex);
 		}
 	}
 
@@ -1918,7 +1918,7 @@ public sealed class ReviewWorkspace(string repoPath, IPullRequestHost host)
 		}
 		catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ToolFailedException)
 		{
-			CliLog.Write("worktree", $"review worktree cleanup failed: {ex.Message}");
+			CliLog.WriteException("worktree", "review worktree cleanup failed", ex);
 		}
 	}
 
@@ -2457,8 +2457,8 @@ public sealed class ReviewWorkspace(string repoPath, IPullRequestHost host)
 		}
 		catch (ToolFailedException ex)
 		{
-			CliLog.Write(spec.Name, $"did not start: {ex.Message}. Command was: "
-				+ $"{spec.Executable} {string.Join(' ', spec.Arguments)}");
+			CliLog.WriteException(spec.Name,
+				$"did not start. Command was: {spec.Executable} {string.Join(' ', spec.Arguments)}", ex);
 			return false;
 		}
 		finally
@@ -2567,6 +2567,7 @@ public sealed class ReviewWorkspace(string repoPath, IPullRequestHost host)
 		}
 		catch (IOException ex)
 		{
+			CliLog.WriteException("action", $"reading {location.FilePath} failed", ex);
 			StatusMessage?.Invoke($"{location.FilePath} could not be read: {ex.Message}");
 			return;
 		}
@@ -2619,8 +2620,9 @@ public sealed class ReviewWorkspace(string repoPath, IPullRequestHost host)
 		}
 		catch (Exception ex)
 		{
+			CliLog.WriteException("action", $"decompiling {target.ReflectionName} failed", ex);
 			StatusMessage?.Invoke($"Decompiling {target.TypeName} failed: {ex.Message}");
-			CliLog.Write("action", $"decompile {target.ReflectionName} FAILED: {ex.Message}");
+			CliLog.WriteException("action", $"decompile {target.ReflectionName} FAILED", ex);
 		}
 	}
 
@@ -3069,6 +3071,7 @@ public sealed class ReviewWorkspace(string repoPath, IPullRequestHost host)
 		}
 		catch (ToolFailedException ex)
 		{
+			CliLog.WriteException("action", $"marking PR #{pr.Number} ready failed", ex);
 			return $"Could not mark #{pr.Number} ready: {ex.Message}";
 		}
 	}
@@ -3094,6 +3097,7 @@ public sealed class ReviewWorkspace(string repoPath, IPullRequestHost host)
 		}
 		catch (ToolFailedException ex)
 		{
+			CliLog.WriteException("action", "reading the merge state failed", ex);
 			return $"Could not read the merge state: {ex.Message}";
 		}
 		if (!state.CanMerge)
@@ -3131,6 +3135,7 @@ public sealed class ReviewWorkspace(string repoPath, IPullRequestHost host)
 		}
 		catch (ToolFailedException ex)
 		{
+			CliLog.WriteException("action", $"merging PR #{pr.Number} failed", ex);
 			return $"Merge failed: {ex.Message}";
 		}
 	}

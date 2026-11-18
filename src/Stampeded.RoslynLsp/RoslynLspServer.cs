@@ -68,7 +68,7 @@ sealed class RoslynLspServer : IDisposable
 			}
 			catch (Exception ex)
 			{
-				CliLog.Write("roslyn-lsp", $"{method} FAILED: {ex.Message}");
+				CliLog.WriteException("roslyn-lsp", $"{method} FAILED", ex);
 				await RespondAsync(id, null);
 			}
 		}
@@ -212,7 +212,10 @@ sealed class RoslynLspServer : IDisposable
 	void ReportState()
 		=> NotifyAsync("stampeded/state", new { state = head.State.ToString(), detail = head.StateDetail })
 			.ContinueWith(
-				t => CliLog.Write("roslyn-lsp", $"state notification failed: {t.Exception?.GetBaseException().Message}"),
+				t => {
+					if (t.Exception is { } error)
+						CliLog.WriteException("roslyn-lsp", "state notification failed", error.GetBaseException());
+				},
 				TaskContinuationOptions.OnlyOnFaulted);
 
 	/// <summary>Derives the base-side workspace from the head one, given the texts of the

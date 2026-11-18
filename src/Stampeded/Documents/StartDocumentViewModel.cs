@@ -702,10 +702,12 @@ public class StartDocumentViewModel : Document
 				// Refused rather than attempted: something is already half-finished, and the
 				// banner below is the way out of it. Caught before the failure it is a kind of,
 				// because the two say different things to a reader.
+				CliLog.WriteException("action", $"rebase of {row.Info.Name} was refused", ex);
 				State.Status = ex.Message;
 			}
 			catch (ToolFailedException ex)
 			{
+				CliLog.WriteException("action", $"rebase of {row.Info.Name} failed", ex);
 				State.Status = $"Rebase of {row.Info.Name} failed, branch left unchanged: {ExternalTool.Explain(ex)}";
 			}
 			finally
@@ -1066,6 +1068,7 @@ public class StartDocumentViewModel : Document
 			}
 			catch (DirtyWorktreeException ex)
 			{
+				CliLog.WriteException("action", $"deleting {branch} stopped by a dirty worktree", ex);
 				if (ReviewWorkspace.MainWindowOrNull() is not { } owner)
 				{
 					State.Status = $"Delete of {branch} stopped: {ex.Message}";
@@ -1089,6 +1092,7 @@ public class StartDocumentViewModel : Document
 				}
 				catch (ToolFailedException retryEx)
 				{
+					CliLog.WriteException("action", $"deleting {branch} failed on retry", retryEx);
 					State.Status = $"Delete of {branch} failed; the branch was not removed: {ExternalTool.Explain(retryEx)}";
 					return;
 				}
@@ -1099,6 +1103,7 @@ public class StartDocumentViewModel : Document
 				// that goes wrong afterwards would claim the branch is still there when it
 				// is not - and a worktree with uncommitted work lands in this branch too,
 				// which is the case where being told nothing happened matters most.
+				CliLog.WriteException("action", $"deleting {branch} failed", ex);
 				State.Status = $"Delete of {branch} failed, nothing was removed: {ex.Message}";
 				return;
 			}
@@ -1170,7 +1175,7 @@ public class StartDocumentViewModel : Document
 			}
 			catch (Exception ex)
 			{
-				CliLog.Write("error", $"open of {what} failed: {ex.Message}");
+				CliLog.WriteException("error", $"open of {what} failed", ex);
 				if (attempt != openAttempt)
 					return;
 				Activate();

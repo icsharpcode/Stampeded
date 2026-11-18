@@ -46,6 +46,12 @@ public partial class LogPaneView : UserControl
 			vm.Clear();
 	}
 
+	void OnToggleDetails(object? sender, RoutedEventArgs e)
+	{
+		if (sender is Button { DataContext: LogLineRow row })
+			row.ToggleDetails();
+	}
+
 	void OnKeyDown(object? sender, KeyEventArgs e)
 	{
 		if (e.Key == Key.F && e.KeyModifiers == KeyModifiers.Control)

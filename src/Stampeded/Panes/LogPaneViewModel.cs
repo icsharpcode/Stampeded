@@ -30,8 +30,8 @@ public partial class LogPaneViewModel : Tool
 	string filterText = "";
 
 	public string CountText => FilterText.Trim().Length == 0
-		? $"{Lines.Count} lines"
-		: $"{VisibleLines.Count} of {Lines.Count} lines";
+		? $"{Lines.Count} entries"
+		: $"{VisibleLines.Count} of {Lines.Count} entries";
 
 	public LogPaneViewModel()
 	{
@@ -110,7 +110,42 @@ public partial class LogPaneViewModel : Tool
 	}
 }
 
-public sealed record LogLineRow(string Text, IBrush? Brush)
+public sealed class LogLineRow : System.ComponentModel.INotifyPropertyChanged
 {
-	public static LogLineRow From(string text) => new(text, LogPaneViewModel.BrushFor(text));
+	public string Text { get; }
+	public string Summary { get; }
+	public string Details { get; }
+	public IBrush? Brush { get; }
+	public bool HasDetails => Details.Length > 0;
+	public string ToggleLabel => IsExpanded ? "▾" : "▸";
+	public bool DetailsVisible => IsExpanded;
+
+	bool isExpanded;
+	public bool IsExpanded
+	{
+		get => isExpanded;
+		private set
+		{
+			if (isExpanded == value)
+				return;
+			isExpanded = value;
+			PropertyChanged?.Invoke(this, new(nameof(IsExpanded)));
+			PropertyChanged?.Invoke(this, new(nameof(ToggleLabel)));
+			PropertyChanged?.Invoke(this, new(nameof(DetailsVisible)));
+		}
+	}
+
+	LogLineRow(string text)
+	{
+		Text = text;
+		int newline = text.IndexOf('\n');
+		Summary = newline < 0 ? text : text[..newline];
+		Details = newline < 0 ? "" : text[(newline + 1)..].TrimEnd();
+		Brush = LogPaneViewModel.BrushFor(Summary);
+	}
+
+	public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged;
+	public void ToggleDetails() => IsExpanded = !IsExpanded;
+
+	public static LogLineRow From(string text) => new(text);
 }

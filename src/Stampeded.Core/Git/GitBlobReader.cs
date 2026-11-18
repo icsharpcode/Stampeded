@@ -68,7 +68,7 @@ public sealed class GitBlobReader : IDisposable
 		{
 			// A reader that has died takes its answers with it; the next request starts a new
 			// process rather than failing everything after it.
-			CliLog.Write("git", $"blob reader restarting: {ex.Message}");
+			CliLog.WriteException("git", "blob reader restarting", ex);
 			Stop();
 			return null;
 		}

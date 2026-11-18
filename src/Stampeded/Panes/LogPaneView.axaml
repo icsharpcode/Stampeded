@@ -16,7 +16,15 @@
              FontFamily="monospace" FontSize="11" KeyDown="OnKeyDown">
       <ListBox.ItemTemplate>
         <DataTemplate x:DataType="panes:LogLineRow">
-          <controls:LogLineBlock Line="{Binding Text}" LineBrush="{Binding Brush}" />
+          <StackPanel Orientation="Vertical" Spacing="2">
+            <StackPanel Orientation="Horizontal" Spacing="4">
+              <Button Content="{Binding ToggleLabel}" IsVisible="{Binding HasDetails}"
+                      Padding="2,0" MinWidth="18" Click="OnToggleDetails" />
+              <controls:LogLineBlock Line="{Binding Summary}" LineBrush="{Binding Brush}" />
+            </StackPanel>
+            <controls:LogLineBlock Line="{Binding Details}" LineBrush="{Binding Brush}"
+                                   IsVisible="{Binding DetailsVisible}" Margin="22,0,0,2" />
+          </StackPanel>
         </DataTemplate>
       </ListBox.ItemTemplate>
       <ListBox.ContextMenu>

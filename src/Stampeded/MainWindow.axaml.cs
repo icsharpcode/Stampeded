@@ -104,7 +104,7 @@ public partial class MainWindow : Window
 		}
 		catch (Exception ex)
 		{
-			Core.Infra.CliLog.Write("app", $"shutdown cleanup failed: {ex.Message}; closing window");
+				Core.Infra.CliLog.WriteException("app", "shutdown cleanup failed; closing window", ex);
 		}
 		finally
 		{

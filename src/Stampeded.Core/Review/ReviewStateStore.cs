@@ -145,7 +145,7 @@ public sealed class ReviewStateStore
 				// Corrupt state file: start fresh rather than failing the review - but say so,
 				// because everything the reader recorded here is about to look like a first
 				// pass that never happened.
-				Infra.CliLog.Write("review", $"unreadable review state {Path.GetFileName(currentPath)}: {ex.Message}");
+				Infra.CliLog.WriteException("review", $"unreadable review state {Path.GetFileName(currentPath)}", ex);
 			}
 		}
 		Superseded = null;

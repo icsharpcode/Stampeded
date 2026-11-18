@@ -55,7 +55,7 @@ public static class PrCache
 		catch (Exception ex) when (ex is IOException or JsonException)
 		{
 			// An unreadable cache is a cache miss, which is a working state.
-			CliLog.Write("cache", $"unreadable snapshot for #{number}: {ex.Message}");
+			CliLog.WriteException("cache", $"unreadable snapshot for #{number}", ex);
 			return null;
 		}
 	}
@@ -70,7 +70,7 @@ public static class PrCache
 		}
 		catch (IOException ex)
 		{
-			CliLog.Write("cache", $"could not write snapshot for #{snapshot.Detail.Number}: {ex.Message}");
+			CliLog.WriteException("cache", $"could not write snapshot for #{snapshot.Detail.Number}", ex);
 		}
 	}
 

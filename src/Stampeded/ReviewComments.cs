@@ -450,6 +450,7 @@ public sealed class ReviewComments(ReviewWorkspace workspace)
 		}
 		catch (ToolFailedException ex)
 		{
+			CliLog.WriteException("review", "submitting the review failed", ex);
 			return ex.Message;
 		}
 	}

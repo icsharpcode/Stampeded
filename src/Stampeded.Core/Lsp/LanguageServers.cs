@@ -154,7 +154,7 @@ public static class LanguageServers
 		}
 		catch (ToolFailedException ex)
 		{
-			CliLog.Write("basedpyright", $"install failed: {ex.Message}");
+			CliLog.WriteException("basedpyright", "install failed", ex);
 			return null;
 		}
 		var installed = Installed();

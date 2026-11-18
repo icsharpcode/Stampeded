@@ -141,7 +141,7 @@ public sealed class WorktreeManager(string repoPath)
 			}
 			catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
 			{
-				CliLog.Write("worktree", $"could not link submodule {rel}: {ex.Message}");
+				CliLog.WriteException("worktree", $"could not link submodule {rel}", ex);
 			}
 		}
 	}

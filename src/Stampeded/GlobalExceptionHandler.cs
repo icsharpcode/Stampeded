@@ -15,16 +15,8 @@ public static class GlobalExceptionHandler
 		// The Log pane is where a user looks when a command did nothing. Tracing alone left a
 		// failed command indistinguishable from one that found nothing to do: no status, no
 		// log line, the pane sitting at whatever it last said.
-		CliLog.Write("error", $"{exception.GetType().Name}: {exception.Message}"
-			+ (FirstFrame(exception) is { } frame ? $"  at {frame}" : ""));
+		CliLog.WriteException("error", "Unhandled exception", exception);
 		if (Debugger.IsAttached)
 			Debugger.Break();
-	}
-
-	/// <summary>The topmost stack line, which says where it broke without printing a page.</summary>
-	static string? FirstFrame(Exception exception)
-	{
-		string? line = exception.StackTrace?.Split('\n', 2)[0].Trim();
-		return line is not null && line.StartsWith("at ", StringComparison.Ordinal) ? line[3..] : line;
 	}
 }
