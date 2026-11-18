@@ -327,9 +327,37 @@ public sealed class GitService(string repoPath)
 		{
 			return (await RunAsync(ct, args)).Trim();
 		}
-		catch (ToolFailedException ex) when (ex.ExitCode == 1)
+		catch (ToolFailedException ex)
 		{
-			return null;
+			LogReplayFailure(onto, head, mergeBase, ex);
+			if (ex.ExitCode == 1)
+				return null;
+			throw;
+		}
+	}
+
+	static void LogReplayFailure(string onto, string head, string? mergeBase, ToolFailedException failure)
+	{
+		CliLog.Write("git", $"rebase-diff replay failed (exit {failure.ExitCode}): "
+			+ $"onto={onto}, previous-head={head}, "
+			+ $"merge-base={(mergeBase is null ? "Git-inferred" : mergeBase)}");
+		LogOutput("stdout", failure.StdOut);
+		LogOutput("stderr", failure.StdErr);
+
+		static void LogOutput(string stream, string output)
+		{
+			if (string.IsNullOrWhiteSpace(output))
+				return;
+			const int maxLoggedChars = 24_000;
+			string normalized = output.ReplaceLineEndings("\n");
+			bool truncated = normalized.Length > maxLoggedChars;
+			if (truncated)
+				normalized = normalized[..maxLoggedChars];
+			foreach (string line in normalized.Split('\n'))
+				if (line.Length > 0)
+					CliLog.Write("git", $"merge-tree {stream}: {line}");
+			if (truncated)
+				CliLog.Write("git", $"merge-tree {stream}: [output truncated after {maxLoggedChars} characters]");
 		}
 	}
 
