@@ -577,10 +577,15 @@ public sealed class ReviewScopes(ReviewWorkspace workspace)
 	/// <summary>The replay is a pure function of (base, last pass head), so it is computed
 	/// once and kept for as long as that head is the one being read against.</summary>
 	(string Head, string Tree)? sinceLastPassTree;
+	IReadOnlyList<string> sinceLastPassConflicts = [];
 
 	/// <summary>Forgets the replayed tree: what it is worth depends on the head the last pass
 	/// ended at, which is what re-reading the review's state has just re-established.</summary>
-	public void ForgetSinceLastPassTree() => sinceLastPassTree = null;
+	public void ForgetSinceLastPassTree()
+	{
+		sinceLastPassTree = null;
+		sinceLastPassConflicts = [];
+	}
 
 	/// <summary>
 	/// Narrows the review to what changed since the reader's last pass: the same scoping the
@@ -609,25 +614,35 @@ public sealed class ReviewScopes(ReviewWorkspace workspace)
 		string previous = baseline.Head;
 		string baselineName = baseline.Kind == PassBaselineKind.Commit ? "the chosen commit" : "your last pass";
 		using var busy = workspace.Busy.Begin($"Diffing against {baselineName}");
+		IReadOnlyList<string> replayConflicts = sinceLastPassTree?.Head == previous
+			? sinceLastPassConflicts
+			: [];
 		if (sinceLastPassTree?.Head != previous)
 		{
 			sinceLastPassTree = null;
+			sinceLastPassConflicts = [];
 			try
 			{
-				if (await workspace.Git.ReplayTreeAsync(range.Base, previous, baseline.Base) is { } replayed)
+				var replay = await workspace.Git.ReplayTreeAsync(range.Base, previous, baseline.Base);
+				replayConflicts = replay.ConflictedPaths;
+				if (replay.Tree is { } replayed)
+				{
 					sinceLastPassTree = (previous, replayed);
+					sinceLastPassConflicts = replay.ConflictedPaths;
+				}
 			}
 			catch (ToolFailedException ex)
 			{
-				workspace.PostStatus($"Diff since last pass failed: {ExternalTool.Explain(ex)}");
+				workspace.PostStatus($"Rebase-diff failed: {ExternalTool.Explain(ex)} "
+					+ "See the Log pane for command output and conflict details.");
 				return;
 			}
 		}
 		if (sinceLastPassTree is null)
 		{
 			workspace.PostStatus($"The work at {previous[..9]} does not replay onto {range.Base[..9]} "
-				+ "without conflicts, so there is no clean diff of the author's edits alone. Showing the raw "
-				+ "interdiff instead - it includes the commits the rebase brought in.");
+				+ "with the available conflict resolution. Showing the raw interdiff instead; it may include "
+				+ "changes brought in by the rebase. See the Log pane for details.");
 			await workspace.OpenInterdiffAsync();
 			return;
 		}
@@ -648,8 +663,12 @@ public sealed class ReviewScopes(ReviewWorkspace workspace)
 		fullRange ??= range;
 		SinceLastPassBase = replayedTree;
 		workspace.SetScopeContent(replayedTree, range.Head, files);
+		string conflictHint = replayConflicts.Count > 0
+			? $" Rebase conflicts in {replayConflicts.Count} path(s) were resolved using the current base."
+			: "";
 		ScopeLine = $"Since {baseline.Label} at {previous[..9]}{(rewritten ? ", head rewritten" : "")}: "
-			+ $"{files.Count} file(s). Whole change: {neverViewed} of {wholeChange} file(s) never viewed.";
+			+ $"{files.Count} file(s). Whole change: {neverViewed} of {wholeChange} file(s) never viewed."
+			+ conflictHint;
 		await workspace.ApplyScopeSemanticsAsync();
 		workspace.PostStatus(ScopeLine);
 		Changed?.Invoke();

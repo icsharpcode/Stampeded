@@ -20,6 +20,11 @@ public enum PullOutcome
 
 public sealed record PullResult(PullOutcome Outcome, string Sha);
 
+/// <summary>The synthetic tree for a rebase-diff replay, with any conflict paths resolved
+/// in favor of the new base.</summary>
+public sealed record ReplayTreeResult(
+	string? Tree, IReadOnlyList<string> ConflictedPaths, bool ResolvedConflictsUsingOnto);
+
 /// <summary>What pushing a branch to origin did, or would have to do.</summary>
 public enum PushOutcome
 {
@@ -314,27 +319,152 @@ public sealed class GitService(string repoPath)
 	/// work was written against, for the case where the branch was rebased onto somewhere
 	/// else entirely and git's own merge base would be further back than the work.
 	///
-	/// Null when the replay conflicts: merge-tree still prints a tree then, but one with
-	/// conflict markers in it, and there is no honest way to show that as the author's code.
-	/// Any other failure is the caller's to report.
+	/// Conflicted hunks are resolved in favor of <paramref name="onto"/>. Non-conflicting
+	/// hunks from the previous pass are retained; this lets the diff show the author's
+	/// resolution and later edits without treating incoming base changes as new work.
 	/// </summary>
-	public async Task<string?> ReplayTreeAsync(string onto, string head, string? mergeBase, CancellationToken ct = default)
+	public async Task<ReplayTreeResult> ReplayTreeAsync(
+		string onto, string head, string? mergeBase, CancellationToken ct = default)
 	{
 		string[] args = mergeBase is null
 			? ["merge-tree", "--write-tree", onto, head]
 			: ["merge-tree", "--write-tree", $"--merge-base={mergeBase}", onto, head];
 		try
 		{
-			return (await RunAsync(ct, args)).Trim();
+			return new ReplayTreeResult((await RunAsync(ct, args)).Trim(), [], false);
 		}
 		catch (ToolFailedException ex)
 		{
 			LogReplayFailure(onto, head, mergeBase, ex);
 			if (ex.ExitCode == 1)
-				return null;
+				return await ResolveReplayConflictsOntoAsync(onto, ex.StdOut, ct);
 			throw;
 		}
 	}
+
+	async Task<ReplayTreeResult> ResolveReplayConflictsOntoAsync(string onto, string mergeTreeOutput, CancellationToken ct)
+	{
+		string mergedTree = mergeTreeOutput.ReplaceLineEndings("\n").Split('\n')[0].Trim();
+		var conflicts = ParseMergeTreeConflicts(mergeTreeOutput);
+		if (mergedTree.Length == 0 || conflicts.Count == 0)
+		{
+			CliLog.Write("git", "rebase-diff could not resolve conflicts: merge-tree returned no conflict stages");
+			return new ReplayTreeResult(null, [], false);
+		}
+
+		string tempRoot = Path.Combine(Path.GetTempPath(), $"stampeded-replay-{Guid.NewGuid():N}");
+		string indexPath = Path.Combine(tempRoot, "index");
+		Directory.CreateDirectory(tempRoot);
+		try
+		{
+			await RunWithIndexAsync(indexPath, ct, "read-tree", mergedTree);
+			foreach (var (path, stages) in conflicts)
+			{
+				if (!stages.TryGetValue(2, out var ontoStage))
+				{
+					// The new base deleted this path. Keep that deletion in the replay tree.
+					await RunWithIndexAsync(indexPath, ct,
+						"--literal-pathspecs", "update-index", "--force-remove", "--", path);
+					CliLog.Write("git", $"rebase-diff resolved {path}: kept deletion from new base");
+					continue;
+				}
+
+				string objectId = ontoStage.ObjectId;
+				if (stages.TryGetValue(1, out var baseStage)
+					&& stages.TryGetValue(3, out var previousStage)
+					&& IsRegularFile(ontoStage.Mode)
+					&& IsRegularFile(baseStage.Mode)
+					&& IsRegularFile(previousStage.Mode))
+				{
+					try
+					{
+						objectId = await ResolveTextConflictUsingOntoAsync(
+							tempRoot, ontoStage.ObjectId, baseStage.ObjectId, previousStage.ObjectId, ct);
+					}
+					catch (ToolFailedException ex)
+					{
+						// Binary or otherwise unmergeable content: choosing the new-base blob
+						// is still a safe, deterministic resolution.
+						CliLog.Write("git", $"rebase-diff kept new-base version of {path}: {ExternalTool.Explain(ex)}");
+					}
+				}
+				await RunWithIndexAsync(indexPath, ct,
+					"--literal-pathspecs", "update-index", "--add", "--cacheinfo",
+					ontoStage.Mode, objectId, path);
+				CliLog.Write("git", $"rebase-diff resolved {path}: favored new-base hunks");
+			}
+			string tree = (await RunWithIndexAsync(indexPath, ct, "write-tree")).Trim();
+			CliLog.Write("git", $"rebase-diff resolved {conflicts.Count} conflict path(s) using the new base");
+			return new ReplayTreeResult(tree, [.. conflicts.Keys], true);
+		}
+		catch (ToolFailedException ex)
+		{
+			CliLog.Write("git", $"rebase-diff conflict resolution failed: {ExternalTool.Explain(ex)}");
+			return new ReplayTreeResult(null, [.. conflicts.Keys], false);
+		}
+		finally
+		{
+			try
+			{
+				Directory.Delete(tempRoot, recursive: true);
+			}
+			catch (IOException)
+			{
+				// Temporary index cleanup is housekeeping; the replay result is already known.
+			}
+			catch (UnauthorizedAccessException)
+			{
+			}
+		}
+	}
+
+	async Task<string> ResolveTextConflictUsingOntoAsync(
+		string tempRoot, string ontoBlob, string baseBlob, string previousBlob, CancellationToken ct)
+	{
+		string ontoFile = Path.Combine(tempRoot, "onto");
+		string baseFile = Path.Combine(tempRoot, "base");
+		string previousFile = Path.Combine(tempRoot, "previous");
+		string resultFile = Path.Combine(tempRoot, "resolved");
+		await File.WriteAllTextAsync(ontoFile, await RunAsync(ct, "cat-file", "blob", ontoBlob), ct);
+		await File.WriteAllTextAsync(baseFile, await RunAsync(ct, "cat-file", "blob", baseBlob), ct);
+		await File.WriteAllTextAsync(previousFile, await RunAsync(ct, "cat-file", "blob", previousBlob), ct);
+		string ontoText = await File.ReadAllTextAsync(ontoFile, ct);
+		string baseText = await File.ReadAllTextAsync(baseFile, ct);
+		string previousText = await File.ReadAllTextAsync(previousFile, ct);
+		if (ontoText.Contains('\0') || baseText.Contains('\0') || previousText.Contains('\0'))
+			throw new ToolFailedException("git", 1, "binary conflict; using the new-base version");
+		string resolved = await RunAsync(ct, "merge-file", "--ours", "--stdout",
+			ontoFile, baseFile, previousFile);
+		await File.WriteAllTextAsync(resultFile, resolved, ct);
+		return (await RunAsync(ct, "hash-object", "-w", resultFile)).Trim();
+	}
+
+	async Task<string> RunWithIndexAsync(string indexPath, CancellationToken ct, params string[] args)
+		=> await ExternalTool.RunAsync("git", args, repoPath, ct,
+			env: new Dictionary<string, string> { ["GIT_INDEX_FILE"] = indexPath });
+
+	static bool IsRegularFile(string mode) => mode is "100644" or "100755";
+
+	static Dictionary<string, Dictionary<int, MergeStage>> ParseMergeTreeConflicts(string output)
+	{
+		var conflicts = new Dictionary<string, Dictionary<int, MergeStage>>(StringComparer.Ordinal);
+		foreach (string line in output.ReplaceLineEndings("\n").Split('\n'))
+		{
+			int tab = line.IndexOf('\t');
+			if (tab < 0)
+				continue;
+			string[] fields = line[..tab].Split(' ', StringSplitOptions.RemoveEmptyEntries);
+			if (fields.Length != 3 || !int.TryParse(fields[2], out int stage) || stage is < 1 or > 3)
+				continue;
+			string path = line[(tab + 1)..];
+			if (!conflicts.TryGetValue(path, out var stages))
+				conflicts[path] = stages = [];
+			stages[stage] = new MergeStage(fields[0], fields[1]);
+		}
+		return conflicts;
+	}
+
+	readonly record struct MergeStage(string Mode, string ObjectId);
 
 	static void LogReplayFailure(string onto, string head, string? mergeBase, ToolFailedException failure)
 	{

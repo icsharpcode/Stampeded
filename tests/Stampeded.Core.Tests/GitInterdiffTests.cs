@@ -63,7 +63,7 @@ public class GitInterdiffTests
 		var (oldBase, oldHead, newBase, newHead) = await RebasedWithUpstreamWork();
 		var git = new GitService(repo);
 
-		string? tree = await git.ReplayTreeAsync(newBase, oldHead, oldBase);
+		string? tree = (await git.ReplayTreeAsync(newBase, oldHead, oldBase)).Tree;
 
 		Assert.That(tree, Is.Not.Null, "the work replays onto the new base without conflicts");
 		var files = await git.DiffAsync(tree!, newHead);
@@ -95,7 +95,7 @@ public class GitInterdiffTests
 		string newHead = await RevParse("HEAD");
 		var git = new GitService(repo);
 
-		string? tree = await git.ReplayTreeAsync(baseSha, oldHead, baseSha);
+		string? tree = (await git.ReplayTreeAsync(baseSha, oldHead, baseSha)).Tree;
 		var replayed = await git.DiffAsync(tree!, newHead);
 		var plain = await git.DiffAsync(oldHead, newHead);
 
@@ -103,23 +103,56 @@ public class GitInterdiffTests
 	}
 
 	[Test]
-	public async Task WorkThatCannotBeReplayedAnswersWithNull()
+	public async Task ConflictingHunksFavorTheNewBaseButKeepOtherOldWork()
 	{
+		await File.WriteAllTextAsync(Path.Combine(repo, "base.txt"),
+			"one\nsame\ncontext-a\ncontext-b\ncontext-c\ntail\nend\n");
+		await Git(repo, "commit", "--quiet", "--all", "--amend", "-m", "prepare merge base");
 		string oldBase = await RevParse("HEAD");
 		await Git(repo, "checkout", "--quiet", "-b", "topic");
-		await File.WriteAllTextAsync(Path.Combine(repo, "base.txt"), "the author's line\n");
+		await File.WriteAllTextAsync(Path.Combine(repo, "base.txt"),
+			"one\nold pass\ncontext-a\ncontext-b\ncontext-c\nauthor tail\nend\n");
 		await Git(repo, "commit", "--quiet", "--all", "-m", "topic edit");
 		string oldHead = await RevParse("HEAD");
 
 		await Git(repo, "checkout", "--quiet", "main");
-		await File.WriteAllTextAsync(Path.Combine(repo, "base.txt"), "somebody else's line\n");
+		await File.WriteAllTextAsync(Path.Combine(repo, "base.txt"),
+			"one\nnew base\ncontext-a\ncontext-b\ncontext-c\ntail\nend\n");
 		await Git(repo, "commit", "--quiet", "--all", "-m", "upstream edit");
 		string newBase = await RevParse("HEAD");
 		var git = new GitService(repo);
 
-		string? tree = await git.ReplayTreeAsync(newBase, oldHead, oldBase);
+		var replay = await git.ReplayTreeAsync(newBase, oldHead, oldBase);
 
-		Assert.That(tree, Is.Null, "a conflicted replay has no tree that is the author's work");
+		Assert.That(replay.Tree, Is.Not.Null);
+		Assert.That(replay.ResolvedConflictsUsingOnto, Is.True);
+		Assert.That(replay.ConflictedPaths, Does.Contain("base.txt"));
+		string content = await Git(repo, "show", $"{replay.Tree}:base.txt");
+		Assert.That(content, Is.EqualTo(
+			"one\nnew base\ncontext-a\ncontext-b\ncontext-c\nauthor tail\nend\n"));
+	}
+
+	[Test]
+	public async Task ModifyDeleteConflictKeepsTheNewBaseDeletion()
+	{
+		string oldBase = await RevParse("HEAD");
+		await Git(repo, "checkout", "--quiet", "-b", "topic");
+		await File.WriteAllTextAsync(Path.Combine(repo, "base.txt"), "old pass\n");
+		await Git(repo, "commit", "--quiet", "--all", "-m", "modify file");
+		string oldHead = await RevParse("HEAD");
+
+		await Git(repo, "checkout", "--quiet", "main");
+		await Git(repo, "rm", "--quiet", "base.txt");
+		await Git(repo, "commit", "--quiet", "-m", "delete file upstream");
+		string newBase = await RevParse("HEAD");
+		var git = new GitService(repo);
+
+		var replay = await git.ReplayTreeAsync(newBase, oldHead, oldBase);
+
+		Assert.That(replay.Tree, Is.Not.Null);
+		Assert.That(replay.ResolvedConflictsUsingOnto, Is.True);
+		Assert.That(replay.ConflictedPaths, Does.Contain("base.txt"));
+		Assert.That(await git.DiffAsync(newBase, replay.Tree!), Is.Empty);
 	}
 
 	[Test]
